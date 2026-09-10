@@ -217,6 +217,7 @@ function authMessage(error) {
 
 function showView(name) {
   byId("authView").classList.toggle("hidden", name !== "auth");
+  byId("deniedView").classList.toggle("hidden", name !== "denied");
   byId("applicationView").classList.toggle("hidden", name !== "application");
   byId("driverView").classList.toggle("hidden", name !== "driver");
   byId("logoutButton").classList.toggle("hidden", name === "auth");
@@ -243,6 +244,11 @@ byId("loginForm").addEventListener("submit", async event => {
 });
 
 byId("logoutButton").addEventListener("click", async () => {
+  await signOut(auth);
+  toast("تم تسجيل الخروج");
+});
+
+byId("deniedLogout").addEventListener("click", async () => {
   await signOut(auth);
   toast("تم تسجيل الخروج");
 });
@@ -484,8 +490,14 @@ onAuthStateChanged(auth, user => {
       return;
     }
     state.userData = snapshot.data();
-    if (state.userData.role === "driver" || state.userData.role === "admin") openDriverDashboard();
-    else openApplication();
+    if (state.userData.role === "driver") {
+      openDriverDashboard();
+    } else if (state.userData.role === "customer") {
+      openApplication();
+    } else {
+      byId("deniedMessage").textContent = "هذا حساب مدير ومخصص للوحة الإدارة فقط. استخدم حساب كابتن مستقلًا.";
+      showView("denied");
+    }
   }, error => {
     console.error(error);
     toast("تعذر قراءة صلاحية الحساب");

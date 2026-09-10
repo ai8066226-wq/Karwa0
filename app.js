@@ -792,6 +792,14 @@ onAuthStateChanged(auth, async user => {
   byId("connectionBadge").textContent = "متصل ومحفوظ سحابيًا";
   try {
     await loadUserProfile(user);
+    if (state.role !== "customer") {
+      const roleName = state.role === "driver" ? "كابتن" : "مدير";
+      const destination = state.role === "driver" ? "بوابة الكابتن" : "لوحة الإدارة";
+      await signOut(auth);
+      openAuthModal();
+      byId("authMessage").textContent = `هذا حساب ${roleName} ومخصص لـ${destination} فقط. استخدم حساب عميل مستقلًا.`;
+      return;
+    }
     subscribeToOrders(user);
   } catch (error) {
     console.error(error);

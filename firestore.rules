@@ -22,6 +22,10 @@ service cloud.firestore {
       return signedIn() && userRole() == 'driver';
     }
 
+    function isCustomer() {
+      return signedIn() && userRole() == 'customer';
+    }
+
     match /users/{userId} {
       allow create: if own(userId)
                     && request.resource.data.role == 'customer';
@@ -30,6 +34,7 @@ service cloud.firestore {
 
       allow update: if isAdmin()
                     || (own(userId)
+                        && isCustomer()
                         && request.resource.data.diff(resource.data).affectedKeys()
                           .hasOnly(['name', 'email', 'notifications', 'balance', 'updatedAt']))
                     || (own(userId)
@@ -44,12 +49,14 @@ service cloud.firestore {
     match /driverApplications/{userId} {
       allow create: if own(userId)
                     && request.resource.data.userId == request.auth.uid
+                    && isCustomer()
                     && request.resource.data.status == 'pending';
 
       allow read: if own(userId) || isAdmin();
 
       allow update: if isAdmin()
                     || (own(userId)
+                        && isCustomer()
                         && request.resource.data.userId == resource.data.userId
                         && request.resource.data.status == 'pending'
                         && request.resource.data.diff(resource.data).affectedKeys()
@@ -69,7 +76,7 @@ service cloud.firestore {
     }
 
     match /orders/{orderId} {
-      allow create: if signedIn()
+      allow create: if isCustomer()
                     && request.resource.data.userId == request.auth.uid
                     && request.resource.data.driverId == null
                     && request.resource.data.statusIndex == 0
@@ -80,8 +87,11 @@ service cloud.firestore {
                       || isDriver()
                       || isAdmin());
 
-      allow update: if isAdmin()
-                    || (signedIn()
+      allow update: if (isAdmin()
+                        && request.resource.data.cancelled == true
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                          .hasOnly(['cancelled', 'cancelledBy', 'updatedAt']))
+                    || (isCustomer()
                         && resource.data.userId == request.auth.uid
                         && request.resource.data.userId == resource.data.userId
                         && resource.data.cancelled == false
