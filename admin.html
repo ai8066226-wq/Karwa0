@@ -56,6 +56,7 @@
     <section class="stats">
       <div class="stat"><small>إجمالي العملاء</small><strong id="usersCount">0</strong></div>
       <div class="stat"><small>الكباتن المعتمدون</small><strong id="driversCount">0</strong></div>
+      <div class="stat"><small>كباتن محظورون</small><strong id="blockedCount">0</strong></div>
       <div class="stat"><small>طلبات قيد المراجعة</small><strong id="pendingCount">0</strong></div>
       <div class="stat"><small>إجمالي الطلبات</small><strong id="ordersCount">0</strong></div>
     </section>
@@ -68,6 +69,11 @@
         </div>
 
         <div class="card">
+          <div class="card-heading"><h2>إدارة الكباتن</h2><span class="status-chip active">تنبيه وحظر</span></div>
+          <div class="orders" id="driversList"></div>
+        </div>
+
+        <div class="card">
           <div class="card-heading"><h2>جميع طلبات العملاء</h2><span class="muted">مراقبة مباشرة</span></div>
           <div class="orders" id="ordersList"></div>
         </div>
@@ -77,6 +83,10 @@
         <div class="card">
           <h3>حالة النظام</h3>
           <p class="notice success">Firebase متصل والتحديثات مباشرة.</p>
+        </div>
+        <div class="card">
+          <div class="card-heading"><h3>أحدث التقييمات</h3><span class="status-chip pending">مباشر</span></div>
+          <div class="reviews-list" id="ratingsList"></div>
         </div>
         <div class="card">
           <h3>مبدأ الصلاحيات</h3>

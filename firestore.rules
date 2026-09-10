@@ -26,6 +26,11 @@ service cloud.firestore {
       return signedIn() && userRole() == 'customer';
     }
 
+    function isActiveDriver() {
+      return isDriver()
+             && get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.get('blocked', false) == false;
+    }
+
     match /users/{userId} {
       allow create: if own(userId)
                     && request.resource.data.role == 'customer';
@@ -70,7 +75,7 @@ service cloud.firestore {
       allow read: if own(driverId) || isAdmin();
       allow update: if isAdmin()
                     || (own(driverId)
-                        && isDriver()
+                        && isActiveDriver()
                         && request.resource.data.diff(resource.data).affectedKeys()
                           .hasOnly(['online', 'updatedAt']));
     }
@@ -99,7 +104,7 @@ service cloud.firestore {
                         && request.resource.data.cancelled == true
                         && request.resource.data.diff(resource.data).affectedKeys()
                           .hasOnly(['cancelled', 'updatedAt']))
-                    || (isDriver()
+                    || (isActiveDriver()
                         && (!('driverId' in resource.data) || resource.data.driverId == null)
                         && request.resource.data.driverId == request.auth.uid
                         && request.resource.data.userId == resource.data.userId
@@ -109,7 +114,7 @@ service cloud.firestore {
                         && request.resource.data.assignmentStatus == 'accepted'
                         && request.resource.data.diff(resource.data).affectedKeys()
                           .hasOnly(['driverId', 'driverName', 'driverPhone', 'assignmentStatus', 'updatedAt']))
-                    || (isDriver()
+                    || (isActiveDriver()
                         && resource.data.driverId == request.auth.uid
                         && request.resource.data.driverId == request.auth.uid
                         && request.resource.data.userId == resource.data.userId
@@ -133,7 +138,7 @@ service cloud.firestore {
                       || parentOrder().driverId == request.auth.uid
                       || isAdmin());
 
-      allow create, update: if isDriver()
+      allow create, update: if isActiveDriver()
                             && parentOrder().driverId == request.auth.uid
                             && request.resource.data.driverId == request.auth.uid
                             && request.resource.data.latitude is number
@@ -146,6 +151,36 @@ service cloud.firestore {
                               'driverId', 'latitude', 'longitude', 'accuracy',
                               'heading', 'speed', 'updatedAt'
                             ]);
+
+      allow delete: if isAdmin();
+    }
+
+    match /ratings/{orderId} {
+      function ratedOrder() {
+        return get(/databases/$(database)/documents/orders/$(orderId)).data;
+      }
+
+      allow create: if isCustomer()
+                    && request.resource.data.keys().hasOnly([
+                      'orderId', 'orderCode', 'customerId', 'driverId',
+                      'driverName', 'score', 'comment', 'createdAt'
+                    ])
+                    && request.resource.data.orderId == orderId
+                    && request.resource.data.customerId == request.auth.uid
+                    && request.resource.data.driverId == ratedOrder().driverId
+                    && ratedOrder().userId == request.auth.uid
+                    && ratedOrder().cancelled == false
+                    && ratedOrder().statusIndex >= 3
+                    && request.resource.data.score is int
+                    && request.resource.data.score >= 1
+                    && request.resource.data.score <= 5
+                    && request.resource.data.comment is string
+                    && request.resource.data.comment.size() <= 300;
+
+      allow read: if signedIn()
+                  && (resource.data.customerId == request.auth.uid
+                      || resource.data.driverId == request.auth.uid
+                      || isAdmin());
 
       allow delete: if isAdmin();
     }

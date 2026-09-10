@@ -59,6 +59,10 @@ const state = {
   name: "ضيف",
   notifications: true,
   unsubscribeOrders: null,
+  unsubscribeRatings: null,
+  ratings: [],
+  ratingOrderId: null,
+  ratingScore: 0,
   trackingUnsubscribe: null,
   trackingOrderId: null,
   map: null,
@@ -304,6 +308,21 @@ function subscribeToOrders(user) {
   }, error => {
     console.error(error);
     showToast("تعذر قراءة الطلبات. تحقق من قواعد Firestore.");
+  });
+}
+
+function subscribeToRatings(user) {
+  if (state.unsubscribeRatings) state.unsubscribeRatings();
+  const ratingsQuery = query(
+    collection(db, "ratings"),
+    where("customerId", "==", user.uid)
+  );
+  state.unsubscribeRatings = onSnapshot(ratingsQuery, snapshot => {
+    state.ratings = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
+    renderOrders();
+  }, error => {
+    console.error(error);
+    showToast("تعذر تحميل تقييماتك");
   });
 }
 
@@ -646,13 +665,110 @@ function renderOrders() {
     const amount = document.createElement("strong");
     amount.textContent = formatMoney(order.price);
     const status = document.createElement("small");
-    status.textContent = order.cancelled ? "ملغي" : orderStatuses[Number(order.statusIndex || 0)];
+    const statusIndex = Number(order.statusIndex || 0);
+    status.textContent = order.cancelled ? "ملغي" : orderStatuses[statusIndex];
     if (order.cancelled) status.style.color = "var(--danger)";
     price.append(amount, status);
+
+    const completed = !order.cancelled && statusIndex >= orderStatuses.length - 1 && order.driverId;
+    if (completed) {
+      const review = document.createElement("div");
+      review.className = "order-review";
+      const savedRating = state.ratings.find(item => item.orderId === order.firestoreId);
+      if (savedRating) {
+        review.innerHTML = `<span class="rating-result" aria-label="تقييم ${savedRating.score} من 5">${"★".repeat(savedRating.score)}${"☆".repeat(5 - savedRating.score)}</span><small>تم تقييم الكابتن</small>`;
+      } else {
+        const rateButton = document.createElement("button");
+        rateButton.type = "button";
+        rateButton.className = "rate-driver-button";
+        rateButton.textContent = "★ قيّم الكابتن";
+        rateButton.addEventListener("click", () => openRatingModal(order.firestoreId));
+        review.appendChild(rateButton);
+      }
+      details.appendChild(review);
+    }
+
     article.append(icon, details, price);
     container.appendChild(article);
   });
 }
+
+const ratingModal = byId("ratingModal");
+
+function renderRatingPicker() {
+  document.querySelectorAll("[data-rating-score]").forEach(button => {
+    const active = Number(button.dataset.ratingScore) <= state.ratingScore;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  byId("ratingLabel").textContent = state.ratingScore
+    ? ["", "ضعيف", "مقبول", "جيد", "جيد جدًا", "ممتاز"][state.ratingScore]
+    : "اختر تقييمك";
+}
+
+function openRatingModal(orderId) {
+  const order = state.orders.find(item => item.firestoreId === orderId);
+  if (!order || order.cancelled || Number(order.statusIndex || 0) < 3 || !order.driverId) {
+    showToast("يمكن التقييم بعد اكتمال الرحلة فقط");
+    return;
+  }
+  state.ratingOrderId = orderId;
+  state.ratingScore = 0;
+  byId("ratingComment").value = "";
+  byId("ratingDriverName").textContent = order.driverName || "كابتن كروة";
+  byId("ratingOrderCode").textContent = order.id || "";
+  renderRatingPicker();
+  ratingModal.classList.add("show");
+}
+
+function closeRatingModal() {
+  ratingModal.classList.remove("show");
+  state.ratingOrderId = null;
+  state.ratingScore = 0;
+}
+
+document.querySelectorAll("[data-rating-score]").forEach(button => {
+  button.addEventListener("click", () => {
+    state.ratingScore = Number(button.dataset.ratingScore);
+    renderRatingPicker();
+  });
+});
+
+byId("closeRating").addEventListener("click", closeRatingModal);
+ratingModal.addEventListener("click", event => {
+  if (event.target === ratingModal) closeRatingModal();
+});
+
+byId("ratingForm").addEventListener("submit", async event => {
+  event.preventDefault();
+  const order = state.orders.find(item => item.firestoreId === state.ratingOrderId);
+  if (!order || !state.user) return;
+  if (!state.ratingScore) {
+    showToast("اختر عدد النجوم أولًا");
+    return;
+  }
+  const button = byId("submitRating");
+  setButtonBusy(button, true, "جاري الإرسال…");
+  try {
+    await setDoc(doc(db, "ratings", order.firestoreId), {
+      orderId: order.firestoreId,
+      orderCode: order.id || "",
+      customerId: state.user.uid,
+      driverId: order.driverId,
+      driverName: order.driverName || "كابتن كروة",
+      score: state.ratingScore,
+      comment: byId("ratingComment").value.trim().slice(0, 300),
+      createdAt: serverTimestamp()
+    });
+    closeRatingModal();
+    showToast("شكرًا، تم إرسال تقييمك");
+  } catch (error) {
+    console.error(error);
+    showToast("تعذر إرسال التقييم");
+  } finally {
+    setButtonBusy(button, false);
+  }
+});
 
 function renderBalance() {
   byId("walletBalance").textContent = Number(state.balance || 0).toLocaleString("ar-IQ");
@@ -746,6 +862,7 @@ supportModal.addEventListener("click", event => {
 });
 document.addEventListener("keydown", event => {
   if (event.key === "Escape") supportModal.classList.remove("show");
+  if (event.key === "Escape") closeRatingModal();
 });
 
 setAuthMode("login");
@@ -770,10 +887,15 @@ onAuthStateChanged(auth, async user => {
       state.unsubscribeOrders();
       state.unsubscribeOrders = null;
     }
+    if (state.unsubscribeRatings) {
+      state.unsubscribeRatings();
+      state.unsubscribeRatings = null;
+    }
     state.name = "ضيف";
     state.role = "customer";
     state.balance = 0;
     state.orders = [];
+    state.ratings = [];
     state.activeOrder = null;
     if (state.trackingUnsubscribe) state.trackingUnsubscribe();
     state.trackingUnsubscribe = null;
@@ -801,6 +923,7 @@ onAuthStateChanged(auth, async user => {
       return;
     }
     subscribeToOrders(user);
+    subscribeToRatings(user);
   } catch (error) {
     console.error(error);
     showToast("تم الدخول، لكن تعذر تحميل بيانات الحساب. تحقق من Firestore.");

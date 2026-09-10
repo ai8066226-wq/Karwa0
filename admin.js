@@ -11,6 +11,7 @@ import {
   collection,
   doc,
   getFirestore,
+  increment,
   onSnapshot,
   serverTimestamp,
   updateDoc,
@@ -44,6 +45,8 @@ const state = {
   user: null,
   users: [],
   applications: [],
+  drivers: [],
+  ratings: [],
   orders: [],
   roleUnsubscribe: null,
   dashboardUnsubscribes: []
@@ -114,9 +117,74 @@ byId("deniedLogout").addEventListener("click", () => signOut(auth));
 
 function renderMetrics() {
   byId("usersCount").textContent = state.users.filter(user => !user.role || user.role === "customer").length;
-  byId("driversCount").textContent = state.users.filter(user => user.role === "driver").length;
+  byId("driversCount").textContent = state.drivers.length;
+  byId("blockedCount").textContent = state.drivers.filter(driver => driver.blocked === true).length;
   byId("pendingCount").textContent = state.applications.filter(item => item.status === "pending").length;
   byId("ordersCount").textContent = state.orders.length;
+}
+
+function ratingSummary(driverId) {
+  const ratings = state.ratings.filter(item => item.driverId === driverId);
+  const average = ratings.length
+    ? ratings.reduce((total, item) => total + Number(item.score || 0), 0) / ratings.length
+    : 0;
+  return { count: ratings.length, average };
+}
+
+function driverCard(driver) {
+  const rating = ratingSummary(driver.firestoreId);
+  const blocked = driver.blocked === true;
+  const status = blocked ? "محظور" : driver.online ? "متصل" : "غير متصل";
+  const statusClass = blocked ? "rejected" : driver.online ? "approved" : "pending";
+  const warningCount = Number(driver.warningCount || 0);
+  const blockAction = blocked
+    ? `<button class="secondary" data-action="unblock-driver" data-id="${driver.firestoreId}">إعادة التفعيل</button>`
+    : `<button class="danger" data-action="block-driver" data-id="${driver.firestoreId}">حظر الكابتن</button>`;
+  return `
+    <article class="order-card driver-management-card">
+      <div class="order-top">
+        <h3>🚕 ${escapeHtml(driver.name || "كابتن كروة")}</h3>
+        <span class="status-chip ${statusClass}">${status}</span>
+      </div>
+      <p class="order-route">${escapeHtml(driver.city || "-")} • ${escapeHtml(driver.vehicleType || "-")} • ${escapeHtml(driver.plate || "-")}</p>
+      <div class="order-meta"><span>${escapeHtml(driver.phone || "بدون هاتف")}</span><span>${escapeHtml(driver.email || "")}</span></div>
+      <div class="reputation-row">
+        <span class="stars">★ ${rating.count ? rating.average.toFixed(1) : "جديد"}</span>
+        <span>${rating.count} تقييم</span>
+        <span class="warning-count">⚠ ${warningCount} تنبيه</span>
+      </div>
+      ${driver.warningMessage ? `<p class="admin-note">آخر تنبيه: ${escapeHtml(driver.warningMessage)}</p>` : ""}
+      ${blocked && driver.blockReason ? `<p class="admin-note danger-note">سبب الحظر: ${escapeHtml(driver.blockReason)}</p>` : ""}
+      <div class="order-actions">
+        <button class="secondary" data-action="warn-driver" data-id="${driver.firestoreId}">إرسال تنبيه</button>
+        ${blockAction}
+      </div>
+    </article>`;
+}
+
+function renderDrivers() {
+  const sorted = [...state.drivers].sort((a, b) => {
+    if (a.blocked === true && b.blocked !== true) return -1;
+    if (b.blocked === true && a.blocked !== true) return 1;
+    return String(a.name || "").localeCompare(String(b.name || ""), "ar");
+  });
+  byId("driversList").innerHTML = sorted.length
+    ? sorted.map(driverCard).join("")
+    : `<div class="empty"><span>🚕</span>لا يوجد كباتن معتمدون بعد.</div>`;
+}
+
+function renderRatings() {
+  const sorted = [...state.ratings].sort((a, b) =>
+    Number(b.createdAt?.seconds || 0) - Number(a.createdAt?.seconds || 0)
+  ).slice(0, 12);
+  byId("ratingsList").innerHTML = sorted.length
+    ? sorted.map(rating => `
+      <article class="review-card">
+        <div><strong>${escapeHtml(rating.driverName || "كابتن كروة")}</strong><small>${escapeHtml(rating.orderCode || "")}</small></div>
+        <span class="stars" aria-label="${Number(rating.score || 0)} من 5">${"★".repeat(Number(rating.score || 0))}${"☆".repeat(5 - Number(rating.score || 0))}</span>
+        ${rating.comment ? `<p>${escapeHtml(rating.comment)}</p>` : ""}
+      </article>`).join("")
+    : `<div class="empty"><span>★</span>لا توجد تقييمات بعد.</div>`;
 }
 
 function applicationCard(application) {
@@ -201,7 +269,23 @@ function openDashboard() {
     renderOrders();
     renderMetrics();
   });
-  state.dashboardUnsubscribes.push(usersUnsubscribe, applicationsUnsubscribe, ordersUnsubscribe);
+  const driversUnsubscribe = onSnapshot(collection(db, "drivers"), snapshot => {
+    state.drivers = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
+    renderDrivers();
+    renderMetrics();
+  });
+  const ratingsUnsubscribe = onSnapshot(collection(db, "ratings"), snapshot => {
+    state.ratings = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
+    renderDrivers();
+    renderRatings();
+  });
+  state.dashboardUnsubscribes.push(
+    usersUnsubscribe,
+    applicationsUnsubscribe,
+    ordersUnsubscribe,
+    driversUnsubscribe,
+    ratingsUnsubscribe
+  );
 }
 
 document.addEventListener("click", async event => {
@@ -233,6 +317,9 @@ document.addEventListener("click", async event => {
         plate: application.plate,
         city: application.city,
         online: false,
+        blocked: false,
+        warningCount: 0,
+        warningMessage: "",
         approvedAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       }, { merge: true });
@@ -249,6 +336,37 @@ document.addEventListener("click", async event => {
         updatedAt: serverTimestamp()
       });
       toast("تم رفض الطلب مع إرسال الملاحظة");
+    } else if (button.dataset.action === "warn-driver") {
+      const note = prompt("اكتب التنبيه الذي سيظهر للكابتن:", "يرجى الالتزام بسياسة الخدمة")?.trim();
+      if (!note) return;
+      await updateDoc(doc(db, "drivers", id), {
+        warningCount: increment(1),
+        warningMessage: note.slice(0, 300),
+        lastWarnedAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      toast("تم إرسال التنبيه للكابتن");
+    } else if (button.dataset.action === "block-driver") {
+      const reason = prompt("اكتب سبب حظر الكابتن:", "مخالفة سياسة الخدمة")?.trim();
+      if (!reason) return;
+      await updateDoc(doc(db, "drivers", id), {
+        blocked: true,
+        online: false,
+        blockReason: reason.slice(0, 300),
+        blockedAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      toast("تم حظر الكابتن وإيقاف استقبال الطلبات");
+    } else if (button.dataset.action === "unblock-driver") {
+      if (!confirm("هل تريد إعادة تفعيل هذا الكابتن؟")) return;
+      await updateDoc(doc(db, "drivers", id), {
+        blocked: false,
+        online: false,
+        blockReason: "",
+        unblockedAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      toast("تمت إعادة تفعيل الكابتن");
     } else if (button.dataset.action === "cancel-order") {
       if (!confirm("هل تريد إلغاء هذا الطلب إداريًا؟")) return;
       await updateDoc(doc(db, "orders", id), {

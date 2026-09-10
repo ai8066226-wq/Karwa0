@@ -1294,6 +1294,70 @@
       gap: 6px;
     }
 
+    .order-review {
+      margin-top: 9px;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .rate-driver-button {
+      padding: 7px 12px;
+      border: 1px solid #f3c94d;
+      border-radius: 999px;
+      color: #7b5700;
+      background: #fff9df;
+      font-weight: 900;
+    }
+
+    .rating-result {
+      direction: ltr;
+      color: #f4b400;
+      font-size: 19px;
+      letter-spacing: 2px;
+    }
+
+    .rating-modal { text-align: center; }
+    .rating-driver-card {
+      margin: 15px 0;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--background);
+    }
+    .rating-driver-card strong,
+    .rating-driver-card small { display: block; }
+    .rating-driver-card small { margin-top: 3px; color: var(--muted); }
+    .star-picker {
+      margin: 8px 0 3px;
+      display: flex;
+      direction: ltr;
+      justify-content: center;
+      gap: 5px;
+    }
+    .star-picker button {
+      padding: 2px;
+      border: 0;
+      color: #cbd3df;
+      background: transparent;
+      font-size: 38px;
+      line-height: 1;
+      transition: transform .15s, color .15s;
+    }
+    .star-picker button.active { color: #f4b400; transform: translateY(-2px); }
+    #ratingLabel { margin: 4px 0 13px; color: var(--muted); font-weight: 800; }
+    #ratingComment {
+      width: 100%;
+      min-height: 92px;
+      padding: 12px;
+      resize: vertical;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      font: inherit;
+    }
+    #ratingComment:focus { border-color: var(--mint); outline: 0; box-shadow: 0 0 0 4px rgba(25,183,159,.1); }
+
     .sync-badge::before {
       content: "";
       width: 7px;
@@ -1881,6 +1945,32 @@
   </nav>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <div class="modal-backdrop" id="ratingModal" role="dialog" aria-modal="true" aria-labelledby="ratingTitle">
+    <div class="modal rating-modal">
+      <h2 id="ratingTitle">قيّم رحلتك</h2>
+      <p>يساعد تقييمك في تحسين جودة كباتن كروة.</p>
+      <div class="rating-driver-card">
+        <strong id="ratingDriverName">كابتن كروة</strong>
+        <small id="ratingOrderCode"></small>
+      </div>
+      <form id="ratingForm">
+        <div class="star-picker" aria-label="اختر تقييمًا من خمس نجوم">
+          <button type="button" data-rating-score="1" aria-label="نجمة واحدة">★</button>
+          <button type="button" data-rating-score="2" aria-label="نجمتان">★</button>
+          <button type="button" data-rating-score="3" aria-label="ثلاث نجوم">★</button>
+          <button type="button" data-rating-score="4" aria-label="أربع نجوم">★</button>
+          <button type="button" data-rating-score="5" aria-label="خمس نجوم">★</button>
+        </div>
+        <div id="ratingLabel">اختر تقييمك</div>
+        <textarea id="ratingComment" maxlength="300" placeholder="اكتب ملاحظة اختيارية عن الرحلة"></textarea>
+        <div class="modal-actions">
+          <button class="secondary-button" id="closeRating" type="button">إلغاء</button>
+          <button class="primary-button" id="submitRating" type="submit">إرسال التقييم</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <div class="modal-backdrop" id="supportModal" role="dialog" aria-modal="true">
     <div class="modal">

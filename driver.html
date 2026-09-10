@@ -49,6 +49,16 @@
     </div>
   </section>
 
+  <section class="auth-wrap hidden" id="blockedView">
+    <div class="card auth-card blocked-card">
+      <div class="blocked-icon">!</div>
+      <h1>حساب الكابتن محظور</h1>
+      <p id="blockedReason">راجع الإدارة لمعرفة سبب إيقاف الحساب.</p>
+      <p class="notice danger">تم إيقاف الاتصال واستلام الطلبات ومشاركة الموقع حتى تعيد الإدارة تفعيل الحساب.</p>
+      <button class="danger wide" id="blockedLogout">تسجيل الخروج</button>
+    </div>
+  </section>
+
   <main class="shell hidden" id="applicationView">
     <section class="hero">
       <div><h1>انضم إلى كباتن كروة</h1><p>أرسل بيانات المركبة، وستظهر حالة المراجعة هنا.</p></div>
@@ -112,11 +122,15 @@
       <span class="role-badge">حساب كابتن معتمد</span>
     </section>
 
+    <div class="notice hidden" id="driverWarningNotice"></div>
+
     <section class="stats">
       <div class="stat"><small>طلبات متاحة</small><strong id="availableCount">0</strong></div>
       <div class="stat"><small>طلبات نشطة</small><strong id="activeCount">0</strong></div>
       <div class="stat"><small>طلبات مكتملة</small><strong id="completedCount">0</strong></div>
       <div class="stat"><small>الحالة</small><strong id="onlineLabel">غير متصل</strong></div>
+      <div class="stat"><small>التقييم</small><strong><span id="driverRating">جديد</span> ★</strong></div>
+      <div class="stat"><small>التنبيهات</small><strong id="driverWarningCount">0</strong></div>
     </section>
 
     <div class="layout">
@@ -146,6 +160,10 @@
         <div class="card">
           <h3>بيانات المركبة</h3>
           <p class="muted" id="vehicleSummary">جاري التحميل…</p>
+        </div>
+        <div class="card reputation-card">
+          <div class="reputation-score"><span>★</span><strong id="driverRatingCount">لا توجد تقييمات بعد</strong></div>
+          <p class="muted">حافظ على جودة الخدمة والالتزام بتعليمات السلامة.</p>
         </div>
       </aside>
     </div>

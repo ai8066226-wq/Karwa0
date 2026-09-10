@@ -16,7 +16,8 @@ import {
   runTransaction,
   serverTimestamp,
   setDoc,
-  updateDoc
+  updateDoc,
+  where
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -46,6 +47,7 @@ const state = {
   user: null,
   userData: null,
   driverData: null,
+  ratings: [],
   orders: [],
   userUnsubscribe: null,
   viewUnsubscribes: [],
@@ -227,6 +229,7 @@ function authMessage(error) {
 function showView(name) {
   byId("authView").classList.toggle("hidden", name !== "auth");
   byId("deniedView").classList.toggle("hidden", name !== "denied");
+  byId("blockedView").classList.toggle("hidden", name !== "blocked");
   byId("applicationView").classList.toggle("hidden", name !== "application");
   byId("driverView").classList.toggle("hidden", name !== "driver");
   byId("logoutButton").classList.toggle("hidden", name === "auth");
@@ -258,6 +261,11 @@ byId("logoutButton").addEventListener("click", async () => {
 });
 
 byId("deniedLogout").addEventListener("click", async () => {
+  await signOut(auth);
+  toast("تم تسجيل الخروج");
+});
+
+byId("blockedLogout").addEventListener("click", async () => {
   await signOut(auth);
   toast("تم تسجيل الخروج");
 });
@@ -393,6 +401,25 @@ function renderOrders() {
   drawPickupRoute();
 }
 
+function renderReputation() {
+  const count = state.ratings.length;
+  const average = count
+    ? state.ratings.reduce((total, item) => total + Number(item.score || 0), 0) / count
+    : 0;
+  const warnings = Number(state.driverData?.warningCount || 0);
+  byId("driverRating").textContent = count ? average.toFixed(1) : "جديد";
+  byId("driverRatingCount").textContent = count ? `${count} تقييم` : "لا توجد تقييمات بعد";
+  byId("driverWarningCount").textContent = String(warnings);
+  const notice = byId("driverWarningNotice");
+  if (warnings > 0 && state.driverData?.warningMessage) {
+    notice.className = "notice danger driver-alert";
+    notice.innerHTML = `<strong>تنبيه من الإدارة</strong><span>${escapeHtml(state.driverData.warningMessage)}</span>`;
+  } else {
+    notice.className = "notice hidden";
+    notice.textContent = "";
+  }
+}
+
 function openDriverDashboard() {
   clearViewListeners();
   showView("driver");
@@ -408,6 +435,15 @@ function openDriverDashboard() {
       plate: "غير محدد",
       online: false
     };
+    renderReputation();
+    if (state.driverData.blocked === true) {
+      stopLocationSharing();
+      byId("blockedReason").textContent = state.driverData.blockReason || "راجع الإدارة لمعرفة سبب إيقاف الحساب.";
+      showView("blocked");
+      return;
+    }
+    showView("driver");
+    byId("onlineSwitch").disabled = false;
     byId("onlineSwitch").classList.toggle("on", state.driverData.online === true);
     byId("onlineLabel").textContent = state.driverData.online ? "متصل" : "غير متصل";
     byId("vehicleSummary").textContent = `${state.driverData.vehicleType || "مركبة"} • ${state.driverData.plate || "بدون لوحة"}`;
@@ -424,11 +460,26 @@ function openDriverDashboard() {
     console.error(error);
     toast("تعذر تحميل الطلبات. انشر قواعد Firestore الجديدة.");
   });
-  state.viewUnsubscribes.push(driverUnsubscribe, ordersUnsubscribe);
+  const ratingsUnsubscribe = onSnapshot(
+    query(collection(db, "ratings"), where("driverId", "==", state.user.uid)),
+    snapshot => {
+      state.ratings = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
+      renderReputation();
+    },
+    error => {
+      console.error(error);
+      toast("تعذر تحميل التقييمات");
+    }
+  );
+  state.viewUnsubscribes.push(driverUnsubscribe, ordersUnsubscribe, ratingsUnsubscribe);
 }
 
 byId("onlineSwitch").addEventListener("click", async () => {
   if (!state.user || !state.driverData) return;
+  if (state.driverData.blocked === true) {
+    toast("الحساب محظور ولا يمكن تفعيل الاتصال");
+    return;
+  }
   const next = !state.driverData.online;
   try {
     await updateDoc(doc(db, "drivers", state.user.uid), { online: next, updatedAt: serverTimestamp() });
@@ -442,6 +493,10 @@ byId("onlineSwitch").addEventListener("click", async () => {
 document.addEventListener("click", async event => {
   const button = event.target.closest("button[data-action]");
   if (!button || !state.user) return;
+  if (state.driverData?.blocked === true) {
+    toast("الحساب محظور من تنفيذ الطلبات");
+    return;
+  }
   const orderRef = doc(db, "orders", button.dataset.id);
   busy(button, true);
   try {
