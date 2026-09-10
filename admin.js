@@ -1,7 +1,9 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
 import {
+  browserLocalPersistence,
   getAuth,
   onAuthStateChanged,
+  setPersistence,
   signInWithEmailAndPassword,
   signOut
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
@@ -24,9 +26,16 @@ const firebaseConfig = {
   appId: "1:485451054622:web:ce9b0e2ff2280870a8780f"
 };
 
-const app = initializeApp(firebaseConfig);
+const app = initializeApp(firebaseConfig, "karwa-admin-portal");
 const auth = getAuth(app);
 const db = getFirestore(app);
+
+try {
+  await setPersistence(auth, browserLocalPersistence);
+} catch (error) {
+  console.warn("تعذر تفعيل حفظ جلسة الإدارة", error);
+}
+
 const byId = id => document.getElementById(id);
 const statuses = ["تم استلام الطلب", "الكابتن في الطريق", "بدأت الرحلة", "تم الوصول"];
 const icons = { ride: "🚕", parcel: "📦", food: "🍽️" };
