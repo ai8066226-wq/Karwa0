@@ -241,6 +241,8 @@
       color: var(--navy);
       background: #e8efff;
       font-weight: 900;
+      border: 0;
+      cursor: pointer;
     }
 
     main {
@@ -1158,6 +1160,101 @@
       flex: 1;
     }
 
+    #authModal {
+      align-items: center;
+    }
+
+    .auth-modal {
+      max-height: calc(100vh - 36px);
+      overflow-y: auto;
+    }
+
+    .auth-brand {
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .auth-brand .brand-logo {
+      flex: 0 0 auto;
+    }
+
+    .auth-brand h2,
+    .auth-brand p {
+      margin: 0;
+    }
+
+    .auth-brand p,
+    .auth-note {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .auth-tabs {
+      margin-bottom: 16px;
+      padding: 5px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5px;
+      border-radius: 14px;
+      background: var(--background);
+    }
+
+    .auth-tab {
+      padding: 10px;
+      border: 0;
+      border-radius: 10px;
+      color: var(--muted);
+      background: transparent;
+      font-weight: 800;
+    }
+
+    .auth-tab.active {
+      color: var(--navy);
+      background: white;
+      box-shadow: 0 4px 12px rgba(16,32,68,.08);
+    }
+
+    .auth-message {
+      min-height: 22px;
+      margin: 4px 0 8px;
+      color: var(--danger);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .auth-submit {
+      width: 100%;
+    }
+
+    .profile-email {
+      margin: 4px 0 15px !important;
+      word-break: break-word;
+    }
+
+    .danger-button {
+      margin-top: 10px;
+      border-color: #f0caca;
+      color: var(--danger);
+      background: #fffafa;
+    }
+
+    .sync-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .sync-badge::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #8cf0dc;
+      box-shadow: 0 0 0 4px rgba(140,240,220,.14);
+    }
+
     @media (max-width: 950px) {
       .app {
         display: block;
@@ -1345,7 +1442,9 @@
 
         <div class="top-actions">
           <button class="icon-button" id="notificationButton" aria-label="الإشعارات">♢</button>
-          <div class="avatar" id="smallAvatar">م</div>
+          <button class="avatar" id="accountButton" aria-label="فتح الحساب">
+            <span id="smallAvatar">م</span>
+          </button>
         </div>
       </header>
 
@@ -1356,7 +1455,7 @@
               <h1>هلا <span id="firstName">محمد</span>، وين نوصلك؟</h1>
               <p>اختر الخدمة وحدد التفاصيل خلال أقل من دقيقة.</p>
             </div>
-            <span class="demo-badge">نسخة تجريبية</span>
+            <span class="demo-badge sync-badge" id="connectionBadge">جاري الاتصال…</span>
           </div>
 
           <div class="card tracking-card" id="trackingCard">
@@ -1648,8 +1747,9 @@
             <div class="card profile-main">
               <div class="big-avatar" id="bigAvatar">م</div>
               <h2 id="profileName">محمد علي</h2>
-              <p>عضو كروة منذ 2026</p>
+              <p class="profile-email" id="profileEmail">سجّل الدخول لمزامنة بياناتك</p>
               <button class="secondary-button" id="editName">تعديل الاسم</button>
+              <button class="secondary-button danger-button" id="logoutButton">تسجيل الخروج</button>
             </div>
 
             <div class="card">
@@ -1731,7 +1831,7 @@
         <span>☎</span>
         <div>
           <strong>اتصال هاتفي</strong>
-          <small>متFinderاح على مدار الساعة</small>
+          <small>متاح على مدار الساعة</small>
         </div>
       </div>
 
@@ -1742,598 +1842,44 @@
     </div>
   </div>
 
-  <script>
-    (() => {
-      "use strict";
-
-      const storage = {
-        get(key, fallback) {
-          try {
-            const value = localStorage.getItem(key);
-            return value ? JSON.parse(value) : fallback;
-          } catch {
-            return fallback;
-          }
-        },
-
-        set(key, value) {
-          try {
-            localStorage.setItem(key, JSON.stringify(value));
-          } catch {
-            // يستمر التطبيق حتى عند منع التخزين المحلي.
-          }
-        }
-      };
-
-      const orderStatuses = [
-        "تم استلام الطلب",
-        "الكابتن في الطريق",
-        "بدأت الرحلة",
-        "تم الوصول"
-      ];
-
-      const serviceIcons = {
-        ride: "🚕",
-        parcel: "📦",
-        food: "🍽️"
-      };
-
-      const state = {
-        vehicle: "اقتصادي",
-        ridePrice: 6500,
-        payment: "نقدًا",
-        cart: [],
-        orders: storage.get("karwa_orders", []),
-        activeOrder: storage.get("karwa_active_order", null),
-        balance: Number(localStorage.getItem("karwa_balance") || 25000),
-        name: localStorage.getItem("karwa_name") || "محمد علي",
-        notifications: localStorage.getItem("karwa_notifications") !== "off"
-      };
-
-      const byId = id => document.getElementById(id);
-
-      const formatMoney = value =>
-        Number(value).toLocaleString("ar-IQ") + " د.ع";
-
-      function showToast(message) {
-        const element = byId("toast");
-        element.textContent = message;
-        element.classList.add("show");
-
-        clearTimeout(window.karwaToastTimer);
-
-        window.karwaToastTimer = setTimeout(() => {
-          element.classList.remove("show");
-        }, 2600);
-      }
-
-      function switchView(viewId) {
-        document.querySelectorAll(".view").forEach(view => {
-          view.classList.toggle("active", view.id === viewId);
-        });
-
-        document.querySelectorAll("[data-view]").forEach(button => {
-          button.classList.toggle("active", button.dataset.view === viewId);
-        });
-
-        if (viewId === "orders") {
-          renderOrders();
-        }
-
-        window.scrollTo({
-          top: 0,
-          behavior: "smooth"
-        });
-      }
-
-      document.querySelectorAll("[data-view]").forEach(button => {
-        button.addEventListener("click", () => {
-          switchView(button.dataset.view);
-        });
-      });
-
-      document.querySelectorAll("[data-service]").forEach(button => {
-        button.addEventListener("click", () => {
-          document.querySelectorAll("[data-service]").forEach(item => {
-            item.classList.remove("active");
-          });
-
-          document.querySelectorAll(".service-panel").forEach(panel => {
-            panel.classList.remove("active");
-          });
-
-          button.classList.add("active");
-          byId(button.dataset.service + "Panel").classList.add("active");
-        });
-      });
-
-      document.querySelectorAll(".vehicle-button").forEach(button => {
-        button.addEventListener("click", () => {
-          document.querySelectorAll(".vehicle-button").forEach(item => {
-            item.classList.remove("active");
-          });
-
-          button.classList.add("active");
-          state.vehicle = button.dataset.vehicle;
-          state.ridePrice = Number(button.dataset.price);
-          byId("ridePrice").textContent = formatMoney(state.ridePrice);
-        });
-      });
-
-      document.querySelectorAll(".payment-button").forEach(button => {
-        button.addEventListener("click", () => {
-          document.querySelectorAll(".payment-button").forEach(item => {
-            item.classList.remove("active");
-          });
-
-          button.classList.add("active");
-          state.payment = button.dataset.payment;
-        });
-      });
-
-      byId("parcelSize").addEventListener("change", event => {
-        byId("parcelPrice").textContent = formatMoney(event.target.value);
-      });
-
-      function locateUser(targetInput) {
-        if (!navigator.geolocation) {
-          targetInput.value = "موقعي الحالي — بغداد";
-          showToast("تم اختيار موقع تقريبي");
-          return;
-        }
-
-        showToast("جاري تحديد موقعك…");
-
-        navigator.geolocation.getCurrentPosition(
-          position => {
-            targetInput.value =
-              "موقعي الحالي (" +
-              position.coords.latitude.toFixed(3) +
-              ", " +
-              position.coords.longitude.toFixed(3) +
-              ")";
-
-            byId("cityLabel").textContent = "الموقع محدد";
-            showToast("تم تحديد موقعك");
-          },
-
-          () => {
-            targetInput.value = "موقعي الحالي — بغداد";
-            showToast("تعذر تحديد الموقع؛ تم اختيار بغداد");
-          },
-
-          {
-            enableHighAccuracy: true,
-            timeout: 7000
-          }
-        );
-      }
-
-      byId("useRideLocation").addEventListener("click", () => {
-        locateUser(byId("rideFrom"));
-      });
-
-      byId("useParcelLocation").addEventListener("click", () => {
-        locateUser(byId("parcelFrom"));
-      });
-
-      byId("headerLocation").addEventListener("click", () => {
-        locateUser(byId("rideFrom"));
-      });
-
-      function saveOrders() {
-        storage.set("karwa_orders", state.orders);
-
-        if (state.activeOrder) {
-          storage.set("karwa_active_order", state.activeOrder);
-        } else {
-          localStorage.removeItem("karwa_active_order");
-        }
-      }
-
-      function createOrder(type, title, route, price) {
-        const order = {
-          id: "KW-" + String(Date.now()).slice(-6),
-          type,
-          title,
-          route,
-          price: Number(price),
-          statusIndex: 0,
-          cancelled: false,
-          createdAt: new Date().toISOString()
-        };
-
-        state.activeOrder = order;
-        state.orders.unshift(order);
-        state.orders = state.orders.slice(0, 30);
-
-        saveOrders();
-        renderTracking();
-        renderOrders();
-        switchView("home");
-        showToast("تم إنشاء الطلب بنجاح");
-      }
-
-      byId("bookRide").addEventListener("click", () => {
-        const from = byId("rideFrom").value.trim();
-        const to = byId("rideTo").value.trim();
-
-        if (!from || !to) {
-          showToast("أدخل نقطة الانطلاق والوجهة");
-          return;
-        }
-
-        if (
-          state.payment === "المحفظة" &&
-          state.balance < state.ridePrice
-        ) {
-          showToast("رصيد المحفظة غير كافٍ");
-          return;
-        }
-
-        if (state.payment === "المحفظة") {
-          state.balance -= state.ridePrice;
-          saveBalance();
-        }
-
-        createOrder(
-          "ride",
-          "مشوار " + state.vehicle,
-          from + " ← " + to,
-          state.ridePrice
-        );
-      });
-
-      byId("bookParcel").addEventListener("click", () => {
-        const from = byId("parcelFrom").value.trim();
-        const to = byId("parcelTo").value.trim();
-        const recipientName = byId("recipientName").value.trim();
-        const recipientPhone = byId("recipientPhone").value.trim();
-        const price = Number(byId("parcelSize").value);
-
-        if (!from || !to || !recipientName) {
-          showToast("أكمل عناوين التوصيل واسم المستلم");
-          return;
-        }
-
-        if (recipientPhone.length < 8) {
-          showToast("أدخل رقم هاتف صحيحًا");
-          return;
-        }
-
-        createOrder(
-          "parcel",
-          "توصيل غرض إلى " + recipientName,
-          from + " ← " + to,
-          price
-        );
-      });
-
-      document.querySelectorAll(".add-food-button").forEach(button => {
-        button.addEventListener("click", () => {
-          state.cart.push({
-            name: button.dataset.food,
-            price: Number(button.dataset.price)
-          });
-
-          renderCart();
-          showToast("تمت الإضافة إلى السلة");
-        });
-      });
-
-      function renderCart() {
-        const cartTotal = state.cart.reduce(
-          (total, item) => total + item.price,
-          0
-        );
-
-        byId("cartBar").classList.toggle(
-          "show",
-          state.cart.length > 0
-        );
-
-        byId("cartCount").textContent =
-          state.cart.length === 1
-            ? "عنصر واحد"
-            : state.cart.length + " عناصر";
-
-        byId("cartPrice").textContent =
-          formatMoney(cartTotal + 2000) + " شامل التوصيل";
-      }
-
-      byId("orderFood").addEventListener("click", () => {
-        if (!state.cart.length) {
-          return;
-        }
-
-        const total =
-          state.cart.reduce((sum, item) => sum + item.price, 0) + 2000;
-
-        const title =
-          state.cart.length === 1
-            ? state.cart[0].name
-            : "طلب طعام (" + state.cart.length + " أصناف)";
-
-        state.cart = [];
-        renderCart();
-
-        createOrder(
-          "food",
-          title,
-          "المطعم ← موقعك الحالي",
-          total
-        );
-      });
-
-      byId("foodFilter").addEventListener("click", () => {
-        showToast("المطاعم مرتبة حسب وقت التوصيل");
-      });
-
-      function renderTracking() {
-        const card = byId("trackingCard");
-
-        card.classList.toggle("show", Boolean(state.activeOrder));
-
-        if (!state.activeOrder) {
-          return;
-        }
-
-        const order = state.activeOrder;
-        const status = orderStatuses[order.statusIndex];
-
-        byId("trackingTitle").textContent = order.title;
-        byId("trackingRoute").textContent = order.route;
-        byId("trackingCode").textContent = "رقم الطلب: " + order.id;
-        byId("trackingStatus").textContent = status;
-
-        byId("progressBar").style.width =
-          ((order.statusIndex + 1) / orderStatuses.length * 100) + "%";
-
-        const completed =
-          order.statusIndex >= orderStatuses.length - 1;
-
-        byId("advanceOrder").disabled = completed;
-        byId("advanceOrder").textContent =
-          completed ? "تم إكمال الطلب" : "تحديث حالة الطلب";
-
-        byId("cancelOrder").style.display =
-          completed ? "none" : "block";
-      }
-
-      byId("advanceOrder").addEventListener("click", () => {
-        if (!state.activeOrder) {
-          return;
-        }
-
-        if (
-          state.activeOrder.statusIndex <
-          orderStatuses.length - 1
-        ) {
-          state.activeOrder.statusIndex += 1;
-
-          const orderIndex = state.orders.findIndex(
-            order => order.id === state.activeOrder.id
-          );
-
-          if (orderIndex !== -1) {
-            state.orders[orderIndex] = {
-              ...state.activeOrder
-            };
-          }
-
-          saveOrders();
-          renderTracking();
-          renderOrders();
-
-          showToast(
-            orderStatuses[state.activeOrder.statusIndex]
-          );
-        }
-      });
-
-      byId("cancelOrder").addEventListener("click", () => {
-        if (!state.activeOrder) {
-          return;
-        }
-
-        if (!confirm("هل تريد إلغاء الطلب؟")) {
-          return;
-        }
-
-        const activeId = state.activeOrder.id;
-
-        state.orders = state.orders.map(order => {
-          if (order.id === activeId) {
-            return {
-              ...order,
-              cancelled: true
-            };
-          }
-
-          return order;
-        });
-
-        state.activeOrder = null;
-
-        saveOrders();
-        renderTracking();
-        renderOrders();
-        showToast("تم إلغاء الطلب");
-      });
-
-      function renderOrders() {
-        const container = byId("ordersList");
-        container.innerHTML = "";
-
-        if (!state.orders.length) {
-          container.innerHTML = `
-            <div class="card empty-state">
-              <span>🧾</span>
-              <strong>لا توجد طلبات بعد</strong>
-              <p>سيظهر أول طلب تنشئه هنا.</p>
-            </div>
-          `;
-          return;
-        }
-
-        state.orders.forEach(order => {
-          const article = document.createElement("article");
-          article.className = "card order-item";
-
-          const icon = document.createElement("div");
-          icon.className = "order-icon";
-          icon.textContent = serviceIcons[order.type];
-
-          const details = document.createElement("div");
-          details.className = "order-details";
-
-          const title = document.createElement("strong");
-          title.textContent = order.title;
-
-          const route = document.createElement("small");
-          route.textContent =
-            order.route +
-            " • " +
-            new Date(order.createdAt).toLocaleDateString("ar-IQ");
-
-          details.append(title, route);
-
-          const price = document.createElement("div");
-          price.className = "order-price";
-
-          const amount = document.createElement("strong");
-          amount.textContent = formatMoney(order.price);
-
-          const status = document.createElement("small");
-
-          status.textContent = order.cancelled
-            ? "ملغي"
-            : orderStatuses[order.statusIndex];
-
-          if (order.cancelled) {
-            status.style.color = "var(--danger)";
-          }
-
-          price.append(amount, status);
-          article.append(icon, details, price);
-          container.appendChild(article);
-        });
-      }
-
-      function saveBalance() {
-        localStorage.setItem(
-          "karwa_balance",
-          String(state.balance)
-        );
-
-        byId("walletBalance").textContent =
-          state.balance.toLocaleString("ar-IQ");
-      }
-
-      byId("addBalance").addEventListener("click", () => {
-        state.balance += 10000;
-        saveBalance();
-        showToast("تمت إضافة 10,000 د.ع تجريبيًا");
-      });
-
-      function renderProfile() {
-        const firstName =
-          state.name.trim().split(" ")[0] || "ضيف";
-
-        const firstLetter = firstName.charAt(0);
-
-        byId("firstName").textContent = firstName;
-        byId("profileName").textContent = state.name;
-        byId("smallAvatar").textContent = firstLetter;
-        byId("bigAvatar").textContent = firstLetter;
-      }
-
-      byId("editName").addEventListener("click", () => {
-        const name = prompt("اكتب اسمك", state.name);
-
-        if (!name || !name.trim()) {
-          return;
-        }
-
-        state.name = name.trim();
-        localStorage.setItem("karwa_name", state.name);
-
-        renderProfile();
-        showToast("تم تحديث الاسم");
-      });
-
-      function renderNotificationSwitch() {
-        byId("notificationSwitch").classList.toggle(
-          "off",
-          !state.notifications
-        );
-      }
-
-      byId("notificationSwitch").addEventListener("click", () => {
-        state.notifications = !state.notifications;
-
-        localStorage.setItem(
-          "karwa_notifications",
-          state.notifications ? "on" : "off"
-        );
-
-        renderNotificationSwitch();
-
-        showToast(
-          state.notifications
-            ? "تم تشغيل الإشعارات"
-            : "تم إيقاف الإشعارات"
-        );
-      });
-
-      byId("notificationButton").addEventListener("click", () => {
-        showToast(
-          state.activeOrder
-            ? "لديك تحديث جديد على طلبك"
-            : "لا توجد إشعارات جديدة"
-        );
-      });
-
-      byId("savedAddresses").addEventListener("click", () => {
-        showToast("ستُربط العناوين بقاعدة البيانات في المرحلة القادمة");
-      });
-
-      const supportModal = byId("supportModal");
-
-      document.querySelectorAll("[data-open-support]").forEach(button => {
-        button.addEventListener("click", () => {
-          supportModal.classList.add("show");
-        });
-      });
-
-      byId("closeSupport").addEventListener("click", () => {
-        supportModal.classList.remove("show");
-      });
-
-      byId("startSupportChat").addEventListener("click", () => {
-        supportModal.classList.remove("show");
-        showToast("تم بدء محادثة دعم تجريبية");
-      });
-
-      supportModal.addEventListener("click", event => {
-        if (event.target === supportModal) {
-          supportModal.classList.remove("show");
-        }
-      });
-
-      document.addEventListener("keydown", event => {
-        if (event.key === "Escape") {
-          supportModal.classList.remove("show");
-        }
-      });
-
-      renderProfile();
-      renderNotificationSwitch();
-      renderTracking();
-      renderOrders();
-      renderCart();
-      saveBalance();
-    })();
-  </script>
+  <div class="modal-backdrop show" id="authModal" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+    <div class="modal auth-modal">
+      <div class="auth-brand">
+        <div class="brand-logo">ك</div>
+        <div>
+          <h2 id="authTitle">مرحبًا بك في كروة</h2>
+          <p>ادخل إلى حسابك لحفظ طلباتك ومتابعتها.</p>
+        </div>
+      </div>
+
+      <div class="auth-tabs" role="tablist">
+        <button class="auth-tab active" id="loginTab" type="button">تسجيل الدخول</button>
+        <button class="auth-tab" id="registerTab" type="button">حساب جديد</button>
+      </div>
+
+      <form id="authForm">
+        <div class="field" id="nameField" hidden>
+          <label for="authName">الاسم الكامل</label>
+          <input id="authName" autocomplete="name" placeholder="مثال: محمد علي">
+        </div>
+
+        <div class="field">
+          <label for="authEmail">البريد الإلكتروني</label>
+          <input id="authEmail" type="email" inputmode="email" autocomplete="email" placeholder="name@example.com" required>
+        </div>
+
+        <div class="field">
+          <label for="authPassword">كلمة المرور</label>
+          <input id="authPassword" type="password" autocomplete="current-password" minlength="6" placeholder="ستة أحرف على الأقل" required>
+        </div>
+
+        <div class="auth-message" id="authMessage" role="alert"></div>
+        <button class="primary-button auth-submit" id="authSubmit" type="submit">تسجيل الدخول</button>
+        <p class="auth-note">تُحفظ بيانات حسابك وطلباتك بأمان في Firebase.</p>
+      </form>
+    </div>
+  </div>
+
+  <script type="module" src="./app.js"></script>
 </body>
 </html>
