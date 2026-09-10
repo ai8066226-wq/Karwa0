@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#102044">
+  <meta name="description" content="لوحة إدارة تطبيق كروة">
+  <title>كروة | لوحة الإدارة</title>
+  <link rel="stylesheet" href="./portal.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./index.html">
+      <span class="logo">ك</span>
+      <span><strong>كروة</strong><small>لوحة الإدارة</small></span>
+    </a>
+    <div class="top-actions">
+      <a class="secondary" href="./driver.html">بوابة الكابتن</a>
+      <button class="danger hidden" id="logoutButton">خروج</button>
+    </div>
+  </header>
+
+  <section class="auth-wrap" id="authView">
+    <div class="card auth-card">
+      <h1>دخول الإدارة</h1>
+      <p>هذه الصفحة مخصصة للحسابات التي تحمل صلاحية المدير فقط.</p>
+      <form id="loginForm">
+        <div class="field">
+          <label for="email">البريد الإلكتروني</label>
+          <input id="email" type="email" autocomplete="email" required>
+        </div>
+        <div class="field">
+          <label for="password">كلمة المرور</label>
+          <input id="password" type="password" autocomplete="current-password" minlength="6" required>
+        </div>
+        <div class="auth-error" id="authError" role="alert"></div>
+        <button class="primary wide" id="loginButton" type="submit">دخول لوحة الإدارة</button>
+      </form>
+    </div>
+  </section>
+
+  <section class="auth-wrap hidden" id="deniedView">
+    <div class="card auth-card">
+      <h1>لا توجد صلاحية إدارة</h1>
+      <p>الحساب مسجّل، لكنه ليس مديرًا. يجب تعيين الحقل <strong>role</strong> بالقيمة <strong>admin</strong> من Firebase Console بواسطة مالك المشروع.</p>
+      <button class="danger wide" id="deniedLogout">تسجيل الخروج</button>
+    </div>
+  </section>
+
+  <main class="shell hidden" id="dashboardView">
+    <section class="hero">
+      <div><h1>لوحة تشغيل كروة</h1><p>تابع الطلبات، راجع الكباتن، وأدر التشغيل من مكان واحد.</p></div>
+      <span class="role-badge">مدير النظام</span>
+    </section>
+
+    <section class="stats">
+      <div class="stat"><small>إجمالي العملاء</small><strong id="usersCount">0</strong></div>
+      <div class="stat"><small>الكباتن المعتمدون</small><strong id="driversCount">0</strong></div>
+      <div class="stat"><small>طلبات قيد المراجعة</small><strong id="pendingCount">0</strong></div>
+      <div class="stat"><small>إجمالي الطلبات</small><strong id="ordersCount">0</strong></div>
+    </section>
+
+    <div class="layout">
+      <section>
+        <div class="card">
+          <div class="card-heading"><h2>طلبات انضمام الكباتن</h2><span class="status-chip pending">تحتاج مراجعة</span></div>
+          <div class="orders" id="applicationsList"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-heading"><h2>جميع طلبات العملاء</h2><span class="muted">مراقبة مباشرة</span></div>
+          <div class="orders" id="ordersList"></div>
+        </div>
+      </section>
+
+      <aside>
+        <div class="card">
+          <h3>حالة النظام</h3>
+          <p class="notice success">Firebase متصل والتحديثات مباشرة.</p>
+        </div>
+        <div class="card">
+          <h3>مبدأ الصلاحيات</h3>
+          <p class="muted">العميل يرى طلباته فقط، والكابتن المعتمد يرى الطلبات المتاحة، والمدير يدير النظام.</p>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="./admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#102044">
+  <meta name="description" content="بوابة كابتن كروة لاستلام الطلبات وتحديث الرحلات">
+  <title>كروة | بوابة الكابتن</title>
+  <link rel="stylesheet" href="./portal.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./index.html">
+      <span class="logo">ك</span>
+      <span><strong>كروة</strong><small>بوابة الكابتن</small></span>
+    </a>
+    <div class="top-actions">
+      <a class="secondary" href="./index.html">تطبيق العميل</a>
+      <button class="danger hidden" id="logoutButton">خروج</button>
+    </div>
+  </header>
+
+  <section class="auth-wrap" id="authView">
+    <div class="card auth-card">
+      <h1>دخول الكابتن</h1>
+      <p>استخدم حساب كروة نفسه. إن لم تكن كابتنًا يمكنك تقديم طلب انضمام بعد الدخول.</p>
+      <form id="loginForm">
+        <div class="field">
+          <label for="email">البريد الإلكتروني</label>
+          <input id="email" type="email" autocomplete="email" required>
+        </div>
+        <div class="field">
+          <label for="password">كلمة المرور</label>
+          <input id="password" type="password" autocomplete="current-password" minlength="6" required>
+        </div>
+        <div class="auth-error" id="authError" role="alert"></div>
+        <button class="primary wide" id="loginButton" type="submit">تسجيل الدخول</button>
+      </form>
+      <p>لا تملك حسابًا؟ <a href="./index.html">أنشئ حسابًا من تطبيق العميل</a>.</p>
+    </div>
+  </section>
+
+  <main class="shell hidden" id="applicationView">
+    <section class="hero">
+      <div><h1>انضم إلى كباتن كروة</h1><p>أرسل بيانات المركبة، وستظهر حالة المراجعة هنا.</p></div>
+      <span class="role-badge">طلب انضمام</span>
+    </section>
+
+    <div class="layout">
+      <section class="card">
+        <div class="card-heading"><h2>بيانات الكابتن</h2><span class="status-chip pending" id="applicationStatus">جديد</span></div>
+        <div class="notice hidden" id="applicationNotice"></div>
+        <form id="applicationForm">
+          <div class="form-grid">
+            <div class="field">
+              <label for="driverName">الاسم الكامل</label>
+              <input id="driverName" autocomplete="name" required>
+            </div>
+            <div class="field">
+              <label for="driverPhone">رقم الهاتف</label>
+              <input id="driverPhone" inputmode="tel" placeholder="07xx xxx xxxx" required>
+            </div>
+            <div class="field">
+              <label for="vehicleType">نوع المركبة</label>
+              <select id="vehicleType" required>
+                <option value="اقتصادي">سيارة اقتصادية</option>
+                <option value="تكسي">تكسي</option>
+                <option value="عائلي">سيارة عائلية</option>
+                <option value="دراجة">دراجة توصيل</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="plate">رقم اللوحة</label>
+              <input id="plate" placeholder="مثال: بغداد 12345" required>
+            </div>
+            <div class="field full">
+              <label for="driverCity">المدينة</label>
+              <select id="driverCity" required>
+                <option value="بغداد">بغداد</option>
+                <option value="البصرة">البصرة</option>
+                <option value="أربيل">أربيل</option>
+                <option value="النجف">النجف</option>
+                <option value="الموصل">الموصل</option>
+              </select>
+            </div>
+          </div>
+          <button class="primary wide" id="submitApplication" type="submit">إرسال طلب الانضمام</button>
+        </form>
+      </section>
+
+      <aside class="card">
+        <h2>كيف تعمل؟</h2>
+        <p class="muted">١. ترسل الطلب.</p>
+        <p class="muted">٢. يراجعه المدير.</p>
+        <p class="muted">٣. بعد القبول تظهر لك الرحلات المتاحة.</p>
+      </aside>
+    </div>
+  </main>
+
+  <main class="shell hidden" id="driverView">
+    <section class="hero">
+      <div><h1>هلا كابتن <span id="captainName">كروة</span></h1><p>استلم الطلبات وحدّث حالة الرحلة مباشرةً.</p></div>
+      <span class="role-badge">حساب كابتن معتمد</span>
+    </section>
+
+    <section class="stats">
+      <div class="stat"><small>طلبات متاحة</small><strong id="availableCount">0</strong></div>
+      <div class="stat"><small>طلبات نشطة</small><strong id="activeCount">0</strong></div>
+      <div class="stat"><small>طلبات مكتملة</small><strong id="completedCount">0</strong></div>
+      <div class="stat"><small>الحالة</small><strong id="onlineLabel">غير متصل</strong></div>
+    </section>
+
+    <div class="layout">
+      <section>
+        <div class="card">
+          <div class="card-heading"><h2>طلباتي الحالية</h2><span class="status-chip active">مباشر</span></div>
+          <div class="orders" id="myOrders"></div>
+        </div>
+        <div class="card">
+          <div class="card-heading"><h2>الطلبات المتاحة</h2><span class="muted">الأحدث أولًا</span></div>
+          <div class="orders" id="availableOrders"></div>
+        </div>
+      </section>
+
+      <aside>
+        <div class="card">
+          <div class="online-row">
+            <div><h3>جاهز لاستلام الطلبات</h3><small class="muted">فعّل الحالة للبدء</small></div>
+            <button class="switch" id="onlineSwitch" aria-label="تبديل حالة الاتصال"><span></span></button>
+          </div>
+        </div>
+        <div class="card">
+          <h3>بيانات المركبة</h3>
+          <p class="muted" id="vehicleSummary">جاري التحميل…</p>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="./driver.js"></script>
+</body>
+</html>

@@ -2,28 +2,115 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function own(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function userRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isAdmin() {
+      return signedIn() && userRole() == 'admin';
+    }
+
+    function isDriver() {
+      return signedIn() && userRole() == 'driver';
+    }
+
     match /users/{userId} {
-      allow create: if request.auth != null
-                    && request.auth.uid == userId;
+      allow create: if own(userId)
+                    && request.resource.data.role == 'customer';
 
-      allow read, update: if request.auth != null
-                          && request.auth.uid == userId;
+      allow read: if own(userId) || isAdmin();
 
-      allow delete: if false;
+      allow update: if isAdmin()
+                    || (own(userId)
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                          .hasOnly(['name', 'email', 'notifications', 'balance', 'updatedAt']))
+                    || (own(userId)
+                        && !('role' in resource.data)
+                        && request.resource.data.role == 'customer'
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                          .hasOnly(['name', 'email', 'notifications', 'balance', 'role', 'updatedAt']));
+
+      allow delete: if isAdmin();
+    }
+
+    match /driverApplications/{userId} {
+      allow create: if own(userId)
+                    && request.resource.data.userId == request.auth.uid
+                    && request.resource.data.status == 'pending';
+
+      allow read: if own(userId) || isAdmin();
+
+      allow update: if isAdmin()
+                    || (own(userId)
+                        && request.resource.data.userId == resource.data.userId
+                        && request.resource.data.status == 'pending'
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                          .hasOnly(['name', 'email', 'phone', 'vehicleType', 'plate', 'city', 'status', 'submittedAt', 'updatedAt']));
+
+      allow delete: if isAdmin();
+    }
+
+    match /drivers/{driverId} {
+      allow create, delete: if isAdmin();
+      allow read: if own(driverId) || isAdmin();
+      allow update: if isAdmin()
+                    || (own(driverId)
+                        && isDriver()
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                          .hasOnly(['online', 'updatedAt']));
     }
 
     match /orders/{orderId} {
-      allow create: if request.auth != null
-                    && request.resource.data.userId == request.auth.uid;
+      allow create: if signedIn()
+                    && request.resource.data.userId == request.auth.uid
+                    && request.resource.data.driverId == null
+                    && request.resource.data.statusIndex == 0
+                    && request.resource.data.cancelled == false;
 
-      allow read: if request.auth != null
-                  && resource.data.userId == request.auth.uid;
+      allow read: if signedIn()
+                  && (resource.data.userId == request.auth.uid
+                      || isDriver()
+                      || isAdmin());
 
-      allow update: if request.auth != null
-                    && resource.data.userId == request.auth.uid
-                    && request.resource.data.userId == request.auth.uid;
+      allow update: if isAdmin()
+                    || (signedIn()
+                        && resource.data.userId == request.auth.uid
+                        && request.resource.data.userId == resource.data.userId
+                        && resource.data.cancelled == false
+                        && resource.data.statusIndex < 3
+                        && request.resource.data.cancelled == true
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                          .hasOnly(['cancelled', 'updatedAt']))
+                    || (isDriver()
+                        && (!('driverId' in resource.data) || resource.data.driverId == null)
+                        && request.resource.data.driverId == request.auth.uid
+                        && request.resource.data.userId == resource.data.userId
+                        && request.resource.data.statusIndex == resource.data.statusIndex
+                        && request.resource.data.driverName == get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.name
+                        && request.resource.data.driverPhone == get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.phone
+                        && request.resource.data.assignmentStatus == 'accepted'
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                          .hasOnly(['driverId', 'driverName', 'driverPhone', 'assignmentStatus', 'updatedAt']))
+                    || (isDriver()
+                        && resource.data.driverId == request.auth.uid
+                        && request.resource.data.driverId == request.auth.uid
+                        && request.resource.data.userId == resource.data.userId
+                        && request.resource.data.statusIndex == resource.data.statusIndex + 1
+                        && request.resource.data.statusIndex <= 3
+                        && ((request.resource.data.statusIndex < 3 && request.resource.data.assignmentStatus == 'active')
+                            || (request.resource.data.statusIndex == 3 && request.resource.data.assignmentStatus == 'completed'))
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                          .hasOnly(['statusIndex', 'assignmentStatus', 'updatedAt']));
 
-      allow delete: if false;
+      allow delete: if isAdmin();
     }
   }
 }

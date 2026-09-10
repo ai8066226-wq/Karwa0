@@ -461,6 +461,11 @@
       white-space: nowrap;
     }
 
+    a.secondary-button {
+      display: inline-block;
+      text-decoration: none;
+    }
+
     .vehicle-list {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -1464,6 +1469,7 @@
                 <strong id="trackingTitle">طلبك في الطريق</strong>
                 <p id="trackingRoute"></p>
                 <small id="trackingCode"></small>
+                <small id="trackingDriver"></small>
               </div>
               <span class="tracking-status" id="trackingStatus"></span>
             </div>
@@ -1473,7 +1479,7 @@
             </div>
 
             <div class="tracking-actions">
-              <button id="advanceOrder">تحديث حالة الطلب</button>
+              <button id="advanceOrder" disabled>تحديث مباشر من الكابتن</button>
               <button id="cancelOrder">إلغاء الطلب</button>
             </div>
           </div>
@@ -1789,6 +1795,24 @@
                   <small>لغة التطبيق الحالية</small>
                 </div>
                 <span>العربية</span>
+              </div>
+
+              <div class="setting">
+                <div class="setting-icon">🚕</div>
+                <div class="setting-copy">
+                  <strong>بوابة الكابتن</strong>
+                  <small>قدّم طلب الانضمام أو استلم الرحلات</small>
+                </div>
+                <a class="secondary-button" href="./driver.html">فتح</a>
+              </div>
+
+              <div class="setting" id="adminPortalSetting" hidden>
+                <div class="setting-icon">⚙</div>
+                <div class="setting-copy">
+                  <strong>لوحة الإدارة</strong>
+                  <small>إدارة الطلبات والكباتن</small>
+                </div>
+                <a class="secondary-button" href="./admin.html">فتح</a>
               </div>
             </div>
           </div>

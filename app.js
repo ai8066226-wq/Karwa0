@@ -47,6 +47,7 @@ const serviceIcons = { ride: "🚕", parcel: "📦", food: "🍽️" };
 
 const state = {
   user: null,
+  role: "customer",
   authMode: "login",
   vehicle: "اقتصادي",
   ridePrice: 6500,
@@ -145,16 +146,20 @@ async function loadUserProfile(user) {
   const snapshot = await getDoc(userRef);
   if (snapshot.exists()) {
     const data = snapshot.data();
+    state.role = data.role || "customer";
     state.name = data.name || user.displayName || user.email?.split("@")[0] || "مستخدم كروة";
     state.balance = Number(data.balance ?? 25000);
     state.notifications = data.notifications !== false;
+    if (!data.role) await saveUserData({ role: "customer" });
   } else {
+    state.role = "customer";
     state.name = user.displayName || user.email?.split("@")[0] || "مستخدم كروة";
     state.balance = 25000;
     state.notifications = true;
     await setDoc(userRef, {
       name: state.name,
       email: user.email || "",
+      role: "customer",
       balance: state.balance,
       notifications: true,
       createdAt: serverTimestamp(),
@@ -217,12 +222,14 @@ byId("authForm").addEventListener("submit", async event => {
       await setDoc(doc(db, "users", credential.user.uid), {
         name,
         email,
+        role: "customer",
         balance: 25000,
         notifications: true,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
       state.name = name;
+      state.role = "customer";
       state.balance = 25000;
       state.notifications = true;
       renderProfile();
@@ -333,6 +340,10 @@ async function createOrder(type, title, route, price, options = {}) {
     route,
     price: Number(price),
     payment: options.payment || "نقدًا",
+    driverId: null,
+    driverName: "",
+    driverPhone: "",
+    assignmentStatus: "available",
     statusIndex: 0,
     cancelled: false,
     createdAt: serverTimestamp(),
@@ -461,32 +472,16 @@ function renderTracking() {
   byId("trackingTitle").textContent = order.title;
   byId("trackingRoute").textContent = order.route;
   byId("trackingCode").textContent = "رقم الطلب: " + order.id;
+  byId("trackingDriver").textContent = order.driverName
+    ? ` • الكابتن: ${order.driverName}${order.driverPhone ? ` — ${order.driverPhone}` : ""}`
+    : " • بانتظار قبول كابتن";
   byId("trackingStatus").textContent = orderStatuses[statusIndex];
   byId("progressBar").style.width = `${((statusIndex + 1) / orderStatuses.length) * 100}%`;
   const completed = statusIndex >= orderStatuses.length - 1;
-  byId("advanceOrder").disabled = completed;
-  byId("advanceOrder").textContent = completed ? "تم إكمال الطلب" : "تحديث حالة الطلب";
+  byId("advanceOrder").disabled = true;
+  byId("advanceOrder").textContent = completed ? "تم إكمال الطلب" : "تحديث مباشر من الكابتن";
   byId("cancelOrder").style.display = completed ? "none" : "block";
 }
-
-byId("advanceOrder").addEventListener("click", async event => {
-  if (!state.activeOrder?.firestoreId) return;
-  const button = event.currentTarget;
-  const nextStatus = Number(state.activeOrder.statusIndex || 0) + 1;
-  setButtonBusy(button, true);
-  try {
-    await updateDoc(doc(db, "orders", state.activeOrder.firestoreId), {
-      statusIndex: Math.min(nextStatus, orderStatuses.length - 1),
-      updatedAt: serverTimestamp()
-    });
-    showToast(orderStatuses[Math.min(nextStatus, orderStatuses.length - 1)]);
-  } catch (error) {
-    console.error(error);
-    showToast("تعذر تحديث حالة الطلب");
-  } finally {
-    setButtonBusy(button, false);
-  }
-});
 
 byId("cancelOrder").addEventListener("click", async event => {
   if (!state.activeOrder?.firestoreId || !confirm("هل تريد إلغاء الطلب؟")) return;
@@ -530,6 +525,7 @@ function renderOrders() {
     const route = document.createElement("small");
     const date = new Date(order.createdAtISO || Date.now());
     route.textContent = `${order.route} • ${date.toLocaleDateString("ar-IQ")}`;
+    if (order.driverName) route.textContent += ` • الكابتن: ${order.driverName}`;
     details.append(title, route);
     const price = document.createElement("div");
     price.className = "order-price";
@@ -575,6 +571,7 @@ function renderProfile() {
   byId("smallAvatar").textContent = firstLetter;
   byId("bigAvatar").textContent = firstLetter;
   byId("logoutButton").style.display = state.user ? "inline-block" : "none";
+  byId("adminPortalSetting").hidden = state.role !== "admin";
 }
 
 byId("editName").addEventListener("click", async () => {
@@ -659,6 +656,7 @@ onAuthStateChanged(auth, async user => {
       state.unsubscribeOrders = null;
     }
     state.name = "ضيف";
+    state.role = "customer";
     state.balance = 0;
     state.orders = [];
     state.activeOrder = null;
