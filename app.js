@@ -58,7 +58,14 @@ const state = {
   balance: 0,
   name: "ضيف",
   notifications: true,
-  unsubscribeOrders: null
+  unsubscribeOrders: null,
+  trackingUnsubscribe: null,
+  trackingOrderId: null,
+  map: null,
+  customerMarker: null,
+  driverMarker: null,
+  routeLine: null,
+  customerLocation: null
 };
 
 const formatMoney = value => Number(value || 0).toLocaleString("ar-IQ") + " د.ع";
@@ -69,6 +76,106 @@ function showToast(message) {
   element.classList.add("show");
   clearTimeout(window.karwaToastTimer);
   window.karwaToastTimer = setTimeout(() => element.classList.remove("show"), 2800);
+}
+
+function mapIcon(type) {
+  if (!window.L) return null;
+  const emoji = type === "driver" ? "🚗" : "●";
+  return window.L.divIcon({
+    className: "",
+    html: `<div class="karwa-map-marker ${type}"><span>${emoji}</span></div>`,
+    iconSize: [42, 42],
+    iconAnchor: [21, 38]
+  });
+}
+
+function initializeCustomerMap() {
+  if (!window.L || state.map) return;
+  state.map = window.L.map("customerMap", { zoomControl: true }).setView([33.3152, 44.3661], 12);
+  window.L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+  }).addTo(state.map);
+}
+
+function setCustomerLocation(latitude, longitude) {
+  initializeCustomerMap();
+  if (!state.map) return;
+  state.customerLocation = { latitude, longitude };
+  const point = [latitude, longitude];
+  if (state.customerMarker) state.customerMarker.setLatLng(point);
+  else state.customerMarker = window.L.marker(point, { icon: mapIcon("customer") })
+    .addTo(state.map)
+    .bindPopup("موقعك الحالي");
+  state.map.setView(point, 15);
+  drawLiveRoute();
+}
+
+function drawLiveRoute() {
+  if (!state.map || !state.customerMarker || !state.driverMarker) return;
+  const points = [state.customerMarker.getLatLng(), state.driverMarker.getLatLng()];
+  if (state.routeLine) state.routeLine.setLatLngs(points);
+  else state.routeLine = window.L.polyline(points, {
+    color: "#ff6b35",
+    weight: 5,
+    opacity: .85,
+    dashArray: "9 9"
+  }).addTo(state.map);
+  state.map.fitBounds(window.L.latLngBounds(points), { padding: [45, 45], maxZoom: 16 });
+}
+
+function clearDriverLocation() {
+  if (state.driverMarker && state.map) state.map.removeLayer(state.driverMarker);
+  if (state.routeLine && state.map) state.map.removeLayer(state.routeLine);
+  state.driverMarker = null;
+  state.routeLine = null;
+}
+
+function showDriverLocation(data) {
+  initializeCustomerMap();
+  const latitude = Number(data.latitude);
+  const longitude = Number(data.longitude);
+  if (!state.map || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+  const point = [latitude, longitude];
+  if (state.driverMarker) state.driverMarker.setLatLng(point);
+  else state.driverMarker = window.L.marker(point, { icon: mapIcon("driver") })
+    .addTo(state.map)
+    .bindPopup("موقع الكابتن");
+  byId("mapInfoTitle").textContent = "الكابتن يتحرك نحوك";
+  byId("mapInfoText").textContent = `آخر تحديث الآن${data.accuracy ? ` • دقة ${Math.round(data.accuracy)} متر` : ""}`;
+  if (state.customerMarker) drawLiveRoute();
+  else state.map.setView(point, 15);
+}
+
+function syncTrackingSubscription() {
+  const order = state.activeOrder;
+  const nextId = order?.driverId && order?.firestoreId ? order.firestoreId : null;
+  if (state.trackingOrderId === nextId) return;
+  if (state.trackingUnsubscribe) state.trackingUnsubscribe();
+  state.trackingUnsubscribe = null;
+  state.trackingOrderId = nextId;
+  clearDriverLocation();
+
+  if (!nextId) {
+    byId("mapInfoTitle").textContent = order ? "بانتظار قبول كابتن" : "خريطة كروة المباشرة";
+    byId("mapInfoText").textContent = order
+      ? "سيظهر موقع الكابتن هنا فور قبول الطلب وتفعيل موقعه."
+      : "حدد موقعك، وسيظهر الكابتن هنا بعد قبول الطلب.";
+    return;
+  }
+
+  byId("mapInfoTitle").textContent = "تم تعيين الكابتن";
+  byId("mapInfoText").textContent = "بانتظار أول تحديث للموقع…";
+  state.trackingUnsubscribe = onSnapshot(
+    doc(db, "orders", nextId, "tracking", "current"),
+    snapshot => {
+      if (snapshot.exists()) showDriverLocation(snapshot.data());
+    },
+    error => {
+      console.error(error);
+      byId("mapInfoText").textContent = "تعذر تحميل الموقع المباشر.";
+    }
+  );
 }
 
 function setButtonBusy(button, busy, busyLabel = "جاري التنفيذ…") {
@@ -90,6 +197,7 @@ function switchView(viewId) {
     button.classList.toggle("active", button.dataset.view === viewId);
   });
   if (viewId === "orders") renderOrders();
+  if (viewId === "home" && state.map) window.setTimeout(() => state.map.invalidateSize(), 100);
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -192,6 +300,7 @@ function subscribeToOrders(user) {
     ) || null;
     renderOrders();
     renderTracking();
+    syncTrackingSubscription();
   }, error => {
     console.error(error);
     showToast("تعذر قراءة الطلبات. تحقق من قواعد Firestore.");
@@ -308,7 +417,10 @@ function locateUser(targetInput) {
   }
   showToast("جاري تحديد موقعك…");
   navigator.geolocation.getCurrentPosition(position => {
-    targetInput.value = `موقعي الحالي (${position.coords.latitude.toFixed(3)}, ${position.coords.longitude.toFixed(3)})`;
+    const latitude = position.coords.latitude;
+    const longitude = position.coords.longitude;
+    targetInput.value = `موقعي الحالي (${latitude.toFixed(3)}, ${longitude.toFixed(3)})`;
+    setCustomerLocation(latitude, longitude);
     byId("cityLabel").textContent = "الموقع محدد";
     showToast("تم تحديد موقعك");
   }, () => {
@@ -344,6 +456,7 @@ async function createOrder(type, title, route, price, options = {}) {
     driverName: "",
     driverPhone: "",
     assignmentStatus: "available",
+    pickupLocation: state.customerLocation ? { ...state.customerLocation } : null,
     statusIndex: 0,
     cancelled: false,
     createdAt: serverTimestamp(),
@@ -367,6 +480,7 @@ async function createOrder(type, title, route, price, options = {}) {
   renderBalance();
   renderTracking();
   renderOrders();
+  syncTrackingSubscription();
   switchView("home");
   showToast("تم إنشاء الطلب وحفظه بنجاح");
   return true;
@@ -635,6 +749,7 @@ document.addEventListener("keydown", event => {
 });
 
 setAuthMode("login");
+initializeCustomerMap();
 renderProfile();
 renderNotificationSwitch();
 renderTracking();
@@ -660,6 +775,10 @@ onAuthStateChanged(auth, async user => {
     state.balance = 0;
     state.orders = [];
     state.activeOrder = null;
+    if (state.trackingUnsubscribe) state.trackingUnsubscribe();
+    state.trackingUnsubscribe = null;
+    state.trackingOrderId = null;
+    clearDriverLocation();
     byId("connectionBadge").textContent = "تسجيل الدخول مطلوب";
     renderProfile();
     renderBalance();

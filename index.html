@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#102044">
   <meta name="description" content="كروة — تطبيق عربي لحجز المشاوير وتوصيل الأغراض والطعام">
   <title>كروة | الحجز والتوصيل</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 
   <style>
     :root {
@@ -683,6 +684,48 @@
       color: var(--muted);
     }
 
+    .map-card::before {
+      display: none;
+    }
+
+    #customerMap {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      min-height: 500px;
+      background: #e7efe9;
+    }
+
+    .map-information {
+      right: 15px;
+      top: 15px;
+      bottom: auto;
+      left: auto;
+      z-index: 500;
+      width: min(275px, calc(100% - 30px));
+      pointer-events: none;
+    }
+
+    .karwa-map-marker {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border: 3px solid white;
+      border-radius: 50% 50% 50% 8px;
+      color: white;
+      box-shadow: 0 8px 22px rgba(16,32,68,.28);
+      font-size: 21px;
+      transform: rotate(-45deg);
+    }
+
+    .karwa-map-marker span {
+      transform: rotate(45deg);
+    }
+
+    .karwa-map-marker.customer { background: var(--orange); }
+    .karwa-map-marker.driver { background: var(--navy); }
+
     .food-list {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -1289,6 +1332,10 @@
         min-height: 350px;
       }
 
+      #customerMap {
+        min-height: 340px;
+      }
+
       .mobile-navigation {
         position: fixed;
         right: 10px;
@@ -1659,14 +1706,11 @@
               </div>
             </div>
 
-            <div class="card map-card" aria-label="خريطة توضيحية">
-              <div class="map-route"></div>
-              <div class="map-pin first"><span>🚗</span></div>
-              <div class="map-pin second"><span>◆</span></div>
-
+            <div class="card map-card" aria-label="خريطة تتبع الرحلة">
+              <div id="customerMap"></div>
               <div class="map-information">
-                <strong>كباتن قريبون منك</strong>
-                <small>متوسط وصول أقرب كابتن 3–5 دقائق.</small>
+                <strong id="mapInfoTitle">خريطة كروة المباشرة</strong>
+                <small id="mapInfoText">حدد موقعك، وسيظهر الكابتن هنا بعد قبول الطلب.</small>
               </div>
             </div>
           </div>
@@ -1904,6 +1948,7 @@
     </div>
   </div>
 
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script type="module" src="./app.js"></script>
 </body>
 </html>

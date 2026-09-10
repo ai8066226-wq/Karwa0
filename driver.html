@@ -7,6 +7,7 @@
   <meta name="description" content="بوابة كابتن كروة لاستلام الطلبات وتحديث الرحلات">
   <title>كروة | بوابة الكابتن</title>
   <link rel="stylesheet" href="./portal.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 </head>
 <body>
   <header class="topbar">
@@ -124,6 +125,11 @@
 
       <aside>
         <div class="card">
+          <div class="card-heading"><h3>موقعك المباشر</h3><span class="status-chip active" id="locationStatus">بانتظار الإذن</span></div>
+          <div class="live-map" id="driverMap"></div>
+          <p class="muted" id="locationHint">فعّل حالة الاتصال واسمح بالوصول إلى الموقع.</p>
+        </div>
+        <div class="card">
           <div class="online-row">
             <div><h3>جاهز لاستلام الطلبات</h3><small class="muted">فعّل الحالة للبدء</small></div>
             <button class="switch" id="onlineSwitch" aria-label="تبديل حالة الاتصال"><span></span></button>
@@ -138,6 +144,7 @@
   </main>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script type="module" src="./driver.js"></script>
 </body>
 </html>

@@ -39,7 +39,14 @@ const state = {
   driverData: null,
   orders: [],
   userUnsubscribe: null,
-  viewUnsubscribes: []
+  viewUnsubscribes: [],
+  locationWatchId: null,
+  lastLocationWrite: 0,
+  lastPosition: null,
+  map: null,
+  driverMarker: null,
+  pickupMarker: null,
+  routeLine: null
 };
 
 const money = value => Number(value || 0).toLocaleString("ar-IQ") + " د.ع";
@@ -53,6 +60,138 @@ function toast(message) {
   element.classList.add("show");
   clearTimeout(window.driverToast);
   window.driverToast = setTimeout(() => element.classList.remove("show"), 2800);
+}
+
+function mapIcon(type) {
+  if (!window.L) return null;
+  return window.L.divIcon({
+    className: "",
+    html: `<div class="portal-map-marker ${type}"><span>${type === "pickup" ? "●" : "🚗"}</span></div>`,
+    iconSize: [40, 40],
+    iconAnchor: [20, 36]
+  });
+}
+
+function initializeDriverMap() {
+  if (!window.L || state.map) return;
+  state.map = window.L.map("driverMap").setView([33.3152, 44.3661], 12);
+  window.L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+  }).addTo(state.map);
+}
+
+function setLocationStatus(text, mode = "pending") {
+  byId("locationStatus").textContent = text;
+  byId("locationStatus").className = `status-chip ${mode}`;
+}
+
+function drawPickupRoute() {
+  if (!state.map) return;
+  const activeOrder = state.orders.find(order =>
+    order.driverId === state.user?.uid && !order.cancelled && Number(order.statusIndex || 0) < 3
+  );
+  const pickup = activeOrder?.pickupLocation;
+  if (!pickup || !Number.isFinite(Number(pickup.latitude)) || !Number.isFinite(Number(pickup.longitude))) {
+    if (state.pickupMarker) state.map.removeLayer(state.pickupMarker);
+    if (state.routeLine) state.map.removeLayer(state.routeLine);
+    state.pickupMarker = null;
+    state.routeLine = null;
+    return;
+  }
+
+  const pickupPoint = [Number(pickup.latitude), Number(pickup.longitude)];
+  if (state.pickupMarker) state.pickupMarker.setLatLng(pickupPoint);
+  else state.pickupMarker = window.L.marker(pickupPoint, { icon: mapIcon("pickup") })
+    .addTo(state.map)
+    .bindPopup("موقع العميل");
+
+  if (!state.driverMarker) return;
+  const points = [state.driverMarker.getLatLng(), state.pickupMarker.getLatLng()];
+  if (state.routeLine) state.routeLine.setLatLngs(points);
+  else state.routeLine = window.L.polyline(points, {
+    color: "#ff6b35",
+    weight: 5,
+    opacity: .85,
+    dashArray: "9 9"
+  }).addTo(state.map);
+  state.map.fitBounds(window.L.latLngBounds(points), { padding: [40, 40], maxZoom: 16 });
+}
+
+function showOwnPosition(position) {
+  initializeDriverMap();
+  const latitude = position.coords.latitude;
+  const longitude = position.coords.longitude;
+  const point = [latitude, longitude];
+  if (state.driverMarker) state.driverMarker.setLatLng(point);
+  else state.driverMarker = window.L.marker(point, { icon: mapIcon("driver") })
+    .addTo(state.map)
+    .bindPopup("موقعك الحالي");
+  state.map.setView(point, 15);
+  setLocationStatus("الموقع مباشر", "approved");
+  byId("locationHint").textContent = `دقة الموقع نحو ${Math.round(position.coords.accuracy || 0)} متر.`;
+  drawPickupRoute();
+}
+
+async function sharePosition(position, force = false) {
+  if (!state.user || !state.driverData?.online || !position) return;
+  const now = Date.now();
+  if (!force && now - state.lastLocationWrite < 5000) return;
+  const activeOrders = state.orders.filter(order =>
+    order.driverId === state.user.uid && !order.cancelled && Number(order.statusIndex || 0) < 3
+  );
+  if (!activeOrders.length) return;
+  state.lastLocationWrite = now;
+  const location = {
+    driverId: state.user.uid,
+    latitude: position.coords.latitude,
+    longitude: position.coords.longitude,
+    accuracy: Number(position.coords.accuracy || 0),
+    heading: Number.isFinite(position.coords.heading) ? position.coords.heading : null,
+    speed: Number.isFinite(position.coords.speed) ? position.coords.speed : null,
+    updatedAt: serverTimestamp()
+  };
+  const results = await Promise.allSettled(activeOrders.map(order =>
+    setDoc(doc(db, "orders", order.firestoreId, "tracking", "current"), location, { merge: true })
+  ));
+  if (results.some(result => result.status === "rejected")) {
+    console.error("تعذر إرسال بعض تحديثات الموقع", results);
+    byId("locationHint").textContent = "تعذر إرسال الموقع؛ تحقق من قواعد Firestore.";
+  }
+}
+
+function startLocationSharing() {
+  if (state.locationWatchId !== null) return;
+  initializeDriverMap();
+  if (!navigator.geolocation) {
+    setLocationStatus("غير مدعوم", "rejected");
+    byId("locationHint").textContent = "هذا المتصفح لا يدعم تحديد الموقع.";
+    return;
+  }
+  setLocationStatus("جاري التحديد", "pending");
+  state.locationWatchId = navigator.geolocation.watchPosition(position => {
+    state.lastPosition = position;
+    showOwnPosition(position);
+    sharePosition(position).catch(error => console.error(error));
+  }, error => {
+    console.error(error);
+    setLocationStatus("تعذر الموقع", "rejected");
+    byId("locationHint").textContent = error.code === 1
+      ? "اسمح للموقع من إعدادات المتصفح ثم فعّل الاتصال مجددًا."
+      : "تعذر قراءة الموقع. تأكد من GPS والإنترنت.";
+    if (error.code === 1 && state.user) {
+      updateDoc(doc(db, "drivers", state.user.uid), { online: false, updatedAt: serverTimestamp() })
+        .catch(() => {});
+    }
+  }, { enableHighAccuracy: true, maximumAge: 3000, timeout: 15000 });
+}
+
+function stopLocationSharing() {
+  if (state.locationWatchId !== null) navigator.geolocation.clearWatch(state.locationWatchId);
+  state.locationWatchId = null;
+  state.lastLocationWrite = 0;
+  setLocationStatus("متوقف", "pending");
+  byId("locationHint").textContent = "فعّل حالة الاتصال لمشاركة موقعك أثناء الرحلات.";
 }
 
 function busy(button, active, text = "جاري التنفيذ…") {
@@ -86,6 +225,7 @@ function showView(name) {
 function clearViewListeners() {
   state.viewUnsubscribes.forEach(unsubscribe => unsubscribe?.());
   state.viewUnsubscribes = [];
+  stopLocationSharing();
 }
 
 byId("loginForm").addEventListener("submit", async event => {
@@ -235,11 +375,14 @@ function renderOrders() {
   byId("myOrders").innerHTML = mine.length
     ? mine.map(order => orderCard(order, "mine")).join("")
     : `<div class="empty"><span>🚕</span>لا توجد رحلة نشطة لديك.</div>`;
+  drawPickupRoute();
 }
 
 function openDriverDashboard() {
   clearViewListeners();
   showView("driver");
+  initializeDriverMap();
+  window.setTimeout(() => state.map?.invalidateSize(), 120);
   byId("captainName").textContent = state.userData?.name || state.user?.displayName || "كروة";
 
   const driverUnsubscribe = onSnapshot(doc(db, "drivers", state.user.uid), snapshot => {
@@ -253,6 +396,8 @@ function openDriverDashboard() {
     byId("onlineSwitch").classList.toggle("on", state.driverData.online === true);
     byId("onlineLabel").textContent = state.driverData.online ? "متصل" : "غير متصل";
     byId("vehicleSummary").textContent = `${state.driverData.vehicleType || "مركبة"} • ${state.driverData.plate || "بدون لوحة"}`;
+    if (state.driverData.online) startLocationSharing();
+    else stopLocationSharing();
     renderOrders();
   });
 
@@ -300,6 +445,7 @@ document.addEventListener("click", async event => {
           updatedAt: serverTimestamp()
         });
       });
+      if (state.lastPosition) await sharePosition(state.lastPosition, true);
       toast("تم قبول الطلب");
     } else if (button.dataset.action === "advance") {
       const order = state.orders.find(item => item.firestoreId === button.dataset.id);
@@ -344,4 +490,8 @@ onAuthStateChanged(auth, user => {
     console.error(error);
     toast("تعذر قراءة صلاحية الحساب");
   });
+});
+
+window.addEventListener("beforeunload", () => {
+  if (state.locationWatchId !== null) navigator.geolocation.clearWatch(state.locationWatchId);
 });

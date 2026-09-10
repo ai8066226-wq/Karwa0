@@ -112,5 +112,32 @@ service cloud.firestore {
 
       allow delete: if isAdmin();
     }
+
+    match /orders/{orderId}/tracking/{trackingId} {
+      function parentOrder() {
+        return get(/databases/$(database)/documents/orders/$(orderId)).data;
+      }
+
+      allow read: if signedIn()
+                  && (parentOrder().userId == request.auth.uid
+                      || parentOrder().driverId == request.auth.uid
+                      || isAdmin());
+
+      allow create, update: if isDriver()
+                            && parentOrder().driverId == request.auth.uid
+                            && request.resource.data.driverId == request.auth.uid
+                            && request.resource.data.latitude is number
+                            && request.resource.data.longitude is number
+                            && request.resource.data.latitude >= -90
+                            && request.resource.data.latitude <= 90
+                            && request.resource.data.longitude >= -180
+                            && request.resource.data.longitude <= 180
+                            && request.resource.data.keys().hasOnly([
+                              'driverId', 'latitude', 'longitude', 'accuracy',
+                              'heading', 'speed', 'updatedAt'
+                            ]);
+
+      allow delete: if isAdmin();
+    }
   }
 }
