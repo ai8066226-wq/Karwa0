@@ -79,3 +79,27 @@ Phase 8: Dispatch تلقائي لأقرب الكباتن، مهلة قبول و�
 
 ### ملاحظات PWA
 الـ Service Worker يعمل فقط على HTTPS أو localhost. بعد كل إصدار غيّر اسم `CACHE` في `sw.js` لضمان تحديث App Shell لدى المستخدمين. للاستخدام الإنتاجي يفضّل إضافة أيقونات PNG متعددة المقاسات وتهيئة صفحات Offline أكثر تخصيصًا.
+
+## Phase 11 — Safety, Trust & Driver Compliance
+- Safety Events / SOS are created server-side and written to `safetyEvents` with audit logging.
+- Secure trip-share tokens expire after 6 hours; raw trip data is not made public by Firestore rules. A production share landing page can exchange the token through a callable/HTTP endpoint.
+- Mutual reputation: passengers keep the existing driver rating flow; `driverRateCustomer` adds a server-enforced one-rating-per-trip customer rating.
+- Driver compliance sweep evaluates license/registration/insurance expiry fields and writes `documentStatus` (`valid`, `expiring`, `expired`). Populate `licenseExpiresAt`, `vehicleRegistrationExpiresAt`, and `insuranceExpiresAt` on driver documents.
+- Risk monitoring flags unusually long active trips and opens a safety review event for administrators.
+- Before production, connect SOS events to a staffed operations workflow and local emergency guidance; do not represent the in-app SOS button as a replacement for emergency services.
+
+## إصلاح تشخيص الحجز وقبول الكابتن
+تم تحديث الواجهات بحيث تعرض سبب الخطأ الحقيقي القادم من Firebase Functions بدل الرسائل العامة. من الأمثلة: خدمة Function غير منشورة، الحساب ليس customer/driver، الكابتن غير متاح، الطلب ضمن جولة توزيع لكباتن أقرب، الموقع خارج Service Area، أو مشكلة شبكة.
+
+بعد رفع هذه النسخة، يجب نشر الـ Backend والقواعد من مجلد المشروع (وليس Hosting فقط):
+
+```bash
+firebase use karwa0
+cd functions && npm install && cd ..
+firebase deploy --only functions,firestore:rules,storage
+firebase deploy --only hosting
+```
+
+تأكد في Firebase Console أن Functions التالية موجودة على الأقل: `createRideOrderV2`, `quoteRide`, `cancelOrderV2`, `acceptOrder`, `advanceTrip`. كما يجب أن يكون مستند `users/{uid}` للراكب بقيمة `role: customer`، ومستند الكابتن `users/{uid}` بقيمة `role: driver` مع وجود `drivers/{uid}` وأن `online: true` عند قبول الطلب.
+
+ملاحظة التوزيع: خلال أول 30 ثانية من إنشاء الرحلة قد يرفض الخادم قبول كابتن غير موجود في `dispatchCandidateIds` برسالة `NOT_IN_DISPATCH_ROUND`. الواجهة الآن تشرح ذلك بدل عرض «تعذر تنفيذ العملية».

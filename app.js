@@ -41,6 +41,29 @@ const createRideOrderSecure = httpsCallable(functions, "createRideOrderV2");
 const quoteRideSecure = httpsCallable(functions, "quoteRide");
 const cancelOrderSecure = httpsCallable(functions, "cancelOrderV2");
 
+function callableErrorKey(error) {
+  const code = String(error?.code || "").replace(/^functions\//, "").toLowerCase();
+  const message = String(error?.message || "").toUpperCase();
+  const details = typeof error?.details === "string" ? error.details.toUpperCase() : String(error?.details?.message || error?.details?.code || "").toUpperCase();
+  const haystack = `${message} ${details}`;
+  const known = ["OUTSIDE_SERVICE_AREA","AUTH_REQUIRED","CUSTOMER_ONLY","INVALID_ROUTE","CANNOT_CANCEL","NOT_OWNER","ORDER_NOT_FOUND","BAD_TOKEN"];
+  const named = known.find(key => haystack.includes(key));
+  return { code, named, raw: haystack };
+}
+
+function customerCallableMessage(error, action = "تنفيذ العملية") {
+  const e = callableErrorKey(error);
+  if (e.named === "OUTSIDE_SERVICE_AREA") return "نقطة الانطلاق أو الوجهة خارج نطاق خدمة كروة الحالي.";
+  if (e.named === "AUTH_REQUIRED" || e.code === "unauthenticated") return "انتهت جلسة تسجيل الدخول. سجّل الدخول مرة أخرى ثم أعد المحاولة.";
+  if (e.named === "CUSTOMER_ONLY" || e.code === "permission-denied") return "هذا الحساب غير مخوّل لإنشاء طلب راكب. تحقق من نوع الحساب وصلاحياته.";
+  if (e.named === "INVALID_ROUTE" || e.code === "invalid-argument") return "تعذر اعتماد المسار. أعد تحديد الانطلاق والوجهة وانتظر حساب المسافة والوقت.";
+  if (e.code === "not-found" || e.raw.includes("NOT FOUND") || e.raw.includes("404")) return "خدمة الحجز الخلفية غير منشورة. انشر Firebase Functions ثم أعد المحاولة.";
+  if (e.code === "unavailable" || e.code === "deadline-exceeded" || e.raw.includes("NETWORK") || !navigator.onLine) return "تعذر الوصول إلى خادم كروة. تحقق من الإنترنت ثم أعد المحاولة.";
+  if (e.code === "failed-precondition") return `تعذر ${action} بسبب شرط في الخادم. راجع إعدادات مناطق الخدمة وبيانات الحساب.`;
+  if (e.code === "internal" || e.code === "unknown") return `حدث خطأ في خدمة كروة أثناء ${action}. افتح سجل Cloud Functions لمعرفة السبب.`;
+  return `تعذر ${action}. ${error?.message ? "التفاصيل: " + String(error.message).replace(/^FirebaseError:\s*/i, "") : "تحقق من إعدادات Firebase."}`;
+}
+
 const byId = id => document.getElementById(id);
 const orderStatuses = [
   "بانتظار كابتن",
@@ -578,7 +601,7 @@ async function createOrder(type, title, route, price, options = {}) {
 
 byId("applyCoupon")?.addEventListener("click", async () => {
   if (!requireUser() || !state.routeDistanceKm) return showToast("حدد المسار أولًا");
-  try { const q=await quoteRideSecure({vehicle:state.vehicle,distanceKm:state.routeDistanceKm,durationMin:state.routeDurationMin,couponCode:byId("couponCode").value.trim()}); state.ridePrice=Number(q.data.price); byId("ridePrice").textContent=formatMoney(state.ridePrice); byId("couponStatus").textContent=q.data.couponValid ? `تم تطبيق خصم ${formatMoney(q.data.discount)}${Number(q.data.surgeMultiplier)>1?` • معامل الطلب ×${q.data.surgeMultiplier}`:""}` : "الكود غير صالح أو لا ينطبق على هذه الرحلة"; } catch(e){ console.error(e); showToast("تعذر التحقق من الكوبون"); }
+  try { const q=await quoteRideSecure({vehicle:state.vehicle,distanceKm:state.routeDistanceKm,durationMin:state.routeDurationMin,couponCode:byId("couponCode").value.trim()}); state.ridePrice=Number(q.data.price); byId("ridePrice").textContent=formatMoney(state.ridePrice); byId("couponStatus").textContent=q.data.couponValid ? `تم تطبيق خصم ${formatMoney(q.data.discount)}${Number(q.data.surgeMultiplier)>1?` • معامل الطلب ×${q.data.surgeMultiplier}`:""}` : "الكود غير صالح أو لا ينطبق على هذه الرحلة"; } catch(e){ console.error(e); showToast(customerCallableMessage(e, "حساب السعر والكوبون")); }
 });
 
 byId("bookRide").addEventListener("click", async event => {
@@ -605,7 +628,7 @@ byId("bookRide").addEventListener("click", async event => {
     });
   } catch (error) {
     console.error(error);
-    showToast("تعذر حفظ الطلب. تحقق من الاتصال وقواعد Firestore.");
+    showToast(customerCallableMessage(error, "تأكيد الحجز"));
   } finally {
     setButtonBusy(button, false);
   }
@@ -1029,3 +1052,9 @@ onAuthStateChanged(auth, async user => {
     renderProfile();
   }
 });
+
+// Phase 11 — passenger safety center
+const createSafetyEventSecure=httpsCallable(functions,"createSafetyEvent");
+const createTripShareSecure=httpsCallable(functions,"createTripShare");
+byId("shareTrip")?.addEventListener("click",async()=>{if(!state.activeOrder?.firestoreId)return showToast("لا توجد رحلة نشطة");try{const r=await createTripShareSecure({orderId:state.activeOrder.firestoreId});const text=`كروة — مشاركة رحلة ${state.activeOrder.id}\nرمز مشاركة آمن: ${r.data.token}\nصالح لمدة 6 ساعات.`;if(navigator.share)await navigator.share({title:"مشاركة رحلة كروة",text});else await navigator.clipboard.writeText(text);showToast("تم تجهيز مشاركة الرحلة");}catch(e){console.error(e);showToast("تعذر إنشاء مشاركة آمنة");}});
+byId("sosTrip")?.addEventListener("click",async()=>{if(!state.activeOrder?.firestoreId||!confirm("إرسال تنبيه سلامة عاجل للإدارة لهذه الرحلة؟"))return;const send=async pos=>{try{await createSafetyEventSecure({orderId:state.activeOrder.firestoreId,kind:"sos",latitude:pos?.coords?.latitude||null,longitude:pos?.coords?.longitude||null,note:"SOS من الراكب"});showToast("تم إرسال تنبيه السلامة للإدارة");}catch(e){console.error(e);showToast("تعذر إرسال التنبيه");}};navigator.geolocation?navigator.geolocation.getCurrentPosition(send,()=>send(null),{timeout:5000}):send(null);});

@@ -15,5 +15,8 @@ service cloud.firestore { match /databases/{database}/documents {
  match /walletTransactions/{id}{allow read:if signed()&&(resource.data.driverId==request.auth.uid||admin());allow write:if false;}
  match /auditLogs/{id}{allow read:if admin();allow write:if false;}
  match /notificationQueue/{id}{allow read:if admin();allow write:if false;}
+ match /safetyEvents/{id}{allow read:if admin()||(signed()&&(resource.data.reportedBy==request.auth.uid));allow write:if false;}
+ match /tripShares/{id}{allow read,write:if false;}
+ match /customerRatings/{id}{allow read:if admin()||(signed()&&(resource.data.customerId==request.auth.uid||resource.data.driverId==request.auth.uid));allow write:if false;}
  match /ratings/{id}{function o(){return get(/databases/$(database)/documents/orders/$(id)).data;}allow create:if signed()&&o().userId==request.auth.uid&&o().statusIndex>=4&&request.resource.data.customerId==request.auth.uid;allow read:if signed()&&(resource.data.customerId==request.auth.uid||resource.data.driverId==request.auth.uid||admin());allow update:if false;allow delete:if admin();}
 }}

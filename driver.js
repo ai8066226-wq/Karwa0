@@ -37,6 +37,32 @@ const functions = getFunctions(app);
 const acceptOrderSecure = httpsCallable(functions, "acceptOrder");
 const advanceTripSecure = httpsCallable(functions, "advanceTrip");
 
+function callableErrorKey(error) {
+  const code = String(error?.code || "").replace(/^functions\//, "").toLowerCase();
+  const message = String(error?.message || "").toUpperCase();
+  const details = typeof error?.details === "string" ? error.details.toUpperCase() : String(error?.details?.message || error?.details?.code || "").toUpperCase();
+  const haystack = `${message} ${details}`;
+  const known = ["ORDER_TAKEN","DRIVER_NOT_AVAILABLE","DRIVER_ONLY","NOT_IN_DISPATCH_ROUND","ORDER_NOT_FOUND","NOT_ASSIGNED","INVALID_TRANSITION","OTP_INVALID"];
+  return { code, named: known.find(key => haystack.includes(key)), raw: haystack };
+}
+
+function driverCallableMessage(error, action = "تنفيذ العملية") {
+  const e = callableErrorKey(error);
+  if (e.named === "ORDER_TAKEN" || e.code === "already-exists") return "سبق أن قبل كابتن آخر هذا الطلب.";
+  if (e.named === "NOT_IN_DISPATCH_ROUND") return "هذا الطلب مخصص مؤقتًا لكباتن أقرب. انتظر انتهاء جولة التوزيع ثم حاول مجددًا.";
+  if (e.named === "DRIVER_NOT_AVAILABLE") return "الخادم يعتبر حسابك غير متاح. فعّل الاتصال وتأكد أن حساب الكابتن مفعل وغير محظور.";
+  if (e.named === "DRIVER_ONLY" || e.code === "permission-denied" && !e.named) return "صلاحية الحساب ليست كابتن أو لا تسمح بهذه العملية. راجع تفعيل الحساب من الإدارة.";
+  if (e.named === "ORDER_NOT_FOUND" || e.code === "not-found" && !e.raw.includes("404")) return "الطلب لم يعد موجودًا أو تم حذفه.";
+  if (e.named === "NOT_ASSIGNED") return "هذه الرحلة غير مسندة إلى حساب الكابتن الحالي.";
+  if (e.named === "INVALID_TRANSITION") return "لا يمكن نقل الرحلة إلى الحالة التالية من حالتها الحالية.";
+  if (e.named === "OTP_INVALID") return "رمز بدء الرحلة غير صحيح.";
+  if (e.code === "unauthenticated") return "انتهت جلسة تسجيل الدخول. سجّل الدخول من جديد.";
+  if (e.code === "not-found" || e.raw.includes("NOT FOUND") || e.raw.includes("404")) return "خدمة الكابتن الخلفية غير منشورة. انشر Firebase Functions ثم أعد المحاولة.";
+  if (e.code === "unavailable" || e.code === "deadline-exceeded" || e.raw.includes("NETWORK") || !navigator.onLine) return "تعذر الاتصال بخادم كروة. تحقق من الإنترنت ثم أعد المحاولة.";
+  if (e.code === "internal" || e.code === "unknown") return `حدث خطأ في Cloud Functions أثناء ${action}. راجع سجل الوظائف في Firebase.`;
+  return `تعذر ${action}. ${error?.message ? String(error.message).replace(/^FirebaseError:\s*/i, "") : "تحقق من إعدادات Firebase."}`;
+}
+
 try {
   await setPersistence(auth, browserLocalPersistence);
 } catch (error) {
@@ -530,7 +556,7 @@ document.addEventListener("click", async event => {
     }
   } catch (error) {
     console.error(error);
-    toast(error.message === "ORDER_TAKEN" ? "سبق أن أخذ كابتن آخر هذا الطلب" : error.message === "OFFLINE" ? "فعّل حالة الاتصال أولًا" : error.message === "OTP_REQUIRED" ? "يجب إدخال رمز بدء الرحلة" : error.message === "OTP_INVALID" ? "رمز بدء الرحلة غير صحيح" : "تعذر تنفيذ العملية");
+    toast(error.message === "OFFLINE" ? "فعّل حالة الاتصال أولًا" : error.message === "OTP_REQUIRED" ? "يجب إدخال رمز بدء الرحلة" : driverCallableMessage(error, button.dataset.action === "accept" ? "قبول الطلب" : "تحديث حالة الرحلة"));
   } finally {
     busy(button, false);
   }
@@ -571,3 +597,9 @@ onAuthStateChanged(auth, user => {
 window.addEventListener("beforeunload", () => {
   if (state.locationWatchId !== null) navigator.geolocation.clearWatch(state.locationWatchId);
 });
+
+// Phase 11 — mutual reputation and safety
+const driverRateCustomerSecure=httpsCallable(functions,"driverRateCustomer");
+const createDriverSafetyEvent=httpsCallable(functions,"createSafetyEvent");
+window.karwaRateCustomer=async(orderId)=>{const score=Number(prompt("قيّم الراكب من 1 إلى 5:","5"));if(!score||score<1||score>5)return;try{await driverRateCustomerSecure({orderId,score});toast("تم تقييم الراكب");}catch(e){console.error(e);toast("تعذر حفظ التقييم أو تم تقييم الرحلة سابقًا");}};
+window.karwaDriverSOS=async(orderId)=>{if(!confirm("إرسال تنبيه سلامة عاجل للإدارة؟"))return;try{await createDriverSafetyEvent({orderId,kind:"driver_sos",latitude:state.lastPosition?.latitude||null,longitude:state.lastPosition?.longitude||null,note:"SOS من الكابتن"});toast("تم إرسال تنبيه السلامة");}catch(e){console.error(e);toast("تعذر إرسال التنبيه");}};
