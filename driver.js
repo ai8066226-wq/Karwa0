@@ -75,6 +75,18 @@ try {
 const byId = id => document.getElementById(id);
 const statuses = ["بانتظار كابتن", "الكابتن في الطريق", "وصلت إلى العميل", "بدأت الرحلة", "تم الوصول"];
 const icons = { ride: "🚕", parcel: "📦", food: "🍽️" };
+const DRIVER_MAP_STYLES = {
+  day: "https://tiles.openfreemap.org/styles/positron",
+  night: "https://tiles.openfreemap.org/styles/dark"
+};
+
+function readDriverPreference(key, fallback) {
+  try { return localStorage.getItem(key) ?? fallback; } catch (_) { return fallback; }
+}
+
+function writeDriverPreference(key, value) {
+  try { localStorage.setItem(key, value); } catch (_) {}
+}
 
 const state = {
   user: null,
@@ -88,6 +100,10 @@ const state = {
   lastLocationWrite: 0,
   lastPosition: null,
   map: null,
+  baseLayer: null,
+  mapTheme: readDriverPreference("karwa.driver.mapTheme", "day") === "night" ? "night" : "day",
+  mapView: readDriverPreference("karwa.driver.mapView", "2d") === "3d" ? "3d" : "2d",
+  autoFollow: readDriverPreference("karwa.driver.autoFollow", "true") !== "false",
   driverMarker: null,
   pickupMarker: null,
   destinationMarker: null,
@@ -122,7 +138,68 @@ function mapIcon(type) {
 function initializeDriverMap() {
   if (!window.L || state.map) return;
   state.map = window.L.map("driverMap", { attributionControl: false }).setView([33.3152, 44.3661], 12);
-  window.L.maplibreGL({style:"https://tiles.openfreemap.org/styles/positron"}).addTo(state.map);
+  state.baseLayer = window.L.maplibreGL({ style: DRIVER_MAP_STYLES[state.mapTheme] }).addTo(state.map);
+  applyDriverMapPreferences();
+}
+
+function updateDriverSettingsInfo() {
+  const data = state.driverData || {};
+  const name = data.name || state.userData?.name || state.user?.displayName || "كابتن كروة";
+  const ratingCount = state.ratings.length;
+  const rating = ratingCount
+    ? state.ratings.reduce((total, item) => total + Number(item.score || 0), 0) / ratingCount
+    : 0;
+  const firstLetter = Array.from(String(name).trim())[0] || "ك";
+  if (byId("driverSettingsAvatar")) byId("driverSettingsAvatar").textContent = firstLetter;
+  if (byId("driverSettingsName")) byId("driverSettingsName").textContent = name;
+  if (byId("driverSettingsEmail")) byId("driverSettingsEmail").textContent = state.user?.email || "—";
+  if (byId("driverSettingsPhone")) byId("driverSettingsPhone").textContent = data.phone || state.userData?.phone || "غير مضاف";
+  if (byId("driverSettingsStatus")) byId("driverSettingsStatus").textContent = data.online ? "متصل وجاهز" : "غير متصل";
+  if (byId("driverSettingsVehicle")) byId("driverSettingsVehicle").textContent = data.vehicleType || "غير محدد";
+  if (byId("driverSettingsPlate")) byId("driverSettingsPlate").textContent = data.plate || "غير محدد";
+  if (byId("driverSettingsRating")) byId("driverSettingsRating").textContent = ratingCount ? `${rating.toFixed(1)} ★` : "جديد";
+  if (byId("driverSettingsWarnings")) byId("driverSettingsWarnings").textContent = String(Number(data.warningCount || 0));
+}
+
+function applyDriverMapPreferences() {
+  const view = byId("driverView");
+  if (!view) return;
+  view.classList.toggle("map-theme-night", state.mapTheme === "night");
+  view.classList.toggle("map-view-3d", state.mapView === "3d");
+  view.querySelectorAll("[data-map-theme]").forEach(button => {
+    const active = button.dataset.mapTheme === state.mapTheme;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  view.querySelectorAll("[data-map-view]").forEach(button => {
+    const active = button.dataset.mapView === state.mapView;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  if (byId("driverThemeValue")) byId("driverThemeValue").textContent = state.mapTheme === "night" ? "ليلي" : "نهاري";
+  if (byId("driverViewValue")) byId("driverViewValue").textContent = state.mapView.toUpperCase();
+  const follow = byId("driverAutoFollowSetting");
+  if (follow) {
+    follow.classList.toggle("on", state.autoFollow);
+    follow.setAttribute("aria-checked", String(state.autoFollow));
+  }
+  window.setTimeout(() => state.map?.invalidateSize(), 390);
+}
+
+function setDriverMapTheme(theme) {
+  state.mapTheme = theme === "night" ? "night" : "day";
+  writeDriverPreference("karwa.driver.mapTheme", state.mapTheme);
+  const maplibreMap = state.baseLayer?.getMaplibreMap?.();
+  if (maplibreMap) maplibreMap.setStyle(DRIVER_MAP_STYLES[state.mapTheme]);
+  applyDriverMapPreferences();
+  toast(state.mapTheme === "night" ? "تم تفعيل الخريطة الليلية" : "تم تفعيل الخريطة النهارية");
+}
+
+function setDriverMapView(mode) {
+  state.mapView = mode === "3d" ? "3d" : "2d";
+  writeDriverPreference("karwa.driver.mapView", state.mapView);
+  applyDriverMapPreferences();
+  toast(state.mapView === "3d" ? "تم تفعيل منظور 3D" : "تم تفعيل عرض 2D");
 }
 
 function setLocationStatus(text, mode = "pending") {
@@ -157,7 +234,7 @@ function showOwnPosition(position) {
   else state.driverMarker = window.L.marker(point, { icon: mapIcon("driver") })
     .addTo(state.map)
     .bindPopup("موقعك الحالي");
-  state.map.setView(point, 15);
+  if (state.autoFollow) state.map.setView(point, 15);
   const acc=Math.round(position.coords.accuracy||0);
   setLocationStatus(acc>100?"GPS ضعيف":"الموقع مباشر", acc>100?"pending":"approved");
   byId("locationHint").textContent = acc>100?`دقة الموقع منخفضة (${acc} م). انتقل لمكان مفتوح لتحسين التتبع.`:`دقة الموقع نحو ${acc} متر.`;
@@ -250,7 +327,7 @@ function authMessage(error) {
 
 function showView(name) {
   document.body.classList.toggle("driver-map-mode", name === "driver");
-  if (name !== "driver") byId("driverView")?.classList.remove("driver-options-open");
+  if (name !== "driver") byId("driverView")?.classList.remove("driver-options-open", "driver-settings-open");
   byId("authView").classList.toggle("hidden", name !== "auth");
   byId("deniedView").classList.toggle("hidden", name !== "denied");
   byId("blockedView").classList.toggle("hidden", name !== "blocked");
@@ -282,6 +359,52 @@ byId("loginForm").addEventListener("submit", async event => {
 byId("logoutButton").addEventListener("click", async () => {
   await signOut(auth);
   toast("تم تسجيل الخروج");
+});
+
+function setDriverSettingsOpen(open) {
+  const view = byId("driverView");
+  const panel = byId("driverSettingsPanel");
+  const toggle = byId("driverSettingsToggle");
+  if (!view || !panel || !toggle) return;
+  if (open) {
+    view.querySelector(".driver-options-close")?.click();
+    updateDriverSettingsInfo();
+    applyDriverMapPreferences();
+  }
+  view.classList.toggle("driver-settings-open", open);
+  toggle.setAttribute("aria-expanded", String(open));
+  panel.setAttribute("aria-hidden", String(!open));
+  panel.inert = !open;
+  if (open) window.setTimeout(() => byId("driverSettingsClose")?.focus({ preventScroll: true }), 80);
+  else toggle.focus({ preventScroll: true });
+}
+
+byId("driverSettingsPanel").inert = true;
+byId("driverSettingsToggle").addEventListener("click", () => setDriverSettingsOpen(true));
+byId("driverSettingsClose").addEventListener("click", () => setDriverSettingsOpen(false));
+byId("driverSettingsScrim").addEventListener("click", () => setDriverSettingsOpen(false));
+byId("driverSettingsPanel").querySelectorAll("[data-map-theme]").forEach(button => {
+  button.addEventListener("click", () => setDriverMapTheme(button.dataset.mapTheme));
+});
+byId("driverSettingsPanel").querySelectorAll("[data-map-view]").forEach(button => {
+  button.addEventListener("click", () => setDriverMapView(button.dataset.mapView));
+});
+byId("driverAutoFollowSetting").addEventListener("click", () => {
+  state.autoFollow = !state.autoFollow;
+  writeDriverPreference("karwa.driver.autoFollow", String(state.autoFollow));
+  applyDriverMapPreferences();
+  if (state.autoFollow && state.lastPosition) showOwnPosition(state.lastPosition);
+  toast(state.autoFollow ? "تم تفعيل متابعة موقعك" : "يمكنك الآن تحريك الخريطة بحرية");
+});
+byId("driverSettingsOperations").addEventListener("click", () => {
+  setDriverSettingsOpen(false);
+  window.setTimeout(() => byId("driverOptionsToggle")?.click(), 120);
+});
+byId("driverSettingsLogout").addEventListener("click", () => byId("logoutButton").click());
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape" && byId("driverView")?.classList.contains("driver-settings-open")) {
+    setDriverSettingsOpen(false);
+  }
 });
 
 byId("deniedLogout").addEventListener("click", async () => {
@@ -448,6 +571,7 @@ function renderReputation() {
     notice.className = "notice hidden";
     notice.textContent = "";
   }
+  updateDriverSettingsInfo();
 }
 
 function openDriverDashboard() {
@@ -478,6 +602,7 @@ function openDriverDashboard() {
     byId("onlineSwitch").classList.toggle("on", state.driverData.online === true);
     byId("onlineLabel").textContent = state.driverData.online ? "متصل" : "غير متصل";
     byId("vehicleSummary").textContent = `${state.driverData.vehicleType || "مركبة"} • ${state.driverData.plate || "بدون لوحة"}`;
+    updateDriverSettingsInfo();
     if (state.driverData.online) startLocationSharing();
     else stopLocationSharing();
     renderOrders();

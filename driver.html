@@ -110,6 +110,49 @@ body.driver-map-mode .topbar{border-color:#d9e2eb;background:rgba(255,255,255,.9
 }
 @media(max-width:430px){#driverView .driver-nav-strip small{font-size:9px}#driverView .driver-nav-strip strong{font-size:11px}.driver-options-toggle{min-width:102px;padding:10px 12px}.driver-report-quick{width:50px;height:50px;font-size:22px}}
 </style>
+<style id="phase29-driver-cockpit">
+/* قمرة قيادة كاملة الشاشة: إعدادات مستقلة ومظهر نهاري/ليلي ومنظور 2D/3D */
+body.driver-map-mode .topbar{display:none!important}
+body.driver-map-mode #driverView{height:100dvh!important}
+.driver-settings-toggle{position:absolute;z-index:920;top:max(14px,env(safe-area-inset-top));right:14px;width:54px;height:54px;display:grid;place-items:center;border:2px solid rgba(255,255,255,.96);border-radius:18px;color:#fff;background:linear-gradient(145deg,#0a2540,#164b78);box-shadow:0 13px 34px rgba(10,37,64,.32);font-size:25px;line-height:1;cursor:pointer;transition:transform .2s ease,opacity .2s ease}
+.driver-settings-toggle:hover{transform:translateY(-2px) rotate(10deg)}
+.driver-settings-toggle:focus-visible{outline:3px solid #7de4e1;outline-offset:3px}
+#driverView.driver-settings-open .driver-settings-toggle,#driverView.driver-settings-open .driver-options-toggle,#driverView.driver-settings-open .driver-report-quick{opacity:0;pointer-events:none}
+.driver-settings-scrim{position:absolute;z-index:965;inset:0;background:rgba(4,16,34,.5);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);opacity:0;pointer-events:none;transition:opacity .25s ease}
+#driverView.driver-settings-open .driver-settings-scrim{opacity:1;pointer-events:auto}
+.driver-settings-panel{position:absolute;z-index:990;top:max(10px,env(safe-area-inset-top));right:10px;bottom:max(10px,env(safe-area-inset-bottom));width:min(400px,calc(100% - 20px));display:flex;flex-direction:column;color:#0a2540;border:1px solid rgba(255,255,255,.9);border-radius:28px;background:rgba(247,250,252,.985);box-shadow:0 26px 80px rgba(4,16,34,.42);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);opacity:0;pointer-events:none;transform:translateX(calc(100% + 34px));transition:transform .3s cubic-bezier(.22,.8,.25,1),opacity .22s ease;overflow:hidden}
+#driverView.driver-settings-open .driver-settings-panel{opacity:1;pointer-events:auto;transform:translateX(0)}
+.driver-settings-header{padding:15px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid #d7e0e9;background:#fff}
+.driver-settings-header>div{display:grid;gap:2px}.driver-settings-header small{color:#536579;font-size:11px;font-weight:800}.driver-settings-header strong{font-size:18px}
+.driver-settings-close{width:42px;height:42px;display:grid;place-items:center;flex:0 0 auto;border:1px solid #c8d4df;border-radius:14px;color:#0a2540;background:#fff;font-size:26px;line-height:1;cursor:pointer}
+.driver-settings-body{padding:14px;display:grid;gap:12px;overflow:auto;overscroll-behavior:contain}
+.driver-profile-card{padding:14px;display:grid;grid-template-columns:52px minmax(0,1fr);gap:11px;align-items:center;border:1px solid #d6e0e9;border-radius:20px;background:linear-gradient(145deg,#fff,#edf5f8)}
+.driver-settings-avatar{width:52px;height:52px;display:grid;place-items:center;grid-row:span 2;border-radius:17px;color:#fff;background:linear-gradient(145deg,#0a2540,#177b83);box-shadow:0 8px 18px rgba(10,37,64,.2);font-size:22px;font-weight:900}
+.driver-profile-copy{min-width:0;display:grid;gap:2px}.driver-profile-copy strong,.driver-profile-copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.driver-profile-copy strong{font-size:17px}.driver-profile-copy small{color:#526278;font-size:11px;direction:ltr;text-align:right}
+.driver-verified{grid-column:2;width:max-content;padding:5px 9px;border-radius:99px;color:#006b66;background:#dff8f3;font-size:10px;font-weight:900}
+.driver-info-grid{margin:0;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.driver-info-grid>div{min-width:0;padding:11px 12px;border:1px solid #d6e0e9;border-radius:15px;background:#fff}.driver-info-grid dt{color:#607086;font-size:10px;font-weight:800}.driver-info-grid dd{margin:3px 0 0;overflow:hidden;color:#0a2540;font-size:13px;font-weight:900;text-overflow:ellipsis;white-space:nowrap}
+.driver-settings-group{padding:13px;border:1px solid #d6e0e9;border-radius:18px;background:#fff}.driver-settings-group h3{margin:0 0 10px;font-size:14px}.driver-settings-label{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:9px 0 7px;color:#42556c;font-size:11px;font-weight:800}.driver-settings-label:first-of-type{margin-top:0}
+.driver-settings-segment{padding:4px;display:grid;grid-template-columns:1fr 1fr;gap:4px;border-radius:14px;background:#e8eef4}.driver-settings-segment button{min-height:42px;border:0;border-radius:11px;color:#44566c;background:transparent;font-weight:900;cursor:pointer}.driver-settings-segment button.active{color:#fff;background:#0a2540;box-shadow:0 5px 14px rgba(10,37,64,.2)}
+.driver-setting-row{min-height:50px;display:flex;align-items:center;justify-content:space-between;gap:14px;border-top:1px solid #e0e7ee}.driver-setting-row:first-of-type{border-top:0}.driver-setting-row>div{display:grid;gap:2px}.driver-setting-row strong{font-size:13px}.driver-setting-row small{color:#607086;font-size:10px}
+.driver-pref-switch{position:relative;width:50px;height:29px;flex:0 0 auto;border:1px solid #aebbc9;border-radius:99px;background:#cbd5df;cursor:pointer;transition:background .2s,border-color .2s}.driver-pref-switch span{position:absolute;top:3px;right:3px;width:21px;height:21px;border-radius:50%;background:#fff;box-shadow:0 2px 7px rgba(10,37,64,.28);transition:transform .2s}.driver-pref-switch.on{border-color:#00746f;background:#008f88}.driver-pref-switch.on span{transform:translateX(-21px)}
+.driver-settings-actions{display:grid;gap:8px}.driver-settings-action{min-height:47px;padding:10px 14px;border:1px solid #c8d4df;border-radius:14px;color:#0a2540;background:#fff;font-weight:900;text-align:center;text-decoration:none;cursor:pointer}.driver-settings-action.primary{color:#fff;border-color:#0a2540;background:#0a2540}.driver-settings-action.danger{color:#a61b2b;border-color:#edc5ca;background:#fff6f7}
+/* المنظور يطبق على طبقات الخريطة كلها، لذلك يبقى المسار والعلامات متطابقة */
+#driverMap{transform-origin:50% 62%;transition:transform .38s cubic-bezier(.22,.8,.25,1),filter .3s ease}
+#driverView.map-view-3d #driverMap{transform:perspective(1150px) rotateX(7deg) scale(1.055);filter:saturate(1.08) contrast(1.03)}
+#driverView.map-theme-night{background:#081827}
+#driverView.map-theme-night .driver-map-credit{color:#d7e5ef;border-color:rgba(255,255,255,.2);background:rgba(5,22,38,.88)}
+#driverView.map-theme-night .driver-map-credit a{color:#8edfe0}
+#driverView.map-theme-night .driver-nav-strip{color:#eaf4f8;border-color:rgba(255,255,255,.3);background:#0b2239}
+#driverView.map-theme-night .driver-nav-strip>div{border-color:#30465b}#driverView.map-theme-night .driver-nav-strip small{color:#a9bdcc}#driverView.map-theme-night .driver-nav-strip strong{color:#fff}
+@media(max-width:760px){
+ .driver-settings-toggle{top:max(10px,env(safe-area-inset-top));right:10px;width:50px;height:50px;border-radius:16px;font-size:23px}
+ .driver-settings-panel{top:max(6px,env(safe-area-inset-top));right:6px;bottom:max(6px,env(safe-area-inset-bottom));width:calc(100% - 12px);border-radius:24px}
+ .driver-settings-body{padding:11px}.driver-info-grid>div{padding:10px}.driver-settings-group{padding:12px}
+ #driverView.map-view-3d #driverMap{transform:perspective(900px) rotateX(6deg) scale(1.05)}
+}
+@media(prefers-reduced-motion:reduce){.driver-settings-toggle,.driver-settings-scrim,.driver-settings-panel,#driverMap{transition:none}}
+</style>
 </head>
 <body>
   <header class="topbar">
@@ -216,6 +259,7 @@ body.driver-map-mode .topbar{border-color:#d9e2eb;background:rgba(255,255,255,.9
         <p class="muted">٣. بعد القبول تظهر لك الرحلات المتاحة.</p>
       </aside>
     </div>
+
   </main>
 
   <main class="shell hidden" id="driverView">
@@ -284,6 +328,51 @@ body.driver-map-mode .topbar{border-color:#d9e2eb;background:rgba(255,255,255,.9
         </div>
       </aside>
     </div>
+
+    <button type="button" class="driver-settings-toggle" id="driverSettingsToggle" aria-controls="driverSettingsPanel" aria-expanded="false" aria-label="إعدادات الكابتن" title="إعدادات الكابتن"><span aria-hidden="true">⚙</span></button>
+    <div class="driver-settings-scrim" id="driverSettingsScrim" aria-hidden="true"></div>
+    <aside class="driver-settings-panel" id="driverSettingsPanel" role="dialog" aria-modal="true" aria-label="إعدادات ومعلومات الكابتن" aria-hidden="true">
+      <div class="driver-settings-header">
+        <div><small>كروة للكباتن</small><strong>الحساب والإعدادات</strong></div>
+        <button type="button" class="driver-settings-close" id="driverSettingsClose" aria-label="إغلاق الإعدادات">×</button>
+      </div>
+      <div class="driver-settings-body">
+        <section class="driver-profile-card" aria-label="معلومات الكابتن">
+          <div class="driver-settings-avatar" id="driverSettingsAvatar">ك</div>
+          <div class="driver-profile-copy"><strong id="driverSettingsName">كابتن كروة</strong><small id="driverSettingsEmail">—</small></div>
+          <span class="driver-verified">✓ كابتن معتمد</span>
+        </section>
+        <dl class="driver-info-grid">
+          <div><dt>الهاتف</dt><dd id="driverSettingsPhone">—</dd></div>
+          <div><dt>الحالة</dt><dd id="driverSettingsStatus">غير متصل</dd></div>
+          <div><dt>المركبة</dt><dd id="driverSettingsVehicle">—</dd></div>
+          <div><dt>رقم اللوحة</dt><dd id="driverSettingsPlate">—</dd></div>
+          <div><dt>التقييم</dt><dd id="driverSettingsRating">جديد</dd></div>
+          <div><dt>التنبيهات</dt><dd id="driverSettingsWarnings">0</dd></div>
+        </dl>
+        <section class="driver-settings-group" aria-labelledby="driverMapAppearanceTitle">
+          <h3 id="driverMapAppearanceTitle">مظهر الخريطة</h3>
+          <div class="driver-settings-label"><span>الإضاءة</span><span id="driverThemeValue">نهاري</span></div>
+          <div class="driver-settings-segment" role="group" aria-label="إضاءة الخريطة">
+            <button type="button" data-map-theme="day" aria-pressed="true">☀ نهاري</button>
+            <button type="button" data-map-theme="night" aria-pressed="false">☾ ليلي</button>
+          </div>
+          <div class="driver-settings-label"><span>طريقة العرض</span><span id="driverViewValue">2D</span></div>
+          <div class="driver-settings-segment" role="group" aria-label="طريقة عرض الخريطة">
+            <button type="button" data-map-view="2d" aria-pressed="true">2D مسطحة</button>
+            <button type="button" data-map-view="3d" aria-pressed="false">3D منظور</button>
+          </div>
+        </section>
+        <section class="driver-settings-group" aria-label="تفضيلات القيادة">
+          <div class="driver-setting-row"><div><strong>متابعة موقعي تلقائيًا</strong><small>تبقى الخريطة مركزة على موقع المركبة</small></div><button type="button" class="driver-pref-switch on" id="driverAutoFollowSetting" role="switch" aria-checked="true" aria-label="متابعة الموقع تلقائيًا"><span></span></button></div>
+        </section>
+        <div class="driver-settings-actions">
+          <button type="button" class="driver-settings-action primary" id="driverSettingsOperations">الطلبات وأدوات العمل</button>
+          <a class="driver-settings-action" href="./index.html">الانتقال إلى تطبيق العميل</a>
+          <button type="button" class="driver-settings-action danger" id="driverSettingsLogout">تسجيل الخروج</button>
+        </div>
+      </div>
+    </aside>
   </main>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -291,8 +380,8 @@ body.driver-map-mode .topbar{border-color:#d9e2eb;background:rgba(255,255,255,.9
   <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
   <script>try{if(window.maplibregl&&maplibregl.setRTLTextPlugin&&(!maplibregl.getRTLTextPluginStatus||maplibregl.getRTLTextPluginStatus()==="unavailable")){maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",true).catch(()=>{});}}catch(e){}</script>
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
-  <script type="module" src="./driver.js?v=28"></script>
-  <script src="./pwa.js?v=28"></script>
+  <script type="module" src="./driver.js?v=29"></script>
+  <script src="./pwa.js?v=29"></script>
 <script id="phase20-driver-map-first-js">
 window.addEventListener("DOMContentLoaded",()=>{
   const view=document.getElementById("driverView");
