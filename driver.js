@@ -9,6 +9,7 @@ import {
   signOut
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
 import {
+  addDoc,
   collection,
   doc,
   getFirestore,
@@ -449,6 +450,7 @@ function openDriverDashboard() {
   clearViewListeners();
   showView("driver");
   initializeDriverMap();
+  startDriverCommunityLayers();
   window.setTimeout(() => state.map?.invalidateSize(), 120);
   byId("captainName").textContent = state.userData?.name || state.user?.displayName || "كروة";
 
@@ -610,3 +612,14 @@ const driverRateCustomerSecure=httpsCallable(functions,"driverRateCustomer");
 const createDriverSafetyEvent=httpsCallable(functions,"createSafetyEvent");
 window.karwaRateCustomer=async(orderId)=>{const score=Number(prompt("قيّم الراكب من 1 إلى 5:","5"));if(!score||score<1||score>5)return;try{await driverRateCustomerSecure({orderId,score});toast("تم تقييم الراكب");}catch(e){console.error(e);toast("تعذر حفظ التقييم أو تم تقييم الرحلة سابقًا");}};
 window.karwaDriverSOS=async(orderId)=>{if(!confirm("إرسال تنبيه سلامة عاجل للإدارة؟"))return;try{await createDriverSafetyEvent({orderId,kind:"driver_sos",latitude:state.lastPosition?.latitude||null,longitude:state.lastPosition?.longitude||null,note:"SOS من الكابتن"});toast("تم إرسال تنبيه السلامة");}catch(e){console.error(e);toast("تعذر إرسال التنبيه");}};
+
+// Phase 18 — Karwa community road reports + landmarks
+const communityLayers={reports:new Map(),landmarks:new Map(),started:false};
+const reportMeta={traffic:["🚦","ازدحام"],accident:["💥","حادث"],closure:["⛔","شارع مغلق"],roadwork:["🚧","حفريات / أعمال طريق"],hazard:["⚠️","عائق على الطريق"]};
+function communityIcon(kind,type="report"){const meta=reportMeta[kind]||["📌","بلاغ"];return window.L.divIcon({className:"",html:`<div class="${type==='landmark'?'landmark-marker':'road-report-marker'}">${type==='landmark'?'📍':meta[0]}</div>`,iconSize:[36,36],iconAnchor:[18,18]});}
+function startDriverCommunityLayers(){if(communityLayers.started||!state.map||!state.user)return;communityLayers.started=true;
+  onSnapshot(collection(db,"roadReports"),snap=>{const live=new Set();snap.forEach(d=>{const x=d.data(),ts=x.createdAt?.toMillis?.()||Date.parse(x.createdAtISO||0);if(!x.active||Date.now()-ts>3*60*60*1000)return;live.add(d.id);const ll=[Number(x.latitude),Number(x.longitude)];if(!Number.isFinite(ll[0])||!Number.isFinite(ll[1]))return;const label=reportMeta[x.type]?.[1]||"بلاغ طريق";let m=communityLayers.reports.get(d.id);if(!m){m=window.L.marker(ll,{icon:communityIcon(x.type)}).addTo(state.map);communityLayers.reports.set(d.id,m)}else m.setLatLng(ll);m.bindPopup(`<b>${label}</b>${x.note?`<br>${x.note}`:""}<br><small>بلاغ من مجتمع كروة</small>`)});for(const [id,m] of communityLayers.reports)if(!live.has(id)){state.map.removeLayer(m);communityLayers.reports.delete(id)}});
+  onSnapshot(collection(db,"landmarks"),snap=>{const live=new Set();snap.forEach(d=>{const x=d.data();if(x.status==="hidden")return;live.add(d.id);const ll=[Number(x.latitude),Number(x.longitude)];if(!Number.isFinite(ll[0])||!Number.isFinite(ll[1]))return;let m=communityLayers.landmarks.get(d.id);if(!m){m=window.L.marker(ll,{icon:communityIcon(null,"landmark")}).addTo(state.map);communityLayers.landmarks.set(d.id,m)}else m.setLatLng(ll);m.bindPopup(`<b>${x.name||"معلم كروة"}</b><br><small>${x.category||"معلم محلي"}</small>`)});for(const [id,m] of communityLayers.landmarks)if(!live.has(id)){state.map.removeLayer(m);communityLayers.landmarks.delete(id)}});
+}
+async function submitRoadReport(type){if(!state.user)return toast("سجّل الدخول أولًا");const p=state.lastPosition?.coords;if(!p||!Number.isFinite(Number(p.latitude)))return toast("فعّل GPS وانتظر تحديد موقعك");const meta=reportMeta[type];if(!meta)return;try{await addDoc(collection(db,"roadReports"),{type,note:byId("roadReportNote")?.value.trim()||"",latitude:Number(p.latitude),longitude:Number(p.longitude),reportedBy:state.user.uid,reporterName:state.driverData?.name||"كابتن كروة",active:true,createdAt:serverTimestamp(),createdAtISO:new Date().toISOString()});if(byId("roadReportNote"))byId("roadReportNote").value="";toast(`تم إرسال بلاغ: ${meta[1]}`)}catch(e){console.error(e);toast("تعذر حفظ البلاغ — انشر قواعد Firestore الجديدة")}}
+document.querySelectorAll("[data-road-report]").forEach(b=>b.addEventListener("click",()=>submitRoadReport(b.dataset.roadReport)));

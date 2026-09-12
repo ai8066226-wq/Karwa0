@@ -11,6 +11,7 @@ import {
   updateProfile
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
 import {
+  addDoc,
   collection,
   doc,
   getDoc,
@@ -1042,6 +1043,7 @@ async function searchPlaces(q){
   const view=bounds?`&viewbox=${bounds.getWest()},${bounds.getNorth()},${bounds.getEast()},${bounds.getSouth()}`:(center?`&viewbox=${center.lng-1.5},${center.lat+1.0},${center.lng+1.5},${center.lat-1.0}`:"");
   const queries=[q,`${q} الموصل`,`${q} العراق`]; let out=[];
   for(const term of queries){try{const r=await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&namedetails=1&extratags=1&dedupe=1&limit=18&countrycodes=iq&accept-language=ar,ku,en${view}&bounded=0&q=${encodeURIComponent(term)}`,{headers:{Accept:"application/json"},signal:AbortSignal.timeout(7000)});if(r.ok)out.push(...await r.json())}catch(e){} if(out.length>=12)break;}
+  const local=(customerCommunity?.landmarkData||[]).filter(x=>normalizeArabicSearch(x.name).toLowerCase().includes(key)).map(x=>({lat:x.latitude,lon:x.longitude,name:x.name,display_name:`${x.name} — معلم مضاف في كروة`,namedetails:{"name:ar":x.name},category:"place",class:"place",importance:1,osm_type:"karwa",osm_id:x.id})); out.unshift(...local);
   const seen=new Set(); const result=out.filter(x=>{const k=x.osm_type&&x.osm_id?`${x.osm_type}:${x.osm_id}`:`${Number(x.lat).toFixed(5)},${Number(x.lon).toFixed(5)}`;if(seen.has(k))return false;seen.add(k);return true}).sort((a,b)=>placeRank(b,q,center)-placeRank(a,q,center)).slice(0,12);
   placeSearchCache.set(key,result); if(placeSearchCache.size>40)placeSearchCache.delete(placeSearchCache.keys().next().value); return result;
 }
@@ -1123,6 +1125,7 @@ onAuthStateChanged(auth, async user => {
     }
     subscribeToOrders(user);
     subscribeToRatings(user);
+    startCustomerCommunity();
   } catch (error) {
     console.error(error);
     showToast("تم الدخول، لكن تعذر تحميل بيانات الحساب. تحقق من Firestore.");
@@ -1136,3 +1139,13 @@ const createSafetyEventSecure=httpsCallable(functions,"createSafetyEvent");
 const createTripShareSecure=httpsCallable(functions,"createTripShare");
 byId("shareTrip")?.addEventListener("click",async()=>{if(!state.activeOrder?.firestoreId)return showToast("لا توجد رحلة نشطة");try{const r=await createTripShareSecure({orderId:state.activeOrder.firestoreId});const text=`كروة — مشاركة رحلة ${state.activeOrder.id}\nرمز مشاركة آمن: ${r.data.token}\nصالح لمدة 6 ساعات.`;if(navigator.share)await navigator.share({title:"مشاركة رحلة كروة",text});else await navigator.clipboard.writeText(text);showToast("تم تجهيز مشاركة الرحلة");}catch(e){console.error(e);showToast("تعذر إنشاء مشاركة آمنة");}});
 byId("sosTrip")?.addEventListener("click",async()=>{if(!state.activeOrder?.firestoreId||!confirm("إرسال تنبيه سلامة عاجل للإدارة لهذه الرحلة؟"))return;const send=async pos=>{try{await createSafetyEventSecure({orderId:state.activeOrder.firestoreId,kind:"sos",latitude:pos?.coords?.latitude||null,longitude:pos?.coords?.longitude||null,note:"SOS من الراكب"});showToast("تم إرسال تنبيه السلامة للإدارة");}catch(e){console.error(e);showToast("تعذر إرسال التنبيه");}};navigator.geolocation?navigator.geolocation.getCurrentPosition(send,()=>send(null),{timeout:5000}):send(null);});
+
+// Phase 18 — community landmarks and live road reports
+const customerCommunity={reports:new Map(),landmarks:new Map(),landmarkData:[],started:false};
+const customerReportMeta={traffic:["🚦","ازدحام"],accident:["💥","حادث"],closure:["⛔","شارع مغلق"],roadwork:["🚧","حفريات / أعمال طريق"],hazard:["⚠️","عائق على الطريق"]};
+function customerCommunityIcon(kind,type="report"){const meta=customerReportMeta[kind]||["📌","بلاغ"];return window.L.divIcon({className:"",html:`<div class="${type==='landmark'?'landmark-marker':'road-report-marker'}">${type==='landmark'?'📍':meta[0]}</div>`,iconSize:[36,36],iconAnchor:[18,18]});}
+function startCustomerCommunity(){if(customerCommunity.started||!state.map||!auth.currentUser)return;customerCommunity.started=true;
+ onSnapshot(collection(db,"roadReports"),snap=>{const live=new Set();snap.forEach(d=>{const x=d.data(),ts=x.createdAt?.toMillis?.()||Date.parse(x.createdAtISO||0);if(!x.active||Date.now()-ts>3*60*60*1000)return;live.add(d.id);const ll=[Number(x.latitude),Number(x.longitude)];if(!Number.isFinite(ll[0])||!Number.isFinite(ll[1]))return;let m=customerCommunity.reports.get(d.id);if(!m){m=window.L.marker(ll,{icon:customerCommunityIcon(x.type)}).addTo(state.map);customerCommunity.reports.set(d.id,m)}else m.setLatLng(ll);const label=customerReportMeta[x.type]?.[1]||"بلاغ طريق";m.bindPopup(`<b>${label}</b>${x.note?`<br>${x.note}`:""}<br><small>بلاغ حديث من كباتن كروة</small>`)});for(const [id,m] of customerCommunity.reports)if(!live.has(id)){state.map.removeLayer(m);customerCommunity.reports.delete(id)}});
+ onSnapshot(collection(db,"landmarks"),snap=>{const live=new Set(),data=[];snap.forEach(d=>{const x=d.data();if(x.status==="hidden")return;data.push({...x,id:d.id});live.add(d.id);const ll=[Number(x.latitude),Number(x.longitude)];if(!Number.isFinite(ll[0])||!Number.isFinite(ll[1]))return;let m=customerCommunity.landmarks.get(d.id);if(!m){m=window.L.marker(ll,{icon:customerCommunityIcon(null,"landmark")}).addTo(state.map);customerCommunity.landmarks.set(d.id,m)}else m.setLatLng(ll);m.bindPopup(`<b>${x.name||"معلم كروة"}</b><br><small>${x.category||"معلم محلي"}</small>`)});customerCommunity.landmarkData=data;placeSearchCache.clear();for(const [id,m] of customerCommunity.landmarks)if(!live.has(id)){state.map.removeLayer(m);customerCommunity.landmarks.delete(id)}});
+}
+byId("saveLandmark")?.addEventListener("click",async()=>{const user=auth.currentUser;if(!user)return showToast("سجّل الدخول أولًا");const name=byId("landmarkName")?.value.trim();if(!name||name.length<3)return showToast("اكتب اسم المعلم بوضوح");initializeCustomerMap();const c=state.map.getCenter();try{await addDoc(collection(db,"landmarks"),{name,category:byId("landmarkCategory")?.value||"place",latitude:c.lat,longitude:c.lng,createdBy:user.uid,createdByName:state.name||"مستخدم كروة",status:"active",createdAt:serverTimestamp(),createdAtISO:new Date().toISOString()});byId("landmarkName").value="";showToast("تمت إضافة المعلم إلى خريطة كروة") }catch(e){console.error(e);showToast("تعذر إضافة المعلم — انشر قواعد Firestore الجديدة")}});

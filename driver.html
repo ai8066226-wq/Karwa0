@@ -12,6 +12,9 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <meta name="theme-color" content="#111827">
   <link rel="icon" href="./karwa-icon.svg" type="image/svg+xml">
+<style>
+.maplibregl-canvas{direction:ltr!important}.leaflet-tooltip,.leaflet-popup-content{direction:rtl;text-align:right;unicode-bidi:plaintext}.report-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}.report-grid button{border:1px solid #e1e7ef;background:#fff;border-radius:12px;padding:10px;font-weight:800;cursor:pointer}.report-grid button:hover{background:#fff4ef;border-color:#ffb89c}.report-note{width:100%;box-sizing:border-box;margin:0 0 8px;border:1px solid #dfe5ed;border-radius:11px;padding:10px;direction:rtl}.road-report-marker{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:#fff;box-shadow:0 5px 18px rgba(0,0,0,.22);font-size:19px;border:2px solid #ff6b35}.landmark-marker{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:#102044;color:#fff;box-shadow:0 5px 18px rgba(0,0,0,.2);font-size:17px}
+</style>
 </head>
 <body>
   <header class="topbar">
@@ -157,6 +160,17 @@
           <div class="live-map" id="driverMap"></div>
           <p class="muted" id="locationHint">فعّل حالة الاتصال واسمح بالوصول إلى الموقع.</p>
         </div>
+        <div class="card road-report-card">
+          <div class="card-heading"><h3>بلاغات الطريق</h3><span class="status-chip active">مباشر</span></div>
+          <p class="muted">أبلغ الكباتن القريبين عن حالة الطريق من موقعك الحالي.</p>
+          <div class="report-grid">
+            <button type="button" data-road-report="traffic">🚦 ازدحام</button><button type="button" data-road-report="accident">💥 حادث</button>
+            <button type="button" data-road-report="closure">⛔ شارع مغلق</button><button type="button" data-road-report="roadwork">🚧 حفريات</button>
+            <button type="button" data-road-report="hazard">⚠️ عائق</button>
+          </div>
+          <input id="roadReportNote" class="report-note" placeholder="ملاحظة اختيارية عن البلاغ">
+          <small class="muted">تنتهي البلاغات بصريًا بعد 3 ساعات لتبقى الخريطة حديثة.</small>
+        </div>
         <div class="card">
           <div class="online-row">
             <div><h3>جاهز لاستلام الطلبات</h3><small class="muted">فعّل الحالة للبدء</small></div>
@@ -178,6 +192,7 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
+  <script>try{if(window.maplibregl&&maplibregl.setRTLTextPlugin&&(!maplibregl.getRTLTextPluginStatus||maplibregl.getRTLTextPluginStatus()==="unavailable")){maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",true).catch(()=>{});}}catch(e){}</script>
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
   <script type="module" src="./driver.js"></script>
   <script src="./pwa.js"></script>
