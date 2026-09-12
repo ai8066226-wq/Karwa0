@@ -1657,6 +1657,53 @@ body.customer-map-mode .location-button small{color:#526278}body.customer-map-mo
  #home .map-information{display:none}.map-options-toggle{min-width:104px;min-height:50px}
  #home .tracking-card .tracking-actions{grid-template-columns:1fr 1fr}
 }
+/* شاشة طلباتي — تخطيط مخصص للموبايل */
+@media(max-width:700px){
+ #orders{width:100%;min-width:0}
+ #orders .page-heading{margin-bottom:13px;padding:0 2px}#orders .page-heading h1{font-size:24px}#orders .page-heading p{margin-top:2px;font-size:12px}
+ #ordersList{gap:10px}
+ #ordersList .order-item{width:100%;min-width:0;margin:0;padding:13px;display:grid;grid-template-columns:44px minmax(0,1fr);grid-template-areas:"icon details" "price price";align-items:start;gap:10px 11px;border:1px solid #d5dee8;border-radius:18px!important;background:#fff;box-shadow:0 7px 22px rgba(10,37,64,.07)}
+ #ordersList .order-item.is-active{border-right:4px solid #00746f}#ordersList .order-item.is-completed{border-right:4px solid #164b78}#ordersList .order-item.is-cancelled{border-right:4px solid #b42335;opacity:.88}
+ #ordersList .order-icon{grid-area:icon;width:44px;height:44px;border-radius:14px;color:#0a2540;background:#e7f4f6;font-size:21px}
+ #ordersList .order-details{grid-area:details;min-width:0;padding-top:1px}#ordersList .order-details>strong{padding-left:4px;color:#0a2540;font-size:14px;line-height:1.45}
+ #ordersList .order-details>small{margin-top:3px;display:-webkit-box;color:#526278;font-size:11px;line-height:1.55;white-space:normal;overflow:hidden;text-overflow:ellipsis;word-break:break-word;-webkit-box-orient:vertical;-webkit-line-clamp:3}
+ #ordersList .order-price{grid-area:price;margin-top:1px;padding-top:9px;display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:1px solid #e1e7ee;text-align:initial}
+ #ordersList .order-price strong{color:#0a2540;font-size:15px;white-space:nowrap}#ordersList .order-price .order-status{padding:4px 8px;border-radius:999px;color:#006b66;background:#e2f7f3;font-size:10px;font-weight:900;white-space:nowrap}
+ #ordersList .order-item.is-completed .order-status{color:#164b78;background:#e8eff7}#ordersList .order-item.is-cancelled .order-status{color:#a61b2b!important;background:#fff0f2}
+ #ordersList .order-actions{margin-top:8px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}#ordersList .mini-action{min-height:36px;padding:6px 7px;border:1px solid #c5d1dd;border-radius:10px;color:#0a2540;background:#f8fafc;font-size:10px;line-height:1.3}
+ #ordersList .order-review{margin-top:7px}#ordersList .rate-driver-button{min-height:36px;padding:6px 10px;font-size:10px}#ordersList .rating-result{font-size:16px}#ordersList .order-review small{font-size:10px}
+ #ordersList .empty-state{padding:36px 16px;border-radius:18px!important}#ordersList .empty-state span{font-size:38px}#ordersList .empty-state p{font-size:12px}
+}
+@media(max-width:370px){
+ #ordersList .order-item{grid-template-columns:40px minmax(0,1fr);padding:11px;gap:9px}#ordersList .order-icon{width:40px;height:40px;font-size:19px}#ordersList .order-details>strong{font-size:13px}#ordersList .order-price strong{font-size:14px}
+}
+</style>
+<style id="phase22-mobile-orders">
+.orders-mobile-summary{display:none}
+.order-card-main{min-width:0;display:flex;align-items:flex-start;gap:12px;flex:1}
+@media(max-width:950px){
+ #orders{padding-bottom:8px}
+ #orders .page-heading{margin:0 0 12px!important;display:flex;align-items:end;justify-content:space-between;gap:10px}#orders .page-heading h1{font-size:22px!important}#orders .page-heading p{max-width:210px;margin:0!important;color:#526278;font-size:11px!important;text-align:left}
+ .orders-mobile-summary{margin-bottom:12px;padding:12px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;border:1px solid rgba(255,255,255,.18);border-radius:18px;color:#fff;background:linear-gradient(135deg,#0a2540,#135e72);box-shadow:0 10px 28px rgba(10,37,64,.18)}
+ .orders-mobile-summary>div{min-width:0;padding:7px 5px;text-align:center;border-left:1px solid rgba(255,255,255,.17)}.orders-mobile-summary>div:last-child{border-left:0}.orders-mobile-summary small{display:block;color:#d7e5ec;font-size:9px;font-weight:700}.orders-mobile-summary strong{display:block;margin-top:2px;color:#fff;font-size:18px;line-height:1.25}
+ #ordersList{display:grid!important;gap:8px!important}
+ #ordersList .order-item{width:100%!important;min-width:0!important;margin:0!important;padding:10px 11px!important;display:grid!important;grid-template-columns:minmax(0,1fr)!important;grid-template-areas:"main" "price"!important;gap:8px!important;border:1px solid #d7e0e9!important;border-right-width:4px!important;border-radius:16px!important;background:#fff!important;box-shadow:0 5px 16px rgba(10,37,64,.065)!important}
+ #ordersList .order-item.is-active{border-right-color:#00746f!important}#ordersList .order-item.is-completed{border-right-color:#164b78!important}#ordersList .order-item.is-cancelled{border-right-color:#b42335!important}
+ #ordersList .order-card-main{grid-area:main;display:grid;grid-template-columns:40px minmax(0,1fr);align-items:start;gap:9px}
+ #ordersList .order-icon{grid-area:auto!important;width:40px!important;height:40px!important;border-radius:13px!important;background:#e8f3f6!important;font-size:19px!important}
+ #ordersList .order-details{grid-area:auto!important;padding:0!important}.order-details>strong{font-size:13px!important;line-height:1.4!important}
+ #ordersList .order-details>small{margin-top:2px!important;display:-webkit-box!important;color:#526278!important;font-size:10px!important;line-height:1.5!important;white-space:normal!important;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+ #ordersList .order-price{grid-area:price!important;margin:0!important;padding:7px 49px 0 0!important;display:flex!important;align-items:center;justify-content:space-between;gap:8px;border-top:1px dashed #d9e2eb!important}
+ #ordersList .order-price strong{font-size:14px!important}#ordersList .order-price .order-status{padding:3px 8px!important;font-size:9px!important}
+ #ordersList .order-actions{margin-top:6px!important;display:flex!important;gap:5px!important}#ordersList .mini-action{width:auto!important;min-height:32px!important;padding:5px 8px!important;flex:0 1 auto;border-radius:9px!important;font-size:9px!important}
+ #ordersList .order-review{margin-top:6px!important}#ordersList .rate-driver-button{min-height:32px!important;padding:5px 9px!important;font-size:9px!important}
+ #ordersList .empty-state{padding:30px 14px!important;border-right-width:1px!important}.orders-list .empty-state strong{font-size:14px}.orders-list .empty-state p{margin:5px 0 0}
+}
+@media(max-width:380px){
+ #orders .page-heading{display:block}#orders .page-heading p{margin-top:2px!important;text-align:right}
+ .orders-mobile-summary{padding:10px 8px}.orders-mobile-summary strong{font-size:16px}
+ #ordersList .order-card-main{grid-template-columns:36px minmax(0,1fr)}#ordersList .order-icon{width:36px!important;height:36px!important;font-size:17px!important}#ordersList .order-price{padding-right:45px!important}
+}
 </style>
 </head>
 
@@ -1967,6 +2014,12 @@ body.customer-map-mode .location-button small{color:#526278}body.customer-map-mo
           <div class="page-heading">
             <h1>طلباتي</h1>
             <p>جميع رحلاتك وطلبات التوصيل.</p>
+          </div>
+
+          <div class="orders-mobile-summary" aria-label="ملخص الطلبات">
+            <div><small>إجمالي الطلبات</small><strong id="ordersTotalCount">0</strong></div>
+            <div><small>قيد التنفيذ</small><strong id="ordersActiveCount">0</strong></div>
+            <div><small>مكتملة</small><strong id="ordersCompletedCount">0</strong></div>
           </div>
 
           <div class="orders-list" id="ordersList"></div>

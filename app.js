@@ -806,6 +806,12 @@ byId("cancelOrder").addEventListener("click", async event => {
 function renderOrders() {
   const container = byId("ordersList");
   container.innerHTML = "";
+  const customerOrders = state.orders || [];
+  const activeOrders = customerOrders.filter(order => !order.cancelled && Number(order.statusIndex || 0) < orderStatuses.length - 1).length;
+  const completedOrders = customerOrders.filter(order => !order.cancelled && Number(order.statusIndex || 0) >= orderStatuses.length - 1).length;
+  if (byId("ordersTotalCount")) byId("ordersTotalCount").textContent = String(customerOrders.length);
+  if (byId("ordersActiveCount")) byId("ordersActiveCount").textContent = String(activeOrders);
+  if (byId("ordersCompletedCount")) byId("ordersCompletedCount").textContent = String(completedOrders);
   if (!state.user) {
     container.innerHTML = `<div class="card empty-state"><span>🔐</span><strong>سجّل الدخول لعرض طلباتك</strong><p>طلبات كل مستخدم محفوظة في حسابه.</p></div>`;
     return;
@@ -841,9 +847,11 @@ function renderOrders() {
     const amount = document.createElement("strong");
     amount.textContent = formatMoney(order.price);
     const status = document.createElement("small");
+    status.className = "order-status";
     const statusIndex = Number(order.statusIndex || 0);
     status.textContent = order.cancelled ? "ملغي" : orderStatuses[statusIndex];
     if (order.cancelled) status.style.color = "var(--danger)";
+    article.classList.add(order.cancelled ? "is-cancelled" : statusIndex >= orderStatuses.length - 1 ? "is-completed" : "is-active");
     price.append(amount, status);
 
     const completed = !order.cancelled && statusIndex >= orderStatuses.length - 1 && order.driverId;
@@ -864,7 +872,10 @@ function renderOrders() {
       details.appendChild(review);
     }
 
-    article.append(icon, details, price);
+    const main = document.createElement("div");
+    main.className = "order-card-main";
+    main.append(icon, details);
+    article.append(main, price);
     container.appendChild(article);
   });
 }
