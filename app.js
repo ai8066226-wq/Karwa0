@@ -299,6 +299,9 @@ function setButtonBusy(button, busy, busyLabel = "جاري التنفيذ…") {
 }
 
 function switchView(viewId) {
+  const isMapView = viewId === "home";
+  document.body.classList.toggle("customer-map-mode", isMapView);
+  if (!isMapView) byId("home")?.classList.remove("customer-options-open");
   document.querySelectorAll(".view").forEach(view => {
     view.classList.toggle("active", view.id === viewId);
   });
@@ -1068,6 +1071,7 @@ function setupPlaceSearch(inputId,resultsId,type){
 setupPlaceSearch("rideFrom","rideFromResults","pickup");setupPlaceSearch("rideTo","rideToResults","destination");
 
 setAuthMode("login");
+document.body.classList.add("customer-map-mode");
 initializeCustomerMap();
 renderProfile();
 renderNotificationSwitch();
@@ -1152,4 +1156,3 @@ function startCustomerCommunityLayers(){if(customerCommunity.started||!state.map
  onSnapshot(collection(db,"landmarks"),snap=>{const live=new Set(),data=[];snap.forEach(d=>{const x=d.data();if(x.status==="hidden")return;data.push({...x,id:d.id});live.add(d.id);const ll=[Number(x.latitude),Number(x.longitude)];if(!Number.isFinite(ll[0])||!Number.isFinite(ll[1]))return;let m=customerCommunity.landmarks.get(d.id);if(!m){m=window.L.marker(ll,{icon:customerCommunityIcon(null,"landmark")}).addTo(state.map);customerCommunity.landmarks.set(d.id,m)}else m.setLatLng(ll);m.bindPopup(`<div dir="rtl"><b>${x.name||"معلم كروة"}</b><br><small>${x.category||"معلم محلي"} · أضيف بواسطة ${x.createdByRole==='driver'?'كابتن':'عميل'}</small></div>`)});customerCommunity.landmarkData=data;placeSearchCache.clear();for(const [id,m] of customerCommunity.landmarks)if(!live.has(id)){state.map.removeLayer(m);customerCommunity.landmarks.delete(id)}});
 }
 byId("saveLandmark")?.addEventListener("click",async()=>{const user=auth.currentUser;if(!user)return showToast("سجّل الدخول أولًا");const name=byId("landmarkName")?.value.trim();if(!name||name.length<3)return showToast("اكتب اسم المعلم بوضوح");initializeCustomerMap();const c=state.map.getCenter();try{await addDoc(collection(db,"landmarks"),{name,category:byId("landmarkCategory")?.value||"place",latitude:c.lat,longitude:c.lng,createdBy:user.uid,createdByName:state.name||"مستخدم كروة",createdByRole:"customer",status:"active",createdAt:serverTimestamp(),createdAtISO:new Date().toISOString()});byId("landmarkName").value="";showToast("تمت إضافة المعلم إلى خريطة كروة") }catch(e){console.error(e);showToast("تعذر إضافة المعلم — انشر قواعد Firestore الجديدة")}});
-

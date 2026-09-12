@@ -17,22 +17,52 @@
 .road-report-marker{position:relative}.confirm-badge{position:absolute;top:-7px;left:-7px;min-width:18px;height:18px;border-radius:10px;background:#102044;color:#fff;font:700 11px/18px Arial;text-align:center;border:2px solid #fff}</style>
 
 <style id="phase20-driver-map-first">
-/* Phase 20 — Captain Map First */
-#driverView{position:relative;max-width:none!important;width:100%!important;padding:0!important;overflow:hidden}
-#driverView>.hero{position:absolute;z-index:50;top:12px;right:16px;left:16px;margin:0;pointer-events:none}#driverView>.hero>*{pointer-events:auto;background:rgba(255,255,255,.93);backdrop-filter:blur(16px);padding:9px 13px;border-radius:16px;box-shadow:0 10px 30px rgba(16,32,68,.13)}
-#driverView>.stats{position:absolute;z-index:45;top:86px;right:16px;display:flex;gap:7px;max-width:calc(100% - 32px);overflow-x:auto;padding:0;margin:0;scrollbar-width:none}.stats::-webkit-scrollbar{display:none}#driverView>.stats .stat{min-width:108px;background:rgba(255,255,255,.94);backdrop-filter:blur(14px);box-shadow:0 8px 24px rgba(16,32,68,.12);border-radius:14px}
-#driverView>.layout{position:relative!important;display:block!important;height:100dvh;min-height:650px;margin:0!important}
-#driverView .layout aside>.card:first-child{position:absolute;z-index:1;inset:0;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;box-shadow:none!important;background:#e9eef4}
-#driverView .layout aside>.card:first-child>.card-heading,#driverView .layout aside>.card:first-child>.driver-nav-strip,#driverView .layout aside>.card:first-child>.nav-next-turn,#driverView .layout aside>.card:first-child>.route-alert,#driverView .layout aside>.card:first-child>#locationHint{position:absolute;z-index:20;background:rgba(255,255,255,.94);backdrop-filter:blur(15px);box-shadow:0 8px 26px rgba(16,32,68,.14)}
-#driverView .layout aside>.card:first-child>.card-heading{top:152px;left:16px;border-radius:14px;padding:9px 12px}#driverView .driver-nav-strip{top:152px;right:16px;border-radius:16px;padding:8px;max-width:520px}#driverView .nav-next-turn{top:222px;right:16px;border-radius:16px;padding:10px 13px;max-width:410px}#driverView .route-alert{top:290px;right:16px;border-radius:12px;padding:9px 12px}#driverView #locationHint{left:16px;bottom:18px;border-radius:12px;padding:8px 11px;margin:0!important}
-#driverMap{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;min-height:100%!important;border-radius:0!important}
-#driverView .layout>section{position:absolute;z-index:35;right:16px;bottom:16px;width:min(430px,calc(100% - 32px));max-height:48dvh;overflow:auto;background:rgba(255,255,255,.95);backdrop-filter:blur(18px);border-radius:24px;box-shadow:0 18px 55px rgba(16,32,68,.23);padding:8px}
-#driverView .layout>section>.card{box-shadow:none!important;border:0!important;margin:0!important;background:transparent!important}
-#driverView .layout aside>.card:not(:first-child){position:relative;z-index:38;width:330px;margin-right:auto;margin-left:16px;background:rgba(255,255,255,.95);backdrop-filter:blur(16px);box-shadow:0 12px 36px rgba(16,32,68,.18)}
-#driverView .layout aside>.road-report-card{position:absolute!important;z-index:38;left:16px;bottom:16px;max-height:45dvh;overflow:auto}.phase20-driver-tools{position:absolute!important;z-index:38;left:16px;top:152px}
-#driverView .layout aside>.card:nth-of-type(3){position:absolute!important;z-index:42;left:16px;top:152px;width:260px}#driverView .layout aside>.card:nth-of-type(4),#driverView .layout aside>.card:nth-of-type(5){display:none}
-.phase20-driver-handle{display:flex;width:100%;height:26px;border:0;background:transparent;align-items:center;justify-content:center;cursor:pointer;position:sticky;top:0;z-index:30}.phase20-driver-handle:before{content:"";width:44px;height:5px;border-radius:99px;background:#c9d0da}.phase20-driver-collapsed{max-height:64px!important;overflow:hidden!important}
-@media(max-width:760px){#driverView>.hero{top:7px;right:8px;left:8px}#driverView>.hero p{display:none}#driverView>.stats{top:70px;right:8px;max-width:calc(100% - 16px)}#driverView>.stats .stat{min-width:92px;padding:8px}#driverView>.layout{height:100dvh;min-height:580px}#driverView .layout aside>.card:first-child>.card-heading{display:none}#driverView .driver-nav-strip{top:124px;right:8px;left:8px;max-width:none;overflow-x:auto}#driverView .nav-next-turn{top:186px;right:8px;left:8px;max-width:none}#driverView .layout>section{right:8px;left:8px;bottom:max(8px,env(safe-area-inset-bottom));width:auto;max-height:42dvh;border-radius:24px 24px 18px 18px}#driverView .layout aside>.road-report-card{left:8px;bottom:calc(42dvh + 18px);width:54px;height:54px;overflow:hidden;padding:0;border-radius:50%}#driverView .layout aside>.road-report-card .card-heading{height:54px;justify-content:center}#driverView .layout aside>.road-report-card .card-heading h3{font-size:0}#driverView .layout aside>.road-report-card .card-heading h3:after{content:"⚠️";font-size:23px}#driverView .layout aside>.road-report-card>*:not(.card-heading){display:none}#driverView .layout aside>.card:nth-of-type(3){left:8px;top:250px;width:150px;padding:8px}#driverView #locationHint{display:none}}
+/* خريطة الكابتن بملء المساحة المرئية مع درج عمليات جانبي */
+body.driver-map-mode{height:100dvh;overflow:hidden}
+#driverView{position:relative;isolation:isolate;max-width:none!important;width:100%!important;height:calc(100dvh - 72px);min-height:0!important;margin:0!important;padding:0!important;overflow:hidden}
+#driverView>.layout{position:absolute!important;display:block!important;inset:0;height:auto!important;min-height:0!important;margin:0!important}
+#driverView .layout>aside:not(.driver-options-drawer){position:absolute!important;display:block!important;inset:0;margin:0!important}
+#driverView .layout>aside>.card:first-child{position:absolute!important;z-index:1;inset:0;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:#e9eef4;box-shadow:none!important;overflow:hidden}
+#driverMap{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;min-height:0!important;border:0!important;border-radius:0!important}
+#driverView>.hero{position:absolute;z-index:760;top:14px;right:16px;left:auto;width:min(430px,calc(100% - 32px));margin:0;padding:14px 16px;border:1px solid rgba(255,255,255,.2);border-radius:20px;background:linear-gradient(135deg,rgba(16,32,68,.95),rgba(31,104,113,.9));box-shadow:0 14px 38px rgba(16,32,68,.24);backdrop-filter:blur(18px)}
+#driverView>.hero h1{font-size:clamp(19px,2vw,25px)}#driverView>.hero p{margin-top:3px;font-size:13px}#driverView>.hero .role-badge{padding:6px 9px;font-size:11px}
+#driverView .layout>aside>.card:first-child>.card-heading,#driverView .driver-nav-strip,#driverView .nav-next-turn,#driverView .route-alert,#driverView #locationHint{position:absolute;z-index:720;margin:0!important;background:rgba(255,255,255,.93);box-shadow:0 8px 26px rgba(16,32,68,.15);backdrop-filter:blur(16px)}
+#driverView .layout>aside>.card:first-child>.card-heading{top:16px;left:16px;padding:9px 12px;border-radius:14px}
+#driverView .driver-nav-strip{top:112px;right:16px;max-width:540px;padding:8px;border-radius:16px}
+#driverView .nav-next-turn{top:180px;right:16px;max-width:430px;padding:10px 13px;border-radius:16px;background:rgba(16,32,68,.94);color:#fff}
+#driverView .route-alert{top:248px;right:16px;max-width:430px;padding:9px 12px;border-radius:12px}
+#driverView #locationHint{left:16px;bottom:18px;padding:8px 11px;border-radius:12px}
+.driver-options-toggle{position:absolute;z-index:900;right:16px;top:50%;min-width:120px;padding:12px 16px;display:flex;align-items:center;justify-content:center;gap:9px;border:1px solid rgba(255,255,255,.55);border-radius:16px;color:#fff;background:linear-gradient(135deg,#102044,#1f6871);box-shadow:0 14px 34px rgba(16,32,68,.32);font-weight:900;transform:translateY(-50%);transition:transform .2s,opacity .2s}
+.driver-options-toggle span{font-size:21px;line-height:1}.driver-options-toggle:hover{transform:translateY(-50%) scale(1.03)}
+#driverView.driver-options-open .driver-options-toggle{opacity:0;pointer-events:none;transform:translateY(-50%) translateX(24px)}
+.driver-options-scrim{position:absolute;z-index:925;inset:0;background:rgba(9,21,45,.3);opacity:0;pointer-events:none;transition:opacity .25s ease}
+#driverView.driver-options-open .driver-options-scrim{opacity:1;pointer-events:auto}
+.driver-options-drawer{position:absolute;z-index:950;top:14px;right:14px;bottom:14px;width:min(460px,calc(100% - 28px));display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.86);border-radius:26px;background:rgba(247,249,252,.97);box-shadow:0 24px 70px rgba(16,32,68,.32);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);opacity:0;pointer-events:none;transform:translateX(calc(100% + 36px));transition:transform .3s cubic-bezier(.22,.8,.25,1),opacity .2s ease;overflow:hidden}
+#driverView.driver-options-open .driver-options-drawer{opacity:1;pointer-events:auto;transform:translateX(0)}
+.driver-options-header{position:relative;z-index:2;padding:14px 16px 12px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.96)}
+.driver-options-header div{display:grid;gap:1px}.driver-options-header small{color:var(--muted);font-size:11px}.driver-options-header strong{font-size:17px}
+.driver-options-close{width:40px;height:40px;display:grid;place-items:center;flex:0 0 auto;border:1px solid var(--line);border-radius:13px;color:var(--navy);background:#fff;font-size:25px;line-height:1}
+.driver-options-body{padding:14px;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.driver-options-body>.stats{position:static!important;margin:0 0 14px!important;display:grid!important;grid-template-columns:1fr 1fr!important;gap:8px!important;max-width:none!important;overflow:visible!important}
+.driver-options-body>.stats .stat{min-width:0!important;padding:12px!important;border-radius:15px!important;background:#fff!important;box-shadow:none!important}.driver-options-body>.stats .stat strong{font-size:20px}
+.driver-options-body>.notice{margin:0 0 12px}
+.driver-options-body>section,.driver-options-tools{display:grid;gap:12px}
+.driver-options-body>section>.card,.driver-options-tools>.card{position:static!important;display:block!important;width:auto!important;height:auto!important;max-height:none!important;margin:0!important;padding:16px!important;overflow:visible!important;border:1px solid var(--line)!important;border-radius:19px!important;background:#fff!important;box-shadow:0 7px 22px rgba(16,32,68,.06)!important;backdrop-filter:none!important}
+.driver-options-tools{margin-top:12px}.driver-options-body .road-report-card>*{display:block!important}.driver-options-body .road-report-card .card-heading{display:flex!important;height:auto!important}.driver-options-body .road-report-card .card-heading h3{font-size:inherit!important}.driver-options-body .report-grid{grid-template-columns:1fr 1fr}
+@media(max-width:760px){
+ #driverView{height:calc(100dvh - 64px)}
+ #driverView>.hero{top:8px;right:8px;width:calc(100% - 82px);padding:10px 12px;border-radius:17px}
+ #driverView>.hero p,#driverView>.hero .role-badge{display:none}#driverView>.hero h1{font-size:18px}
+ #driverView .layout>aside>.card:first-child>.card-heading{display:none}
+ #driverView .driver-nav-strip{top:66px;right:8px;left:8px;max-width:none;overflow-x:auto}
+ #driverView .nav-next-turn{top:126px;right:8px;left:8px;max-width:none}
+ #driverView .route-alert{top:192px;right:8px;left:8px;max-width:none}
+ #driverView #locationHint{display:none}
+ .driver-options-toggle{right:10px;top:50%;bottom:auto;min-width:112px;padding:12px 14px}
+ .driver-options-drawer{top:8px;right:8px;bottom:8px;width:min(440px,calc(100% - 16px));border-radius:24px}
+}
+@media(max-width:480px){.driver-options-body{padding:10px}.driver-options-body>section>.card,.driver-options-tools>.card{padding:14px!important}.driver-options-toggle{border-radius:15px}.driver-nav-strip{grid-template-columns:1fr 1fr!important}}
+@media(prefers-reduced-motion:reduce){.driver-options-drawer,.driver-options-toggle,.driver-options-scrim{transition:none}}
 </style>
 </head>
 <body>
@@ -216,6 +246,64 @@
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
   <script type="module" src="./driver.js"></script>
   <script src="./pwa.js"></script>
-<script id="phase20-driver-map-first-js">window.addEventListener('DOMContentLoaded',()=>{const sheet=document.querySelector('#driverView .layout>section');if(sheet&&!sheet.querySelector('.phase20-driver-handle')){const h=document.createElement('button');h.type='button';h.className='phase20-driver-handle';h.setAttribute('aria-label','فتح أو تصغير الطلبات');h.onclick=()=>sheet.classList.toggle('phase20-driver-collapsed');sheet.prepend(h)}});</script>
+<script id="phase20-driver-map-first-js">
+window.addEventListener("DOMContentLoaded",()=>{
+  const view=document.getElementById("driverView");
+  const layout=view?.querySelector(":scope > .layout");
+  const orders=layout?.querySelector(":scope > section");
+  const aside=layout?.querySelector(":scope > aside");
+  const mapCard=aside?.querySelector(":scope > .card:first-child");
+  if(!view||!layout||!orders||!aside||!mapCard)return;
+
+  const toggle=document.createElement("button");
+  toggle.type="button";
+  toggle.className="driver-options-toggle";
+  toggle.id="driverOptionsToggle";
+  toggle.setAttribute("aria-controls","driverOptionsPanel");
+  toggle.setAttribute("aria-expanded","false");
+  toggle.innerHTML='<span aria-hidden="true">☰</span><strong>الخيارات</strong>';
+
+  const scrim=document.createElement("div");
+  scrim.className="driver-options-scrim";
+  scrim.setAttribute("aria-hidden","true");
+
+  const drawer=document.createElement("aside");
+  drawer.className="driver-options-drawer";
+  drawer.id="driverOptionsPanel";
+  drawer.setAttribute("role","dialog");
+  drawer.setAttribute("aria-modal","true");
+  drawer.setAttribute("aria-label","طلبات وخيارات الكابتن");
+  drawer.setAttribute("aria-hidden","true");
+  drawer.innerHTML='<div class="driver-options-header"><div><small>لوحة الكابتن</small><strong>الطلبات وأدوات العمل</strong></div><button class="driver-options-close" type="button" aria-label="إغلاق الخيارات">×</button></div><div class="driver-options-body"></div>';
+
+  const body=drawer.querySelector(".driver-options-body");
+  const stats=view.querySelector(":scope > .stats");
+  const warning=document.getElementById("driverWarningNotice");
+  if(stats)body.appendChild(stats);
+  if(warning)body.appendChild(warning);
+  body.appendChild(orders);
+  const tools=document.createElement("div");
+  tools.className="driver-options-tools";
+  [...aside.querySelectorAll(":scope > .card")].filter(card=>card!==mapCard).forEach(card=>tools.appendChild(card));
+  body.appendChild(tools);
+  layout.append(scrim,toggle,drawer);
+
+  const close=drawer.querySelector(".driver-options-close");
+  const refreshMap=()=>window.setTimeout(()=>window.dispatchEvent(new Event("resize")),330);
+  const setOpen=open=>{
+    view.classList.toggle("driver-options-open",open);
+    toggle.setAttribute("aria-expanded",String(open));
+    drawer.setAttribute("aria-hidden",String(!open));
+    drawer.inert=!open;
+    if(open)window.setTimeout(()=>close.focus({preventScroll:true}),80);
+    refreshMap();
+  };
+  drawer.inert=true;
+  toggle.addEventListener("click",()=>setOpen(true));
+  close.addEventListener("click",()=>{setOpen(false);toggle.focus({preventScroll:true})});
+  scrim.addEventListener("click",()=>setOpen(false));
+  document.addEventListener("keydown",event=>{if(event.key==="Escape"&&view.classList.contains("driver-options-open"))setOpen(false)});
+});
+</script>
 </body>
 </html>

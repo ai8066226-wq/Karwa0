@@ -1547,30 +1547,53 @@
   <link rel="icon" href="./karwa-icon.svg" type="image/svg+xml">
 
 <style id="phase20-map-first">
-/* Phase 20 — Map First floating interface */
-#home{position:relative;min-height:calc(100vh - 76px);overflow:hidden}
-#home .welcome{position:absolute;z-index:45;top:14px;right:18px;left:18px;pointer-events:none}
-#home .welcome>div,#home .welcome .demo-badge{pointer-events:auto;background:rgba(255,255,255,.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);box-shadow:0 10px 32px rgba(16,32,68,.12);border:1px solid rgba(255,255,255,.8);border-radius:18px;padding:10px 14px}
-#home .welcome h1{font-size:clamp(18px,2.3vw,27px);margin:0}#home .welcome p{margin:3px 0 0}
-#home .main-grid{position:relative!important;display:block!important;height:calc(100vh - 76px);min-height:620px;margin:0!important}
-#home .main-grid>.map-card{position:absolute!important;inset:0!important;width:auto!important;height:auto!important;min-height:0!important;border-radius:0!important;margin:0!important;box-shadow:none!important;z-index:1;background:#e9eef4}
-#customerMap{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;min-height:100%!important;border-radius:0!important}
-#home .main-grid>.card:not(.map-card){position:absolute;z-index:35;right:18px;bottom:18px;width:min(430px,calc(100% - 36px));max-height:72vh;overflow:auto;margin:0!important;border:1px solid rgba(255,255,255,.82);border-radius:24px!important;background:rgba(255,255,255,.95);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);box-shadow:0 18px 55px rgba(16,32,68,.22)!important;scrollbar-width:thin}
-#home .tracking-card{position:absolute;z-index:40;left:18px;top:92px;width:min(390px,calc(100% - 36px));margin:0!important;background:rgba(255,255,255,.95);backdrop-filter:blur(18px);border-radius:22px;box-shadow:0 16px 45px rgba(16,32,68,.18)}
-#home .map-information{position:absolute;z-index:12;left:18px;bottom:18px;right:auto;max-width:min(360px,calc(100% - 36px));margin:0!important}
-.phase20-sheet-handle{display:flex;align-items:center;justify-content:center;position:sticky;top:0;z-index:20;margin:-2px -2px 8px;padding:8px;background:linear-gradient(rgba(255,255,255,.98),rgba(255,255,255,.88));border:0;width:calc(100% + 4px);cursor:pointer}
-.phase20-sheet-handle:before{content:"";width:44px;height:5px;border-radius:999px;background:#c9d0da}.phase20-sheet-handle:after{content:"تصغير";position:absolute;left:12px;font-size:11px;color:#68758a;font-weight:800}
-.phase20-collapsed{max-height:72px!important;overflow:hidden!important}.phase20-collapsed .phase20-sheet-handle:after{content:"فتح"}
-.maplibregl-ctrl-top-left{top:88px!important}.maplibregl-ctrl-top-right{top:88px!important}
-@media(max-width:760px){
- #home{min-height:calc(100dvh - 62px)}#home .main-grid{height:calc(100dvh - 62px);min-height:560px}
- #home .welcome{top:8px;right:10px;left:10px}#home .welcome>div{padding:8px 11px}#home .welcome p{display:none}#home .welcome .demo-badge{padding:7px 9px}
- #home .tracking-card{top:76px;left:10px;width:calc(100% - 20px);max-height:185px;overflow:auto}
- #home .main-grid>.card:not(.map-card){right:8px;left:8px;bottom:max(8px,env(safe-area-inset-bottom));width:auto;max-height:52dvh;border-radius:24px 24px 18px 18px!important}
- #home .map-information{left:10px;bottom:calc(52dvh + 18px);max-width:250px;padding:8px 10px!important}
- #home .map-information small{display:none}.maplibregl-ctrl-top-left,.maplibregl-ctrl-top-right{top:72px!important}
- .service-tabs{position:sticky;top:27px;z-index:15;background:rgba(255,255,255,.96);padding-top:4px}
+/* خريطة العميل بملء المساحة المرئية مع درج خدمات جانبي */
+body.customer-map-mode{overflow:hidden}
+body.customer-map-mode main{max-width:none;margin:0;padding:0}
+#home{position:relative;height:calc(100dvh - 76px);min-height:520px;overflow:hidden;isolation:isolate}
+#home .main-grid{position:absolute!important;display:block!important;inset:0;height:auto!important;min-height:0!important;margin:0!important}
+#home .main-grid>.map-card{position:absolute!important;inset:0!important;width:auto!important;height:auto!important;min-height:0!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:#e9eef4;box-shadow:none!important;z-index:1}
+#customerMap{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;min-height:0!important;border-radius:0!important}
+#home .welcome{position:absolute;z-index:720;top:14px;right:18px;left:18px;pointer-events:none}
+#home .welcome>div,#home .welcome .demo-badge{pointer-events:auto;padding:10px 14px;border:1px solid rgba(255,255,255,.78);border-radius:18px;background:rgba(255,255,255,.9);box-shadow:0 10px 32px rgba(16,32,68,.13);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+#home .welcome h1{margin:0;font-size:clamp(18px,2.3vw,27px)}#home .welcome p{margin:3px 0 0}
+#home .tracking-card{position:absolute;z-index:760;left:18px;top:92px;width:min(390px,calc(100% - 36px));max-height:calc(100% - 180px);margin:0!important;overflow:auto;border-radius:22px;background:rgba(255,255,255,.96);box-shadow:0 16px 45px rgba(16,32,68,.2);backdrop-filter:blur(18px)}
+#home .map-information{position:absolute;z-index:710;left:18px;right:auto;bottom:18px;max-width:min(360px,calc(100% - 36px));margin:0!important;border:1px solid rgba(255,255,255,.76);background:rgba(255,255,255,.9);box-shadow:0 8px 26px rgba(16,32,68,.12);backdrop-filter:blur(16px)}
+#home .map-card .leaflet-bottom.leaflet-left{bottom:78px}
+#customerOptionsPanel{position:absolute!important;z-index:950!important;top:14px;right:14px;bottom:14px;width:min(440px,calc(100% - 28px))!important;max-height:none!important;margin:0!important;padding:0 18px 20px!important;overflow:auto!important;overscroll-behavior:contain;border:1px solid rgba(255,255,255,.84)!important;border-radius:26px!important;background:rgba(255,255,255,.965)!important;box-shadow:0 24px 70px rgba(16,32,68,.3)!important;backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);opacity:0;pointer-events:none;transform:translateX(calc(100% + 34px));transition:transform .3s cubic-bezier(.22,.8,.25,1),opacity .2s ease;scrollbar-width:thin}
+#home.customer-options-open #customerOptionsPanel{opacity:1;pointer-events:auto;transform:translateX(0)}
+.map-options-header{position:sticky;top:0;z-index:30;margin:0 -18px 14px;padding:14px 18px 12px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid rgba(223,229,238,.9);background:rgba(255,255,255,.94);backdrop-filter:blur(18px)}
+.map-options-header div{display:grid;gap:1px}.map-options-header small{color:var(--muted);font-size:11px}.map-options-header strong{font-size:17px}
+.map-options-close{width:40px;height:40px;display:grid;place-items:center;flex:0 0 auto;border:1px solid var(--line);border-radius:13px;color:var(--navy);background:#fff;font-size:25px;line-height:1}
+.map-options-toggle{position:absolute;z-index:900;right:14px;top:50%;min-width:112px;padding:12px 16px;display:flex;align-items:center;justify-content:center;gap:9px;border:1px solid rgba(255,255,255,.55);border-radius:16px;color:#fff;background:linear-gradient(135deg,#102044,#1f6871);box-shadow:0 14px 34px rgba(16,32,68,.3);font-weight:900;transform:translateY(-50%);transition:transform .2s,opacity .2s}
+.map-options-toggle span{font-size:21px;line-height:1}.map-options-toggle:hover{transform:translateY(-50%) scale(1.03)}
+#home.customer-options-open .map-options-toggle{opacity:0;pointer-events:none;transform:translateY(-50%) translateX(24px)}
+.map-options-scrim{position:absolute;z-index:925;inset:0;background:rgba(9,21,45,.28);opacity:0;pointer-events:none;transition:opacity .25s ease}
+#home.customer-options-open .map-options-scrim{opacity:1;pointer-events:auto}
+#customerOptionsPanel .service-tabs{position:sticky;top:67px;z-index:24;padding:5px 0 8px;background:rgba(255,255,255,.96)}
+.maplibregl-ctrl-top-left,.maplibregl-ctrl-top-right{top:92px!important}
+@media(max-width:950px){
+ body.customer-map-mode .workspace{height:100dvh;overflow:hidden}
+ #home{height:calc(100dvh - 70px);min-height:0}
+ #home .welcome{top:9px;right:10px;left:10px}
+ #home .welcome>div{padding:8px 11px}#home .welcome p{display:none}#home .welcome .demo-badge{padding:7px 9px}
+ #home .tracking-card{top:76px;left:10px;width:calc(100% - 20px);max-height:42dvh}
+ #home .map-information{left:10px;bottom:92px;max-width:230px;padding:8px 10px!important}
+ #home .map-information small{display:none}
+ #customerOptionsPanel{top:8px;right:8px;bottom:88px;width:min(430px,calc(100% - 16px))!important;border-radius:24px!important}
+ .map-options-toggle{right:10px;top:50%;bottom:auto;min-width:106px;padding:12px 14px}
+ #home .map-card .leaflet-bottom.leaflet-left{bottom:150px}
+ .maplibregl-ctrl-top-left,.maplibregl-ctrl-top-right{top:74px!important}
 }
+@media(max-width:550px){
+ #home{height:calc(100dvh - 70px)}
+ #home .welcome{left:84px}.welcome .demo-badge{display:none!important}
+ #home .tracking-card{right:8px;left:8px;width:auto;max-height:50dvh}
+ #customerOptionsPanel{padding-right:14px!important;padding-left:14px!important}
+ .map-options-header{margin-right:-14px;margin-left:-14px;padding-right:14px;padding-left:14px}
+ .map-options-toggle{border-radius:15px;box-shadow:0 10px 28px rgba(16,32,68,.32)}
+}
+@media(prefers-reduced-motion:reduce){#customerOptionsPanel,.map-options-toggle,.map-options-scrim{transition:none}}
 </style>
 </head>
 
@@ -1667,7 +1690,13 @@
           </div>
 
           <div class="main-grid">
-            <div class="card">
+            <button class="map-options-toggle" id="customerOptionsToggle" type="button" aria-controls="customerOptionsPanel" aria-expanded="false"><span aria-hidden="true">☰</span><strong>الخدمات</strong></button>
+            <div class="map-options-scrim" id="customerOptionsScrim" aria-hidden="true"></div>
+            <div class="card" id="customerOptionsPanel" role="dialog" aria-modal="true" aria-label="خيارات الحجز والخدمات">
+              <div class="map-options-header">
+                <div><small>خيارات العميل</small><strong>اختر خدمتك وحدد التفاصيل</strong></div>
+                <button class="map-options-close" id="customerOptionsClose" type="button" aria-label="إغلاق الخيارات">×</button>
+              </div>
               <div class="service-tabs" role="tablist">
                 <button class="service-button active" data-service="ride">
                   <span>🚕</span>مشوار
@@ -2143,9 +2172,28 @@
   <script src="./pwa.js"></script>
 
 <script id="phase20-map-first-js">
-window.addEventListener('DOMContentLoaded',()=>{
- const sheet=document.querySelector('#home .main-grid>.card:not(.map-card)');
- if(sheet&&!sheet.querySelector('.phase20-sheet-handle')){const h=document.createElement('button');h.type='button';h.className='phase20-sheet-handle';h.setAttribute('aria-label','فتح أو تصغير لوحة الحجز');h.onclick=()=>{sheet.classList.toggle('phase20-collapsed');setTimeout(()=>{try{window.customerMap&&window.customerMap.invalidateSize&&window.customerMap.invalidateSize()}catch(e){}},220)};sheet.prepend(h)}
+window.addEventListener("DOMContentLoaded",()=>{
+  const home=document.getElementById("home");
+  const toggle=document.getElementById("customerOptionsToggle");
+  const close=document.getElementById("customerOptionsClose");
+  const scrim=document.getElementById("customerOptionsScrim");
+  const panel=document.getElementById("customerOptionsPanel");
+  if(!home||!toggle||!close||!scrim||!panel)return;
+  const refreshMap=()=>window.setTimeout(()=>window.dispatchEvent(new Event("resize")),330);
+  const setOpen=open=>{
+    home.classList.toggle("customer-options-open",open);
+    toggle.setAttribute("aria-expanded",String(open));
+    panel.setAttribute("aria-hidden",String(!open));
+    panel.inert=!open;
+    if(open)window.setTimeout(()=>close.focus({preventScroll:true}),80);
+    refreshMap();
+  };
+  panel.setAttribute("aria-hidden","true");
+  panel.inert=true;
+  toggle.addEventListener("click",()=>setOpen(true));
+  close.addEventListener("click",()=>{setOpen(false);toggle.focus({preventScroll:true})});
+  scrim.addEventListener("click",()=>setOpen(false));
+  document.addEventListener("keydown",event=>{if(event.key==="Escape"&&home.classList.contains("customer-options-open"))setOpen(false)});
 });
 </script>
 </body>

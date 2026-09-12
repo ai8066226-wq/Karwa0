@@ -249,6 +249,8 @@ function authMessage(error) {
 }
 
 function showView(name) {
+  document.body.classList.toggle("driver-map-mode", name === "driver");
+  if (name !== "driver") byId("driverView")?.classList.remove("driver-options-open");
   byId("authView").classList.toggle("hidden", name !== "auth");
   byId("deniedView").classList.toggle("hidden", name !== "denied");
   byId("blockedView").classList.toggle("hidden", name !== "blocked");
@@ -631,4 +633,3 @@ function startDriverCommunityLayers(){if(communityLayers.started||!state.map||!s
 async function submitRoadReport(type){if(!state.user)return toast("سجّل الدخول أولًا");const p=state.lastPosition?.coords;if(!p||!Number.isFinite(Number(p.latitude)))return toast("فعّل GPS وانتظر تحديد موقعك");const meta=reportMeta[type];if(!meta)return;try{await addDoc(collection(db,"roadReports"),{type,note:byId("roadReportNote")?.value.trim()||"",latitude:Number(p.latitude),longitude:Number(p.longitude),reportedBy:state.user.uid,reporterName:state.driverData?.name||"كابتن كروة",confirmedBy:[state.user.uid],confirmations:1,active:true,createdAt:serverTimestamp(),createdAtISO:new Date().toISOString()});if(byId("roadReportNote"))byId("roadReportNote").value="";toast(`تم إرسال بلاغ: ${meta[1]}`)}catch(e){console.error(e);toast("تعذر حفظ البلاغ — انشر قواعد Firestore الجديدة")}}
 document.querySelectorAll("[data-road-report]").forEach(b=>b.addEventListener("click",()=>submitRoadReport(b.dataset.roadReport)));
 byId("saveDriverLandmark")?.addEventListener("click",async()=>{if(!state.user)return toast("سجّل الدخول أولًا");const name=byId("driverLandmarkName")?.value.trim(),p=state.lastPosition?.coords;if(!name||name.length<3)return toast("اكتب اسم المعلم بوضوح");if(!p)return toast("فعّل GPS وانتظر تحديد موقعك");try{await addDoc(collection(db,"landmarks"),{name,category:byId("driverLandmarkCategory")?.value||"place",latitude:Number(p.latitude),longitude:Number(p.longitude),createdBy:state.user.uid,createdByName:state.driverData?.name||"كابتن كروة",createdByRole:"driver",status:"active",createdAt:serverTimestamp(),createdAtISO:new Date().toISOString()});byId("driverLandmarkName").value="";toast("تمت إضافة المعلم إلى خريطة كروة");}catch(e){console.error(e);toast("تعذر إضافة المعلم — انشر قواعد Firestore الجديدة");}});
-
