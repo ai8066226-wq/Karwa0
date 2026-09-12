@@ -78,11 +78,9 @@ body.driver-map-mode .topbar{border-color:#d9e2eb;background:rgba(255,255,255,.9
 #driverView .driver-nav-strip{z-index:1200!important;isolation:isolate;overflow:hidden;background:#fff;backdrop-filter:none;-webkit-backdrop-filter:none}
 #driverView .driver-nav-strip>div{min-width:0;padding:7px 8px;text-align:center;border-left:1px solid #d6e0e9}#driverView .driver-nav-strip>div:last-child{border-left:0}
 #driverView .driver-nav-strip small{display:block;color:#526278;font-size:10px;font-weight:800}#driverView .driver-nav-strip strong{display:block;margin-top:2px;overflow:hidden;color:#0a2540;font-size:14px;text-overflow:ellipsis;white-space:nowrap}
-#driverView .leaflet-bottom.leaflet-right{right:8px;bottom:102px;z-index:690!important}
-#driverView .leaflet-control-attribution{max-width:min(82vw,520px);padding:3px 7px!important;overflow:hidden;border:1px solid rgba(255,255,255,.9);border-radius:9px;color:#334155!important;background:rgba(255,255,255,.9)!important;box-shadow:0 4px 14px rgba(10,37,64,.12);font-size:8px!important;line-height:1.25!important;text-overflow:ellipsis;white-space:nowrap}
-#driverView .leaflet-control-attribution a{color:#075985!important;text-decoration:none}
-#driverView .maplibregl-ctrl-bottom-right{right:8px!important;bottom:102px!important;z-index:680!important}
-#driverView .maplibregl-ctrl-attrib{max-width:min(82vw,520px);border-radius:9px!important;background:rgba(255,255,255,.9)!important;font-size:8px!important}
+#driverView .leaflet-control-attribution,#driverView .maplibregl-ctrl-attrib{display:none!important}
+.driver-map-credit{position:absolute;z-index:690;left:12px;bottom:104px;padding:3px 7px;display:flex;align-items:center;gap:4px;border:1px solid rgba(255,255,255,.92);border-radius:8px;color:#334155;background:rgba(255,255,255,.88);box-shadow:0 4px 14px rgba(10,37,64,.1);font:700 8px/1.2 Tahoma,Arial,sans-serif;direction:ltr;white-space:nowrap}
+.driver-map-credit a{color:#075985;text-decoration:none}
 #driverView .route-alert{top:100px;right:50%;max-width:520px;color:#7c2d12;border:2px solid #fdba74;background:#fff7ed;box-shadow:0 9px 25px rgba(124,45,18,.15);transform:translateX(50%)}
 #driverView #locationHint{bottom:102px;color:#253b55;border:1px solid #fff;background:rgba(255,255,255,.95)}
 .driver-options-toggle{min-width:120px;min-height:52px;border:2px solid #fff;border-radius:18px;color:#fff;background:#0a2540;box-shadow:0 10px 0 rgba(10,37,64,.12),0 18px 38px rgba(10,37,64,.3)}
@@ -106,7 +104,7 @@ body.driver-map-mode .topbar{border-color:#d9e2eb;background:rgba(255,255,255,.9
  #driverView .route-alert{top:92px;width:calc(100% - 16px)}
  #driverView .driver-nav-strip{right:8px;bottom:max(10px,env(safe-area-inset-bottom));width:calc(100% - 16px);min-height:76px;transform:none;border-radius:19px}
  #driverView .driver-nav-strip>div{padding:6px 3px}#driverView .driver-nav-strip strong{font-size:12px}
- #driverView .leaflet-bottom.leaflet-right,#driverView .maplibregl-ctrl-bottom-right{bottom:98px!important}
+ .driver-map-credit{left:8px;bottom:96px}
  #driverView #locationHint{display:none}.driver-report-quick{left:12px;bottom:88px;width:54px;height:54px}
  .driver-options-toggle{min-width:108px;min-height:50px}
 }
@@ -255,6 +253,7 @@ body.driver-map-mode .topbar{border-color:#d9e2eb;background:rgba(255,255,255,.9
           <div class="card-heading"><h3>موقعك المباشر</h3><span class="status-chip active" id="locationStatus">بانتظار الإذن</span></div>
           <div class="driver-nav-strip"><div><small>الاتجاه</small><strong id="driverNavTarget">—</strong></div><div><small>الوصول</small><strong id="driverEta">—</strong></div><div><small>المتبقي</small><strong id="driverRemaining">—</strong></div><div><small>الملاحة</small><strong id="driverRouteProvider">Valhalla</strong></div></div><div class="nav-next-turn"><span class="turn-icon" id="nextTurnIcon">⬆️</span><div><small>التوجيه التالي</small><strong id="nextTurnText">ابدأ القيادة وسيظهر التوجيه هنا</strong></div></div><div class="route-alert hidden" id="offRouteAlert">تم اكتشاف خروج محتمل عن المسار — جاري إعادة الحساب…</div>
           <div class="live-map" id="driverMap"></div>
+          <div class="driver-map-credit" aria-label="مصادر بيانات الخريطة"><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a><span>·</span><a href="https://openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a></div>
           <p class="muted" id="locationHint">فعّل حالة الاتصال واسمح بالوصول إلى الموقع.</p>
         </div>
         <div class="card road-report-card">
@@ -293,7 +292,7 @@ body.driver-map-mode .topbar{border-color:#d9e2eb;background:rgba(255,255,255,.9
   <script>try{if(window.maplibregl&&maplibregl.setRTLTextPlugin&&(!maplibregl.getRTLTextPluginStatus||maplibregl.getRTLTextPluginStatus()==="unavailable")){maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",true).catch(()=>{});}}catch(e){}</script>
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
   <script type="module" src="./driver.js?v=26"></script>
-  <script src="./pwa.js?v=26"></script>
+  <script src="./pwa.js?v=27"></script>
 <script id="phase20-driver-map-first-js">
 window.addEventListener("DOMContentLoaded",()=>{
   const view=document.getElementById("driverView");
