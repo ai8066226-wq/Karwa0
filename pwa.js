@@ -1,6 +1,0 @@
-let deferredInstall=null;
-function banner(){let b=document.getElementById('networkBanner');if(!b){b=document.createElement('div');b.id='networkBanner';b.style.cssText='position:fixed;z-index:99999;top:0;left:0;right:0;padding:9px 16px;text-align:center;font:600 13px system-ui;background:#fff3cd;color:#664d03;display:none';document.body.appendChild(b)}b.textContent=navigator.onLine?'تم استعادة الاتصال بالإنترنت':'أنت غير متصل بالإنترنت — يمكنك تصفح البيانات المحفوظة، وتتطلب العمليات الجديدة اتصالًا بالشبكة';b.style.display=navigator.onLine?'none':'block'}
-window.addEventListener('online',banner);window.addEventListener('offline',banner);window.addEventListener('DOMContentLoaded',banner);
-window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredInstall=e;document.querySelectorAll('[data-install-karwa]').forEach(x=>x.hidden=false)});
-window.installKarwa=async()=>{if(!deferredInstall)return false;deferredInstall.prompt();await deferredInstall.userChoice;deferredInstall=null;return true};
-if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(console.error));
