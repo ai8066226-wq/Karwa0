@@ -75,6 +75,18 @@ const orderStatuses = [
   "تم الوصول"
 ];
 const serviceIcons = { ride: "🚕", parcel: "📦", food: "🍽️" };
+const CUSTOMER_MAP_STYLES = {
+  day: "https://tiles.openfreemap.org/styles/positron",
+  night: "https://tiles.openfreemap.org/styles/dark"
+};
+
+function readCustomerPreference(key, fallback) {
+  try { return localStorage.getItem(key) ?? fallback; } catch (_) { return fallback; }
+}
+
+function writeCustomerPreference(key, value) {
+  try { localStorage.setItem(key, value); } catch (_) {}
+}
 
 const state = {
   user: null,
@@ -97,6 +109,10 @@ const state = {
   trackingUnsubscribe: null,
   trackingOrderId: null,
   map: null,
+  baseLayer: null,
+  mapTheme: readCustomerPreference("karwa.customer.mapTheme", "day") === "night" ? "night" : "day",
+  mapView: readCustomerPreference("karwa.customer.mapView", "2d") === "3d" ? "3d" : "2d",
+  autoFollow: readCustomerPreference("karwa.customer.autoFollow", "true") !== "false",
   customerMarker: null,
   driverMarker: null,
   routeLine: null,
@@ -181,15 +197,69 @@ function mapIcon(type) {
 
 function initializeCustomerMap() {
   if (!window.L || state.map) return;
-  state.map = window.L.map("customerMap", { zoomControl: false, attributionControl: true }).setView([36.34, 43.13], 13);
+  state.map = window.L.map("customerMap", { zoomControl: false, attributionControl: false }).setView([36.34, 43.13], 13);
   window.L.control.zoom({position:"bottomleft"}).addTo(state.map);
   state.map.on("click", e => { if(!state.centerPickActive) setBookingPoint(state.mapPickMode, e.latlng.lat, e.latlng.lng); });
   state.map.on("move",()=>{if(!state.centerPickActive)return;clearTimeout(state.centerPickTimer);byId("mapCenterLabel").textContent="جارٍ تحديد العنوان…";state.centerPickTimer=setTimeout(async()=>{const c=state.map.getCenter();const name=await reverseGeocode(c.lat,c.lng);byId("mapCenterLabel").textContent=name||`الموقع: ${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`;},1250);});
-  // Phase 15: vector map, no API key. OpenFreeMap uses OpenStreetMap data.
-  const liberty=window.L.maplibreGL({style:"https://tiles.openfreemap.org/styles/liberty"});
-  const bright=window.L.maplibreGL({style:"https://tiles.openfreemap.org/styles/bright"});
-  const positron=window.L.maplibreGL({style:"https://tiles.openfreemap.org/styles/positron"}).addTo(state.map);
-  window.L.control.layers({"كروة الفاتحة":positron,"واضحة":bright,"تفصيلية":liberty},null,{position:"bottomright",collapsed:true}).addTo(state.map);
+  // خريطة متجهية بلا مفتاح API، ويتحكم العميل بمظهرها من لوحة الإعدادات.
+  state.baseLayer = window.L.maplibreGL({ style: CUSTOMER_MAP_STYLES[state.mapTheme] }).addTo(state.map);
+  applyCustomerMapPreferences();
+}
+
+function renderCustomerSettingsInfo() {
+  const firstName = state.name.trim().split(" ")[0] || "ضيف";
+  const firstLetter = Array.from(firstName)[0] || "ك";
+  const activeOrders = state.orders.filter(order => !order.cancelled && Number(order.statusIndex || 0) < orderStatuses.length - 1).length;
+  if (byId("customerSettingsAvatar")) byId("customerSettingsAvatar").textContent = firstLetter;
+  if (byId("customerSettingsName")) byId("customerSettingsName").textContent = state.name || "ضيف";
+  if (byId("customerSettingsEmail")) byId("customerSettingsEmail").textContent = state.user?.email || "سجّل الدخول لمزامنة الحساب";
+  if (byId("customerSettingsAccountStatus")) byId("customerSettingsAccountStatus").textContent = state.user ? "✓ حساب متصل" : "وضع الزائر";
+  if (byId("customerSettingsLocation")) byId("customerSettingsLocation").textContent = byId("cityLabel")?.textContent || "العراق";
+  if (byId("customerSettingsBalance")) byId("customerSettingsBalance").textContent = formatMoney(state.balance || 0);
+  if (byId("customerSettingsOrders")) byId("customerSettingsOrders").textContent = String(state.orders.length);
+  if (byId("customerSettingsActiveOrders")) byId("customerSettingsActiveOrders").textContent = String(activeOrders);
+  if (byId("customerSettingsLogout")) byId("customerSettingsLogout").hidden = !state.user;
+}
+
+function applyCustomerMapPreferences() {
+  const home = byId("home");
+  if (!home) return;
+  home.classList.toggle("map-theme-night", state.mapTheme === "night");
+  home.classList.toggle("map-view-3d", state.mapView === "3d");
+  home.querySelectorAll("[data-customer-map-theme]").forEach(button => {
+    const active = button.dataset.customerMapTheme === state.mapTheme;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  home.querySelectorAll("[data-customer-map-view]").forEach(button => {
+    const active = button.dataset.customerMapView === state.mapView;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  if (byId("customerThemeValue")) byId("customerThemeValue").textContent = state.mapTheme === "night" ? "ليلي" : "نهاري";
+  if (byId("customerMapViewValue")) byId("customerMapViewValue").textContent = state.mapView.toUpperCase();
+  const follow = byId("customerAutoFollowSetting");
+  if (follow) {
+    follow.classList.toggle("on", state.autoFollow);
+    follow.setAttribute("aria-checked", String(state.autoFollow));
+  }
+  window.setTimeout(() => state.map?.invalidateSize(), 390);
+}
+
+function setCustomerMapTheme(theme) {
+  state.mapTheme = theme === "night" ? "night" : "day";
+  writeCustomerPreference("karwa.customer.mapTheme", state.mapTheme);
+  try { state.baseLayer?.getMaplibreMap?.().setStyle(CUSTOMER_MAP_STYLES[state.mapTheme]); }
+  catch (error) { console.warn("تعذر تبديل نمط الخريطة فورًا", error); }
+  applyCustomerMapPreferences();
+  showToast(state.mapTheme === "night" ? "تم تفعيل الخريطة الليلية" : "تم تفعيل الخريطة النهارية");
+}
+
+function setCustomerMapView(mode) {
+  state.mapView = mode === "3d" ? "3d" : "2d";
+  writeCustomerPreference("karwa.customer.mapView", state.mapView);
+  applyCustomerMapPreferences();
+  showToast(state.mapView === "3d" ? "تم تفعيل منظور 3D" : "تم تفعيل عرض 2D");
 }
 
 function setCustomerLocation(latitude, longitude) {
@@ -201,7 +271,7 @@ function setCustomerLocation(latitude, longitude) {
   else state.customerMarker = window.L.marker(point, { icon: mapIcon("customer") })
     .addTo(state.map)
     .bindPopup("موقعك الحالي");
-  state.map.setView(point, 15);
+  if (state.autoFollow) state.map.setView(point, 15);
   drawLiveRoute();
 }
 
@@ -302,7 +372,10 @@ function setButtonBusy(button, busy, busyLabel = "جاري التنفيذ…") {
 function switchView(viewId) {
   const isMapView = viewId === "home";
   document.body.classList.toggle("customer-map-mode", isMapView);
-  if (!isMapView) byId("home")?.classList.remove("customer-options-open");
+  if (!isMapView) {
+    byId("home")?.classList.remove("customer-options-open");
+    setCustomerSettingsOpen(false, false);
+  }
   document.querySelectorAll(".view").forEach(view => {
     view.classList.toggle("active", view.id === viewId);
   });
@@ -583,6 +656,7 @@ function locateUser(targetInput) {
     setCustomerLocation(latitude, longitude);
     if (targetInput.id === "rideFrom") setBookingPoint("pickup", latitude, longitude);
     byId("cityLabel").textContent = "الموقع محدد";
+    renderCustomerSettingsInfo();
     showToast("تم تحديد موقعك");
   }, () => {
     targetInput.value = "موقعي الحالي — بغداد";
@@ -828,6 +902,7 @@ function renderOrders() {
   if (byId("ordersTotalCount")) byId("ordersTotalCount").textContent = String(customerOrders.length);
   if (byId("ordersActiveCount")) byId("ordersActiveCount").textContent = String(activeOrders);
   if (byId("ordersCompletedCount")) byId("ordersCompletedCount").textContent = String(completedOrders);
+  renderCustomerSettingsInfo();
   if (!state.user) {
     container.innerHTML = `<div class="card empty-state"><span>🔐</span><strong>سجّل الدخول لعرض طلباتك</strong><p>طلبات كل مستخدم محفوظة في حسابه.</p></div>`;
     return;
@@ -975,6 +1050,7 @@ byId("ratingForm").addEventListener("submit", async event => {
 
 function renderBalance() {
   byId("walletBalance").textContent = Number(state.balance || 0).toLocaleString("ar-IQ");
+  renderCustomerSettingsInfo();
 }
 
 byId("addBalance").addEventListener("click", async event => {
@@ -1005,6 +1081,7 @@ function renderProfile() {
   byId("bigAvatar").textContent = firstLetter;
   byId("logoutButton").style.display = state.user ? "inline-block" : "none";
   byId("adminPortalSetting").hidden = state.role !== "admin";
+  renderCustomerSettingsInfo();
 }
 
 byId("editName").addEventListener("click", async () => {
@@ -1025,6 +1102,11 @@ byId("editName").addEventListener("click", async () => {
 
 function renderNotificationSwitch() {
   byId("notificationSwitch").classList.toggle("off", !state.notifications);
+  const setting = byId("customerNotificationSetting");
+  if (setting) {
+    setting.classList.toggle("on", state.notifications);
+    setting.setAttribute("aria-checked", String(state.notifications));
+  }
 }
 
 byId("notificationSwitch").addEventListener("click", async () => {
@@ -1045,6 +1127,70 @@ byId("notificationSwitch").addEventListener("click", async () => {
 
 byId("notificationButton").addEventListener("click", () => {
   showToast(state.activeOrder ? "لديك تحديث على طلبك" : "لا توجد إشعارات جديدة");
+});
+
+function setCustomerSettingsOpen(open, restoreFocus = true) {
+  const home = byId("home");
+  const panel = byId("customerSettingsPanel");
+  const toggle = byId("customerSettingsToggle");
+  if (!home || !panel || !toggle) return;
+  if (open) {
+    byId("customerOptionsClose")?.click();
+    renderCustomerSettingsInfo();
+    renderNotificationSwitch();
+    applyCustomerMapPreferences();
+  }
+  home.classList.toggle("customer-settings-open", open);
+  toggle.setAttribute("aria-expanded", String(open));
+  panel.setAttribute("aria-hidden", String(!open));
+  panel.inert = !open;
+  if (open) window.setTimeout(() => byId("customerSettingsClose")?.focus({ preventScroll: true }), 80);
+  else if (restoreFocus) toggle.focus({ preventScroll: true });
+}
+
+byId("customerSettingsPanel").inert = true;
+byId("customerSettingsToggle").addEventListener("click", () => setCustomerSettingsOpen(true));
+byId("customerSettingsClose").addEventListener("click", () => setCustomerSettingsOpen(false));
+byId("customerSettingsScrim").addEventListener("click", () => setCustomerSettingsOpen(false));
+byId("customerSettingsPanel").querySelectorAll("[data-customer-map-theme]").forEach(button => {
+  button.addEventListener("click", () => setCustomerMapTheme(button.dataset.customerMapTheme));
+});
+byId("customerSettingsPanel").querySelectorAll("[data-customer-map-view]").forEach(button => {
+  button.addEventListener("click", () => setCustomerMapView(button.dataset.customerMapView));
+});
+byId("customerAutoFollowSetting").addEventListener("click", () => {
+  state.autoFollow = !state.autoFollow;
+  writeCustomerPreference("karwa.customer.autoFollow", String(state.autoFollow));
+  applyCustomerMapPreferences();
+  if (state.autoFollow && state.customerLocation) {
+    state.map?.setView([state.customerLocation.latitude, state.customerLocation.longitude], 15);
+  }
+  showToast(state.autoFollow ? "تم تفعيل متابعة موقعك" : "يمكنك الآن تحريك الخريطة بحرية");
+});
+byId("customerNotificationSetting").addEventListener("click", () => byId("notificationSwitch").click());
+byId("customerSettingsServices").addEventListener("click", () => {
+  setCustomerSettingsOpen(false);
+  window.setTimeout(() => byId("customerOptionsToggle")?.click(), 120);
+});
+document.querySelectorAll("[data-customer-settings-view]").forEach(button => {
+  button.addEventListener("click", () => {
+    setCustomerSettingsOpen(false, false);
+    switchView(button.dataset.customerSettingsView);
+  });
+});
+byId("customerSettingsAddresses").addEventListener("click", () => {
+  setCustomerSettingsOpen(false, false);
+  byId("savedAddresses")?.click();
+});
+byId("customerSettingsSupport").addEventListener("click", () => {
+  setCustomerSettingsOpen(false, false);
+  document.querySelector("[data-open-support]")?.click();
+});
+byId("customerSettingsLogout").addEventListener("click", () => byId("logoutButton").click());
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape" && byId("home")?.classList.contains("customer-settings-open")) {
+    setCustomerSettingsOpen(false);
+  }
 });
 
 const addressesModal=byId("addressesModal");

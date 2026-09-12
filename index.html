@@ -1705,6 +1705,41 @@ body.customer-map-mode .location-button small{color:#526278}body.customer-map-mo
  #ordersList .order-card-main{grid-template-columns:36px minmax(0,1fr)}#ordersList .order-icon{width:36px!important;height:36px!important;font-size:17px!important}#ordersList .order-price{padding-right:45px!important}
 }
 </style>
+<style id="phase30-customer-cockpit">
+/* خريطة العميل بملء الشاشة مع إعدادات مستقلة */
+body.customer-map-mode .topbar{display:none!important}
+body.customer-map-mode #home{height:100dvh!important}
+.customer-settings-toggle{position:absolute;z-index:920;top:max(14px,env(safe-area-inset-top));right:14px;width:54px;height:54px;display:grid;place-items:center;border:2px solid rgba(255,255,255,.96);border-radius:18px;color:#fff;background:linear-gradient(145deg,#0a2540,#164b78);box-shadow:0 13px 34px rgba(10,37,64,.32);font-size:25px;line-height:1;cursor:pointer;transition:transform .2s ease,opacity .2s ease}
+.customer-settings-toggle:hover{transform:translateY(-2px) rotate(10deg)}.customer-settings-toggle:focus-visible{outline:3px solid #7de4e1;outline-offset:3px}
+#home>.welcome{right:80px!important;left:14px!important;width:auto!important}
+#home.customer-settings-open .customer-settings-toggle,#home.customer-settings-open .map-options-toggle,#home.customer-settings-open .trip-panel-toggle,#home.customer-settings-open .map-destination-quick,#home.customer-settings-open .map-recenter-button{opacity:0;pointer-events:none}
+.customer-settings-scrim{position:absolute;z-index:965;inset:0;background:rgba(4,16,34,.5);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);opacity:0;pointer-events:none;transition:opacity .25s ease}
+#home.customer-settings-open .customer-settings-scrim{opacity:1;pointer-events:auto}
+.customer-settings-panel{position:absolute;z-index:990;top:max(10px,env(safe-area-inset-top));right:10px;bottom:max(10px,env(safe-area-inset-bottom));width:min(400px,calc(100% - 20px));display:flex;flex-direction:column;color:#0a2540;border:1px solid rgba(255,255,255,.9);border-radius:28px;background:rgba(247,250,252,.985);box-shadow:0 26px 80px rgba(4,16,34,.42);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);opacity:0;pointer-events:none;transform:translateX(calc(100% + 34px));transition:transform .3s cubic-bezier(.22,.8,.25,1),opacity .22s ease;overflow:hidden}
+#home.customer-settings-open .customer-settings-panel{opacity:1;pointer-events:auto;transform:translateX(0)}
+.customer-settings-header{padding:15px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid #d7e0e9;background:#fff}.customer-settings-header>div{display:grid;gap:2px}.customer-settings-header small{color:#536579;font-size:11px;font-weight:800}.customer-settings-header strong{font-size:18px}
+.customer-settings-close{width:42px;height:42px;display:grid;place-items:center;flex:0 0 auto;border:1px solid #c8d4df;border-radius:14px;color:#0a2540;background:#fff;font-size:26px;line-height:1;cursor:pointer}
+.customer-settings-body{padding:14px;display:grid;gap:12px;overflow:auto;overscroll-behavior:contain}
+.customer-profile-card{padding:14px;display:grid;grid-template-columns:52px minmax(0,1fr);gap:11px;align-items:center;border:1px solid #d6e0e9;border-radius:20px;background:linear-gradient(145deg,#fff,#edf5f8)}
+.customer-settings-avatar{width:52px;height:52px;display:grid;place-items:center;grid-row:span 2;border-radius:17px;color:#fff;background:linear-gradient(145deg,#0a2540,#177b83);box-shadow:0 8px 18px rgba(10,37,64,.2);font-size:22px;font-weight:900}.customer-profile-copy{min-width:0;display:grid;gap:2px}.customer-profile-copy strong,.customer-profile-copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.customer-profile-copy strong{font-size:17px}.customer-profile-copy small{color:#526278;font-size:11px;direction:ltr;text-align:right}.customer-account-badge{grid-column:2;width:max-content;padding:5px 9px;border-radius:99px;color:#006b66;background:#dff8f3;font-size:10px;font-weight:900}
+.customer-info-grid{margin:0;display:grid;grid-template-columns:1fr 1fr;gap:8px}.customer-info-grid>div{min-width:0;padding:11px 12px;border:1px solid #d6e0e9;border-radius:15px;background:#fff}.customer-info-grid dt{color:#607086;font-size:10px;font-weight:800}.customer-info-grid dd{margin:3px 0 0;overflow:hidden;color:#0a2540;font-size:13px;font-weight:900;text-overflow:ellipsis;white-space:nowrap}
+.customer-settings-group{padding:13px;border:1px solid #d6e0e9;border-radius:18px;background:#fff}.customer-settings-group h3{margin:0 0 10px;font-size:14px}.customer-settings-label{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:9px 0 7px;color:#42556c;font-size:11px;font-weight:800}.customer-settings-label:first-of-type{margin-top:0}
+.customer-settings-segment{padding:4px;display:grid;grid-template-columns:1fr 1fr;gap:4px;border-radius:14px;background:#e8eef4}.customer-settings-segment button{min-height:42px;border:0;border-radius:11px;color:#44566c;background:transparent;font-weight:900;cursor:pointer}.customer-settings-segment button.active{color:#fff;background:#0a2540;box-shadow:0 5px 14px rgba(10,37,64,.2)}
+.customer-setting-row{min-height:50px;display:flex;align-items:center;justify-content:space-between;gap:14px;border-top:1px solid #e0e7ee}.customer-setting-row:first-of-type{border-top:0}.customer-setting-row>div{display:grid;gap:2px}.customer-setting-row strong{font-size:13px}.customer-setting-row small{color:#607086;font-size:10px}
+.customer-pref-switch{position:relative;width:50px;height:29px;flex:0 0 auto;border:1px solid #aebbc9;border-radius:99px;background:#cbd5df;cursor:pointer;transition:background .2s,border-color .2s}.customer-pref-switch span{position:absolute;top:3px;right:3px;width:21px;height:21px;border-radius:50%;background:#fff;box-shadow:0 2px 7px rgba(10,37,64,.28);transition:transform .2s}.customer-pref-switch.on{border-color:#00746f;background:#008f88}.customer-pref-switch.on span{transform:translateX(-21px)}
+.customer-settings-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.customer-settings-action{min-height:46px;padding:9px 10px;display:grid;place-items:center;border:1px solid #c8d4df;border-radius:14px;color:#0a2540;background:#fff;font-size:12px;font-weight:900;text-align:center;text-decoration:none;cursor:pointer}.customer-settings-action.primary{grid-column:1/-1;color:#fff;border-color:#0a2540;background:#0a2540}.customer-settings-action.danger{grid-column:1/-1;color:#a61b2b;border-color:#edc5ca;background:#fff6f7}
+#customerMap{transform-origin:50% 62%;transition:transform .38s cubic-bezier(.22,.8,.25,1),filter .3s ease}#home.map-view-3d #customerMap{transform:perspective(1150px) rotateX(7deg) scale(1.055);filter:saturate(1.08) contrast(1.03)}
+#home.map-theme-night{background:#081827}#home.map-theme-night .map-destination-quick,#home.map-theme-night .map-recenter-button{color:#f4f8fb;border-color:rgba(255,255,255,.35);background:#0b2239}#home.map-theme-night .map-destination-quick small{color:#b7c8d5}#home.map-theme-night .map-destination-quick .quick-search-icon{color:#0a2540;background:#7de4e1}
+#home .leaflet-control-attribution,#home .maplibregl-ctrl-attrib,#home .maplibregl-ctrl-attrib-button,#home .maplibregl-ctrl-bottom-right{display:none!important}.customer-map-credit{position:absolute;z-index:690;left:12px;bottom:8px;padding:3px 7px;display:flex;align-items:center;gap:4px;border:1px solid rgba(255,255,255,.92);border-radius:8px;color:#334155;background:rgba(255,255,255,.88);box-shadow:0 4px 14px rgba(10,37,64,.1);font:700 8px/1.2 Tahoma,Arial,sans-serif;direction:ltr;white-space:nowrap}.customer-map-credit a{color:#075985;text-decoration:none}#home.map-theme-night .customer-map-credit{color:#d7e5ef;border-color:rgba(255,255,255,.2);background:rgba(5,22,38,.88)}#home.map-theme-night .customer-map-credit a{color:#8edfe0}
+@media(max-width:950px){
+ .customer-settings-toggle{top:max(10px,env(safe-area-inset-top));right:10px;width:50px;height:50px;border-radius:16px;font-size:23px}
+ #home>.welcome{top:10px!important;right:70px!important;left:8px!important;width:auto!important}
+ .customer-settings-panel{top:max(6px,env(safe-area-inset-top));right:6px;bottom:max(88px,env(safe-area-inset-bottom));width:calc(100% - 12px);border-radius:24px}.customer-settings-body{padding:11px}.customer-info-grid>div{padding:10px}.customer-settings-group{padding:12px}
+ #home.map-view-3d #customerMap{transform:perspective(900px) rotateX(6deg) scale(1.05)}.customer-map-credit{bottom:82px}
+}
+@media(max-width:430px){.customer-settings-actions{grid-template-columns:1fr 1fr}.customer-settings-action{font-size:11px}.customer-profile-card{grid-template-columns:48px minmax(0,1fr)}.customer-settings-avatar{width:48px;height:48px}}
+@media(prefers-reduced-motion:reduce){.customer-settings-toggle,.customer-settings-scrim,.customer-settings-panel,#customerMap{transition:none}}
+</style>
 </head>
 
 <body>
@@ -2002,12 +2037,62 @@ body.customer-map-mode .location-button small{color:#526278}body.customer-map-mo
 
             <div class="card map-card" aria-label="خريطة تتبع الرحلة">
               <div class="center-pin" id="centerPin">📍</div><div id="customerMap"></div>
+              <div class="customer-map-credit" aria-label="مصادر بيانات الخريطة"><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a><span>·</span><a href="https://openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a></div>
               <div class="map-information">
                 <strong id="mapInfoTitle">خريطة كروة المباشرة</strong>
                 <small id="mapInfoText">اضغط على الخريطة لتحديد نقطة الانطلاق، ثم الوجهة.</small>
               </div>
             </div>
           </div>
+
+          <button type="button" class="customer-settings-toggle" id="customerSettingsToggle" aria-controls="customerSettingsPanel" aria-expanded="false" aria-label="إعدادات العميل" title="إعدادات العميل"><span aria-hidden="true">⚙</span></button>
+          <div class="customer-settings-scrim" id="customerSettingsScrim" aria-hidden="true"></div>
+          <aside class="customer-settings-panel" id="customerSettingsPanel" role="dialog" aria-modal="true" aria-label="معلومات وإعدادات العميل" aria-hidden="true">
+            <div class="customer-settings-header">
+              <div><small>كروة للعملاء</small><strong>الحساب والإعدادات</strong></div>
+              <button type="button" class="customer-settings-close" id="customerSettingsClose" aria-label="إغلاق الإعدادات">×</button>
+            </div>
+            <div class="customer-settings-body">
+              <section class="customer-profile-card" aria-label="معلومات العميل">
+                <div class="customer-settings-avatar" id="customerSettingsAvatar">م</div>
+                <div class="customer-profile-copy"><strong id="customerSettingsName">مستخدم كروة</strong><small id="customerSettingsEmail">—</small></div>
+                <span class="customer-account-badge" id="customerSettingsAccountStatus">✓ حساب متصل</span>
+              </section>
+              <dl class="customer-info-grid">
+                <div><dt>موقعك</dt><dd id="customerSettingsLocation">بغداد، العراق</dd></div>
+                <div><dt>المحفظة</dt><dd id="customerSettingsBalance">0 د.ع</dd></div>
+                <div><dt>الطلبات</dt><dd id="customerSettingsOrders">0</dd></div>
+                <div><dt>قيد التنفيذ</dt><dd id="customerSettingsActiveOrders">0</dd></div>
+              </dl>
+              <section class="customer-settings-group" aria-labelledby="customerMapAppearanceTitle">
+                <h3 id="customerMapAppearanceTitle">مظهر الخريطة</h3>
+                <div class="customer-settings-label"><span>الإضاءة</span><span id="customerThemeValue">نهاري</span></div>
+                <div class="customer-settings-segment" role="group" aria-label="إضاءة الخريطة">
+                  <button type="button" data-customer-map-theme="day" aria-pressed="true">☀ نهاري</button>
+                  <button type="button" data-customer-map-theme="night" aria-pressed="false">☾ ليلي</button>
+                </div>
+                <div class="customer-settings-label"><span>طريقة العرض</span><span id="customerMapViewValue">2D</span></div>
+                <div class="customer-settings-segment" role="group" aria-label="طريقة عرض الخريطة">
+                  <button type="button" data-customer-map-view="2d" aria-pressed="true">2D مسطحة</button>
+                  <button type="button" data-customer-map-view="3d" aria-pressed="false">3D منظور</button>
+                </div>
+              </section>
+              <section class="customer-settings-group" aria-label="تفضيلات العميل">
+                <div class="customer-setting-row"><div><strong>متابعة موقعي تلقائيًا</strong><small>إبقاء الخريطة مركزة على موقعك</small></div><button type="button" class="customer-pref-switch on" id="customerAutoFollowSetting" role="switch" aria-checked="true" aria-label="متابعة الموقع تلقائيًا"><span></span></button></div>
+                <div class="customer-setting-row"><div><strong>إشعارات الرحلات</strong><small>حالة الطلب والعروض المهمة</small></div><button type="button" class="customer-pref-switch on" id="customerNotificationSetting" role="switch" aria-checked="true" aria-label="إشعارات الرحلات"><span></span></button></div>
+              </section>
+              <div class="customer-settings-actions">
+                <button type="button" class="customer-settings-action primary" id="customerSettingsServices">الخدمات والحجز</button>
+                <button type="button" class="customer-settings-action" data-customer-settings-view="orders">طلباتي</button>
+                <button type="button" class="customer-settings-action" data-customer-settings-view="wallet">المحفظة</button>
+                <button type="button" class="customer-settings-action" id="customerSettingsAddresses">العناوين المحفوظة</button>
+                <button type="button" class="customer-settings-action" id="customerSettingsSupport">المساعدة والدعم</button>
+                <button type="button" class="customer-settings-action" data-customer-settings-view="profile">الملف الشخصي</button>
+                <a class="customer-settings-action" href="./driver.html">بوابة الكابتن</a>
+                <button type="button" class="customer-settings-action danger" id="customerSettingsLogout">تسجيل الخروج</button>
+              </div>
+            </div>
+          </aside>
         </section>
 
         <section class="view" id="orders">
@@ -2288,8 +2373,8 @@ body.customer-map-mode .location-button small{color:#526278}body.customer-map-mo
   <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
   <script>try{if(window.maplibregl&&maplibregl.setRTLTextPlugin&&(!maplibregl.getRTLTextPluginStatus||maplibregl.getRTLTextPluginStatus()==="unavailable")){maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",true).catch(()=>{});}}catch(e){}</script>
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
-  <script type="module" src="./app.js?v=25"></script>
-  <script src="./pwa.js?v=29"></script>
+  <script type="module" src="./app.js?v=30"></script>
+  <script src="./pwa.js?v=30"></script>
 
 <script id="phase20-map-first-js">
 window.addEventListener("DOMContentLoaded",()=>{
