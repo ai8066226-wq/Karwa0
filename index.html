@@ -7,7 +7,6 @@
   <meta name="description" content="كروة — تطبيق عربي لحجز المشاوير وتوصيل الأغراض والطعام">
   <title>كروة | الحجز والتوصيل</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
-  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css">
 
   <style>
     :root {
@@ -453,6 +452,42 @@
       gap: 8px;
     }
 
+    .route-helper {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .route-estimate {
+      margin: 14px 0;
+      padding: 13px;
+      border: 1px solid #cfe9e4;
+      border-radius: 16px;
+      background: linear-gradient(135deg, #f2fcf9, #fff);
+    }
+
+    .route-estimate[hidden] { display: none; }
+
+    .route-estimate-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .route-estimate-grid div {
+      padding: 9px;
+      border-radius: 11px;
+      background: white;
+      text-align: center;
+      box-shadow: 0 5px 14px rgba(16,32,68,.05);
+    }
+
+    .route-estimate-grid small,
+    .route-estimate-grid strong { display: block; }
+    .route-estimate-grid small { color: var(--muted); font-size: 11px; }
+    .route-estimate-grid strong { margin-top: 3px; font-size: 14px; }
+    .route-estimate > small { margin-top: 9px; display: block; color: var(--mint-dark); font-weight: 800; }
+
     .secondary-button {
       padding: 10px 14px;
       border: 1px solid var(--line);
@@ -726,6 +761,8 @@
 
     .karwa-map-marker.customer { background: var(--orange); }
     .karwa-map-marker.driver { background: var(--navy); }
+    .karwa-map-marker.destination { background: var(--mint-dark); }
+    #customerMap.selecting-point { cursor: crosshair; }
 
     .food-list {
       display: grid;
@@ -1508,43 +1545,14 @@
         grid-template-columns: 1fr;
       }
 
+      .route-estimate-grid { grid-template-columns: 1fr 1fr; }
+      .route-estimate-grid div:last-child { grid-column: 1 / -1; }
+
       .top-actions .icon-button {
         display: none;
       }
     }
-  
-    .map-pick-actions{display:flex;gap:8px;flex-wrap:wrap;margin:-4px 0 14px}.map-pick-button{border:1px solid #dce3ee!important;border-radius:10px;padding:8px 11px}.map-pick-button.active{background:#fff2ec;color:#d84f18;border-color:#ffb79a!important}.route-summary{display:flex;gap:10px;flex-wrap:wrap;padding:10px 12px;margin:0 0 14px;border-radius:12px;background:#f6f8fb;color:#526078;font-size:13px}.route-summary span{font-weight:700}.karwa-map-marker.pickup span,.karwa-map-marker.destination span{font-size:22px}.karwa-map-marker.destination{background:#102044!important}
-
-    .place-results{position:relative;z-index:30}.place-results:not(:empty){position:absolute;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);max-height:220px;overflow:auto;width:calc(100% - 40px)}.place-result{display:block;width:100%;padding:10px 12px;border:0;border-bottom:1px solid var(--line);background:#fff;text-align:right;cursor:pointer}.order-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.mini-action{border:1px solid var(--line);background:#fff;border-radius:9px;padding:6px 9px;font-weight:700;cursor:pointer} select,textarea{width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;font:inherit} textarea{min-height:90px;resize:vertical}
-
-    /* Phase 12 — Maps & UI refinement */
-    .field{position:relative}.field input{min-height:52px;border-radius:15px;background:#fff;border:1px solid #d9e1ec;transition:.2s box-shadow,.2s border-color}.field input:focus{border-color:var(--mint);box-shadow:0 0 0 4px rgba(25,183,159,.12)}
-    .place-results:not(:empty){right:0;left:0;width:auto!important;margin-top:7px;max-height:310px;border-radius:16px;overflow:auto;box-shadow:0 18px 50px rgba(16,32,68,.18)}
-    .place-result{display:flex!important;align-items:flex-start;gap:10px;padding:12px 13px!important;transition:.15s background}.place-result:hover{background:#f5f8fc}.place-result:last-child{border-bottom:0}.place-result strong,.place-result small{display:block}.place-result strong{color:var(--navy);font-size:14px}.place-result small{margin-top:3px;color:var(--muted);font-size:11px;line-height:1.45;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:420px}.place-pin{width:31px;height:31px;display:grid;place-items:center;flex:0 0 auto;border-radius:10px;background:#fff0ea;color:#df5522;font-weight:900}.place-search-state{padding:14px;color:var(--muted);font-size:13px}
-    .map-card{min-height:590px!important;border:0!important;border-radius:24px!important;box-shadow:0 20px 55px rgba(16,32,68,.14)!important}.map-information{padding:12px 14px;border:1px solid rgba(223,229,238,.9);border-radius:15px;background:rgba(255,255,255,.94);box-shadow:0 10px 30px rgba(16,32,68,.13);backdrop-filter:blur(10px)}
-    #customerMap{min-height:590px!important}.leaflet-control-zoom a,.leaflet-control-layers{border:0!important;box-shadow:0 7px 22px rgba(16,32,68,.16)!important}.leaflet-control-zoom a{width:38px!important;height:38px!important;line-height:38px!important}.leaflet-control-layers{border-radius:12px!important}.leaflet-popup-content-wrapper{border-radius:14px}
-    .map-pick-actions{margin-top:9px!important}.map-pick-button{min-height:40px;background:#fff!important}.route-summary{margin-top:12px!important;border:1px solid #e5eaf1;background:#f8fafc!important}.route-summary span{display:inline-flex;align-items:center;min-height:28px}
-    .service-panel .panel-heading{margin-bottom:16px}.service-panel .panel-heading h2{font-size:22px}.main-grid{gap:22px!important}.card{border-radius:22px!important}
-    .map-confirm-bar{display:none;align-items:center;justify-content:space-between;gap:12px;margin:10px 0 14px;padding:10px 12px;border:1px solid #dfe6ef;border-radius:14px;background:#fff}.map-confirm-bar.show{display:flex}.map-confirm-bar span{font-size:12px;color:#526078;line-height:1.5}.map-confirm-bar button{border:0;border-radius:10px;padding:9px 12px;background:#102044;color:#fff;font-weight:800;white-space:nowrap}.center-pin{position:absolute;z-index:650;left:50%;top:50%;transform:translate(-50%,-100%);display:none;pointer-events:none;font-size:38px;filter:drop-shadow(0 5px 4px rgba(0,0,0,.25))}.map-card.center-pick .center-pin{display:block}.map-card.center-pick #customerMap{cursor:grab}.map-search-hint{font-size:11px;color:#748197;margin-top:5px}.place-result .distance{font-size:10px;color:#d65b2b;font-weight:800;margin-top:4px;display:block}.map-pick-actions{grid-template-columns:repeat(3,minmax(0,1fr))!important}
-    @media(max-width:760px){.map-card,#customerMap{min-height:430px!important}.place-result small{max-width:250px}.service-panel .panel-heading{align-items:center}.map-pick-actions{display:grid!important;grid-template-columns:1fr 1fr}.map-pick-button{padding:9px 6px!important}.route-summary{display:grid!important;grid-template-columns:1fr 1fr}.route-summary #routeMode{grid-column:1/-1}.card{border-radius:18px!important}}
-
-  
-    /* Phase 14 — live trip experience */
-    .trip-live-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}.trip-live-strip>div{background:#f7f9fc;border:1px solid #e7ebf2;border-radius:14px;padding:10px;text-align:center}.trip-live-strip small{display:block;color:var(--muted);font-size:11px}.trip-live-strip strong{display:block;margin-top:3px;color:var(--navy);font-size:14px}.trip-stage-hint{margin:10px 0 0;padding:9px 12px;border-radius:12px;background:rgba(255,107,53,.08);color:#9b431f;font-size:12px;font-weight:800}.tracking-actions a.secondary-button{text-decoration:none;text-align:center;display:flex;align-items:center;justify-content:center}.tracking-actions .hidden{display:none!important}.karwa-map-marker.driver{transition:transform .2s ease;box-shadow:0 8px 24px rgba(16,32,68,.25)}
-    @media(max-width:600px){.trip-live-strip{grid-template-columns:1fr 1fr}.trip-live-strip>div:last-child{grid-column:1/-1}.tracking-card{border-radius:22px}.tracking-actions{grid-template-columns:1fr 1fr!important}}
-
-    .map-search-button{margin:-4px 0 10px;border:0;border-radius:12px;padding:10px 16px;background:#102044;color:#fff;font-weight:800;box-shadow:0 6px 16px rgba(16,32,68,.12)}
-    .maplibregl-canvas{outline:none}.maplibregl-ctrl-attrib{font-size:10px!important}.leaflet-maplibre-gl{border-radius:inherit}
-  
-    /* Phase 16: Arabic/RTL map and search fixes */
-    .place-result,.place-result *,.place-search-state{direction:rtl!important;text-align:right!important;unicode-bidi:plaintext}
-    .place-result>span:nth-child(2){min-width:0;flex:1}.place-result strong,.place-result small,.place-result .distance{direction:rtl!important;text-align:right!important}
-    #rideFrom,#rideTo{direction:rtl;text-align:right}.leaflet-tooltip,.leaflet-popup-content{direction:rtl;text-align:right}
-    .maplibregl-canvas{direction:ltr}
   </style>
-  <link rel="manifest" href="./manifest.webmanifest">
-  <meta name="theme-color" content="#111827">
-  <link rel="icon" href="./karwa-icon.svg" type="image/svg+xml">
 </head>
 
 <body>
@@ -1618,24 +1626,13 @@
               <span class="tracking-status" id="trackingStatus"></span>
             </div>
 
-            <div class="progress"><span id="progressBar"></span></div>
-            <div class="trip-live-strip">
-              <div><small>الوصول المتوقع</small><strong id="liveEta">—</strong></div>
-              <div><small>المسافة المتبقية</small><strong id="liveDistance">—</strong></div>
-              <div><small>المسار</small><strong id="liveRouteSource">بانتظار الكابتن</strong></div>
-            </div>
-            <p class="trip-stage-hint" id="tripStageHint">نبحث عن كابتن قريب</p>
-            <div id="tripOtpBox" class="hidden" style="margin-top:14px;padding:14px;border-radius:16px;background:rgba(255,107,53,.08)">
-              <strong>رمز بدء الرحلة: <span id="tripOtp" style="font-size:1.35rem;letter-spacing:4px">—</span></strong>
-              <small style="display:block;margin-top:6px">أعطِ هذا الرمز للكابتن فقط بعد وصوله إليك. • حالة الدفع: <span id="paymentTripStatus">—</span></small>
+            <div class="progress">
+              <span id="progressBar"></span>
             </div>
 
             <div class="tracking-actions">
               <button id="advanceOrder" disabled>تحديث مباشر من الكابتن</button>
               <button id="cancelOrder">إلغاء الطلب</button>
-              <a class="secondary-button hidden" id="callDriver" href="#">📞 اتصال بالكابتن</a>
-              <button class="secondary-button" id="shareTrip">🔗 مشاركة الرحلة</button>
-              <button class="secondary-button" id="sosTrip" style="border-color:#dc2626;color:#b91c1c">🆘 SOS / سلامة</button>
             </div>
           </div>
 
@@ -1661,17 +1658,29 @@
 
                 <div class="field">
                   <label for="rideFrom">نقطة الانطلاق</label>
-                  <input id="rideFrom" placeholder="ابحث أو اختر نقطة الانطلاق من الخريطة"><div class="place-results" id="rideFromResults"></div>
+                  <div class="location-row">
+                    <input id="rideFrom" placeholder="مثال: المنصور، شارع 14 رمضان">
+                    <button class="secondary-button" id="selectPickupMap" type="button">حدد على الخريطة</button>
+                  </div>
                 </div>
 
                 <div class="field">
                   <label for="rideTo">الوجهة</label>
-                  <input id="rideTo" placeholder="ابحث عن الوجهة أو اخترها من الخريطة"><div class="place-results" id="rideToResults"></div>
-                  <div class="map-pick-actions"><button class="text-button map-pick-button active" id="pickRideFrom" type="button">📍 الانطلاق</button><button class="text-button map-pick-button" id="pickRideTo" type="button">🏁 الوجهة</button><button class="text-button map-pick-button" id="mapCenterPick" type="button">🎯 حرّك الخريطة وحدد</button></div><div class="map-confirm-bar" id="mapConfirmBar"><span id="mapCenterLabel">حرّك الخريطة حتى يصبح الدبوس فوق المكان المطلوب</span><button type="button" id="confirmMapCenter">تأكيد هذا الموقع</button></div>
-                  <div class="route-summary" id="routeSummary"><span>المسافة: —</span><span>الوقت: —</span><span id="routeMode">اختر نقطتين من الخريطة</span></div>
+                  <div class="location-row">
+                    <input id="rideTo" placeholder="إلى أين؟">
+                    <button class="secondary-button" id="selectDestinationMap" type="button">حدد على الخريطة</button>
+                  </div>
+                  <p class="route-helper" id="mapSelectionHint">حدد النقطتين من الخريطة للحصول على السعر والمسار.</p>
                 </div>
 
-                <details class="landmark-panel"><summary>📌 إضافة معلم غير موجود على الخريطة</summary><div class="landmark-form"><input id="landmarkName" placeholder="اسم المعلم، مثال: صيدلية النور"><select id="landmarkCategory"><option value="place">معلم</option><option value="shop">متجر</option><option value="restaurant">مطعم</option><option value="medical">مركز صحي</option><option value="school">مدرسة / جامعة</option><option value="other">أخرى</option></select><button type="button" id="saveLandmark">حفظ عند مركز الخريطة</button><small>حرّك الخريطة بحيث يكون مركزها فوق المعلم ثم احفظه. سيظهر لجميع مستخدمي كروة.</small></div></details>
+                <div class="route-estimate" id="routeEstimate" hidden>
+                  <div class="route-estimate-grid">
+                    <div><small>المسافة</small><strong id="estimateDistance">—</strong></div>
+                    <div><small>الوقت المتوقع</small><strong id="estimateDuration">—</strong></div>
+                    <div><small>عمولة المنصة</small><strong id="estimateCommission">—</strong></div>
+                  </div>
+                  <small id="routeEstimateStatus">جاري حساب المسار…</small>
+                </div>
 
                 <div class="vehicle-list" aria-label="اختيار المركبة">
                   <button class="vehicle-button active" data-vehicle="اقتصادي" data-price="6500">
@@ -1702,21 +1711,9 @@
                   </div>
                 </div>
 
-                <div class="field">
-                  <label for="scheduleRideAt">موعد الرحلة</label>
-                  <input id="scheduleRideAt" type="datetime-local">
-                  <small>اتركه فارغًا للحجز الآن، أو اختر موعدًا لاحقًا.</small>
-                </div>
-
-                <div class="field">
-                  <label for="couponCode">كود الخصم</label>
-                  <div style="display:flex;gap:8px"><input id="couponCode" placeholder="مثال: KARWA10" style="flex:1"><button class="text-button" id="applyCoupon" type="button">تطبيق</button></div>
-                  <small id="couponStatus">تُراجع صلاحية الكوبون والتسعير الديناميكي من الخادم.</small>
-                </div>
-
                 <div class="total-row">
                   <div>
-                    <small>السعر المحسوب تلقائيًا</small>
+                    <small>السعر حسب المسافة والوقت</small>
                     <strong id="ridePrice">6,500 د.ع</strong>
                   </div>
                   <button class="primary-button" id="bookRide">تأكيد الحجز</button>
@@ -1831,10 +1828,10 @@
             </div>
 
             <div class="card map-card" aria-label="خريطة تتبع الرحلة">
-              <div class="center-pin" id="centerPin">📍</div><div id="customerMap"></div>
+              <div id="customerMap"></div>
               <div class="map-information">
                 <strong id="mapInfoTitle">خريطة كروة المباشرة</strong>
-                <small id="mapInfoText">اضغط على الخريطة لتحديد نقطة الانطلاق، ثم الوجهة.</small>
+                <small id="mapInfoText">حدد موقعك، وسيظهر الكابتن هنا بعد قبول الطلب.</small>
               </div>
             </div>
           </div>
@@ -2032,20 +2029,10 @@
     </div>
   </div>
 
-
-  <div class="modal-backdrop" id="addressesModal" role="dialog" aria-modal="true">
-    <div class="modal">
-      <h2>العناوين المحفوظة</h2><p>احفظ البيت والعمل أو أي مكان تستخدمه باستمرار.</p>
-      <form id="addressForm"><div class="field"><label>اسم العنوان</label><input id="addressLabel" placeholder="البيت / العمل" required maxlength="40"></div>
-      <div class="field"><label>العنوان</label><input id="addressText" placeholder="اختر نقطة على الخريطة ثم احفظها" required maxlength="180"></div>
-      <div class="modal-actions"><button class="secondary-button" id="closeAddresses" type="button">إغلاق</button><button class="primary-button" type="submit">حفظ الموقع الحالي</button></div></form>
-      <div id="savedAddressList" class="orders-list" style="margin-top:14px"></div>
-    </div>
-  </div>
   <div class="modal-backdrop" id="supportModal" role="dialog" aria-modal="true">
     <div class="modal">
       <h2>كيف نساعدك؟</h2>
-      <p>أرسل تذكرة دعم مرتبطة بحسابك، ويمكن للإدارة متابعتها.</p><div class="field"><label>موضوع المشكلة</label><select id="supportCategory"><option>مشكلة في رحلة</option><option>الدفع والمحفظة</option><option>الكابتن</option><option>اقتراح أو ملاحظة</option></select></div><div class="field"><label>التفاصيل</label><textarea id="supportMessage" maxlength="500" placeholder="اكتب تفاصيل المشكلة"></textarea></div>
+      <p>اختر طريقة التواصل. الخيارات الحالية تجريبية.</p>
 
       <div class="payment-card">
         <span>💬</span>
@@ -2065,7 +2052,7 @@
 
       <div class="modal-actions">
         <button class="secondary-button" id="closeSupport">إغلاق</button>
-        <button class="primary-button" id="startSupportChat">إرسال التذكرة</button>
+        <button class="primary-button" id="startSupportChat">ابدأ المحادثة</button>
       </div>
     </div>
   </div>
@@ -2109,10 +2096,6 @@
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-  <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
-  <script>try{if(window.maplibregl&&maplibregl.setRTLTextPlugin&&(!maplibregl.getRTLTextPluginStatus||maplibregl.getRTLTextPluginStatus()==="unavailable")){maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",true).catch(()=>{});}}catch(e){}</script>
-  <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
   <script type="module" src="./app.js"></script>
-  <script src="./pwa.js"></script>
 </body>
 </html>

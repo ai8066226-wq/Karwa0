@@ -38,7 +38,7 @@ try {
 }
 
 const byId = id => document.getElementById(id);
-const statuses = ["بانتظار كابتن", "الكابتن في الطريق", "وصل الكابتن", "بدأت الرحلة", "تم الوصول"];
+const statuses = ["تم استلام الطلب", "الكابتن في الطريق", "بدأت الرحلة", "تم الوصول"];
 const icons = { ride: "🚕", parcel: "📦", food: "🍽️" };
 
 const state = {
@@ -116,19 +116,32 @@ byId("logoutButton").addEventListener("click", () => signOut(auth));
 byId("deniedLogout").addEventListener("click", () => signOut(auth));
 
 function renderMetrics() {
+  const completedOrders = state.orders.filter(order =>
+    !order.cancelled && Number(order.statusIndex || 0) >= 3
+  );
+  const cancelledOrders = state.orders.filter(order => order.cancelled === true);
+  const revenue = completedOrders.reduce((total, order) => total + Number(order.price || 0), 0);
+  const commission = completedOrders.reduce((total, order) => {
+    const amount = order.commissionAmount ?? Math.round(Number(order.price || 0) * .15);
+    return total + Number(amount || 0);
+  }, 0);
+  const driverPayout = completedOrders.reduce((total, order) => {
+    const amount = order.driverEarning ?? (Number(order.price || 0) - Math.round(Number(order.price || 0) * .15));
+    return total + Number(amount || 0);
+  }, 0);
+
   byId("usersCount").textContent = state.users.filter(user => !user.role || user.role === "customer").length;
   byId("driversCount").textContent = state.drivers.length;
   byId("blockedCount").textContent = state.drivers.filter(driver => driver.blocked === true).length;
   byId("pendingCount").textContent = state.applications.filter(item => item.status === "pending").length;
   byId("ordersCount").textContent = state.orders.length;
-  byId("liveTripsCount").textContent = state.orders.filter(o => !o.cancelled && Number(o.statusIndex||0) > 0 && Number(o.statusIndex||0) < 4).length;
-  byId("cancelledTripsCount").textContent = state.orders.filter(o => o.cancelled).length;
-  byId("onlineDriversCount").textContent = state.drivers.filter(d => d.online === true && d.blocked !== true).length;
-  const completed=state.orders.filter(o=>!o.cancelled&&Number(o.statusIndex||0)>=4);
-  const gross=completed.reduce((n,o)=>n+Number(o.price||0),0), commission=completed.reduce((n,o)=>n+Number(o.commissionAmount||0),0), payout=completed.reduce((n,o)=>n+Number(o.driverEarnings||0),0);
-  byId("grossRevenue").textContent=money(gross);byId("commissionRevenue").textContent=money(commission);byId("driversPayout").textContent=money(payout);
-  const byDriver={};completed.forEach(o=>{const k=o.driverName||"غير معيّن";byDriver[k]=(byDriver[k]||0)+Number(o.driverEarnings||0)});
-  byId("financialReport").innerHTML=completed.length?`<div class="order-meta"><span>رحلات مكتملة: ${completed.length}</span><span>متوسط الطلب: ${money(gross/completed.length)}</span></div>${Object.entries(byDriver).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([name,value])=>`<div class="order-meta"><strong>${escapeHtml(name)}</strong><span>${money(value)}</span></div>`).join("")}`:`<p class="muted">لا توجد رحلات مكتملة بعد.</p>`;
+  byId("revenueTotal").textContent = money(revenue);
+  byId("commissionTotal").textContent = money(commission);
+  byId("financialGross").textContent = money(revenue);
+  byId("driverPayoutTotal").textContent = money(driverPayout);
+  byId("completedOrdersFinancial").textContent = completedOrders.length;
+  byId("cancelledOrdersFinancial").textContent = cancelledOrders.length;
+  byId("averageFare").textContent = money(completedOrders.length ? Math.round(revenue / completedOrders.length) : 0);
 }
 
 function ratingSummary(driverId) {
@@ -229,8 +242,15 @@ function renderApplications() {
 function orderCard(order) {
   const statusIndex = Number(order.statusIndex || 0);
   const status = order.cancelled ? "ملغي" : statuses[statusIndex] || "غير معروف";
-  const statusClass = order.cancelled ? "cancelled" : statusIndex >= 4 ? "complete" : "active";
-  const cancel = !order.cancelled && statusIndex < 4
+  const statusClass = order.cancelled ? "cancelled" : statusIndex >= 3 ? "complete" : "active";
+  const price = Number(order.price || 0);
+  const commission = Number(order.commissionAmount ?? Math.round(price * .15));
+  const driverEarning = Number(order.driverEarning ?? (price - commission));
+  const routeDetails = [
+    Number(order.distanceKm || 0) > 0 ? `${Number(order.distanceKm).toFixed(1)} كم` : "",
+    Number(order.durationMin || 0) > 0 ? `${Math.ceil(Number(order.durationMin))} دقيقة` : ""
+  ].filter(Boolean).join(" • ");
+  const cancel = !order.cancelled && statusIndex < 3
     ? `<div class="order-actions"><button class="danger" data-action="cancel-order" data-id="${order.firestoreId}">إلغاء إداري</button></div>`
     : "";
   return `
@@ -240,19 +260,18 @@ function orderCard(order) {
         <span class="status-chip ${statusClass}">${escapeHtml(status)}</span>
       </div>
       <p class="order-route">${escapeHtml(order.route)}</p>
+      ${routeDetails ? `<div class="proximity-chip">⌖ ${escapeHtml(routeDetails)}</div>` : ""}
       <div class="order-bottom">
         <div class="order-meta">
           <span>${escapeHtml(order.id)}</span>
           <span>${order.driverName ? `الكابتن: ${escapeHtml(order.driverName)}` : "بانتظار كابتن"}</span>
         </div>
         <span class="order-price">${money(order.price)}</span>
-        ${Number(order.surgeMultiplier||1)>1?`<div class="order-meta"><span>طلب مرتفع ×${Number(order.surgeMultiplier).toFixed(2)}</span></div>`:""}
-        ${Number(order.discountAmount||0)>0?`<div class="order-meta"><span>خصم ${money(order.discountAmount)}</span><span>${escapeHtml(order.couponCode||"")}</span></div>`:""}
-        ${Array.isArray(order.dispatchCandidateIds)?`<div class="order-meta"><span>مرشحو التوزيع: ${order.dispatchCandidateIds.length}</span><span>الجولة ${Number(order.dispatchRound||1)}</span></div>`:""}
-        ${Number(order.statusIndex||0)>=4&&!order.cancelled?`<div class="order-meta"><span>عمولة كروة: ${money(order.commissionAmount)}</span><span>صافي الكابتن: ${money(order.driverEarnings)}</span></div>`:""}
       </div>
-      ${order.cancelled && order.cancellationReason ? `<p class="admin-note danger-note">سبب الإلغاء: ${escapeHtml(order.cancellationReason)}</p>` : ""}
-      ${order.acceptedAt ? `<div class="order-meta"><span>قبول: ${new Date(order.acceptedAt.seconds*1000).toLocaleString("ar-IQ")}</span>${order.completedAt ? `<span>إكمال: ${new Date(order.completedAt.seconds*1000).toLocaleString("ar-IQ")}</span>` : ""}</div>` : ""}
+      <div class="financial-breakdown">
+        <span>عمولة كروة: <strong>${money(commission)}</strong></span>
+        <span>صافي الكابتن: <strong>${money(driverEarning)}</strong></span>
+      </div>
       ${cancel}
     </article>`;
 }
