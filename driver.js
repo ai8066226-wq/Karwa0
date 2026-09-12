@@ -782,37 +782,45 @@ const driverMapSearchCache = new Map();
 function normalizeDriverPlaceSearch(value) { return String(value || "").trim().replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").replace(/[\u064B-\u065F]/g, "").replace(/\s+/g, " ").toLowerCase(); }
 function driverPlaceName(place) { const names=place?.namedetails||{},address=place?.address||{};return names["name:ar"]||names.name||place?.name||address.amenity||address.shop||address.tourism||address.road||String(place?.display_name||"مكان محدد").split(",")[0]; }
 function driverPlaceDetail(place) { const address=place?.address||{};return place?.display_name||[address.road,address.suburb,address.city||address.town,address.state].filter(Boolean).join("، ")||"موقع على الخريطة"; }
-async function searchDriverMapPlaces(queryText) {
-  const key = normalizeDriverPlaceSearch(queryText);
-  if (driverMapSearchCache.has(key)) return driverMapSearchCache.get(key);
+const DRIVER_PLACE_CATEGORY_TERMS={restaurant:"مطعم",medical:"مستشفى",shop:"سوق",education:"مدرسة",fuel:"محطة وقود",hotel:"فندق"};
+function driverLocalPlaceMatchesCategory(item,category){if(!category)return true;const value=String(item?.category||"").toLowerCase();if(category==="education")return ["education","school","university","college"].includes(value);if(category==="hotel")return ["hotel","tourism","other"].includes(value);return value===category;}
+function driverPlaceDistance(place){const center=state.map?.getCenter?.();if(!center)return null;return haversine({latitude:center.lat,longitude:center.lng},{latitude:Number(place.lat),longitude:Number(place.lon)});}
+function driverPlaceRank(place,queryText,center){const text=normalizeDriverPlaceSearch([driverPlaceName(place),driverPlaceDetail(place),Object.values(place.namedetails||{}).join(" ")].join(" ")),needle=normalizeDriverPlaceSearch(queryText);let score=Number(place.importance||0)*18;if(text===needle)score+=100;else if(text.startsWith(needle))score+=55;else if(text.includes(needle))score+=30;if(center){const distance=haversine({latitude:center.lat,longitude:center.lng},{latitude:Number(place.lat),longitude:Number(place.lon)});score+=Math.max(0,22-Math.min(22,distance/3));}return score;}
+async function searchDriverMapPlaces(queryText,options={}) {
   initializeDriverMap();
+  const category=options.category||"",scope=options.scope==="iraq"?"iraq":"nearby",center=state.map?.getCenter?.();
+  const locationKey=scope==="nearby"&&center?`${center.lat.toFixed(2)},${center.lng.toFixed(2)}`:"iq";
+  const key=[normalizeDriverPlaceSearch(queryText),category,scope,locationKey].join("|");
+  if (driverMapSearchCache.has(key)) return driverMapSearchCache.get(key);
   const bounds = state.map?.getBounds?.();
-  const view = bounds ? `&viewbox=${bounds.getWest()},${bounds.getNorth()},${bounds.getEast()},${bounds.getSouth()}` : "";
+  const view = scope==="nearby"&&bounds ? `&viewbox=${bounds.getWest()},${bounds.getNorth()},${bounds.getEast()},${bounds.getSouth()}` : "";
+  const categoryTerm=DRIVER_PLACE_CATEGORY_TERMS[category]||"",base=[queryText,categoryTerm].filter(Boolean).join(" ");
   let remote = [];
-  for (const term of [queryText, `${queryText} العراق`]) {
+  for (const term of [base, `${base} العراق`, ...(category?[queryText]:[])]) {
     try {
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&namedetails=1&dedupe=1&limit=14&countrycodes=iq&accept-language=ar,ku,en${view}&bounded=0&q=${encodeURIComponent(term)}`, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(7000) });
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&namedetails=1&dedupe=1&limit=16&countrycodes=iq&accept-language=ar,ku,en${view}&bounded=${scope==="nearby"?1:0}&q=${encodeURIComponent(term)}`, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(7000) });
       if (response.ok) remote.push(...await response.json());
     } catch (_) {}
     if (remote.length >= 10) break;
   }
+  const needle=normalizeDriverPlaceSearch(queryText);
   const local = communityLayers.landmarkData
-    .filter(item => normalizeDriverPlaceSearch(item.name).includes(key))
-    .map(item => ({ lat:item.latitude, lon:item.longitude, name:item.name, display_name:`${item.name} — معلم مضاف في كروة`, namedetails:{"name:ar":item.name}, osm_type:"karwa", osm_id:item.id, importance:1 }));
+    .filter(item => normalizeDriverPlaceSearch(item.name).includes(needle)&&driverLocalPlaceMatchesCategory(item,category))
+    .map(item => ({ lat:item.latitude, lon:item.longitude, name:item.name, display_name:`${item.name} — معلم مضاف في كروة`, namedetails:{"name:ar":item.name}, category:item.category||"place", osm_type:"karwa", osm_id:item.id, importance:1.4 }));
   const seen = new Set();
   const places = [...local, ...remote].filter(place => {
     const id = place.osm_type && place.osm_id ? `${place.osm_type}:${place.osm_id}` : `${Number(place.lat).toFixed(5)},${Number(place.lon).toFixed(5)}`;
     if (seen.has(id)) return false;
     seen.add(id);
     return Number.isFinite(Number(place.lat)) && Number.isFinite(Number(place.lon));
-  }).sort((a,b)=>Number(b.importance||0)-Number(a.importance||0)).slice(0,8);
+  }).sort((a,b)=>driverPlaceRank(b,queryText,center)-driverPlaceRank(a,queryText,center)).slice(0,10);
   driverMapSearchCache.set(key, places);
-  if (driverMapSearchCache.size > 40) driverMapSearchCache.delete(driverMapSearchCache.keys().next().value);
+  if (driverMapSearchCache.size > 50) driverMapSearchCache.delete(driverMapSearchCache.keys().next().value);
   return places;
 }
 function driverMapSearchIcon() { return window.L.divIcon({ className:"", html:'<div class="map-search-marker"><span>⌖</span></div>', iconSize:[42,42], iconAnchor:[21,38] }); }
 function setupDriverMapPlaceTool() {
-  const input=byId("driverMapPlaceSearch"),button=byId("driverMapPlaceSearchButton"),results=byId("driverMapPlaceResults"),selection=byId("driverMapPlaceSelection");
+  const input=byId("driverMapPlaceSearch"),button=byId("driverMapPlaceSearchButton"),locateButton=byId("driverMapPlaceLocate"),category=byId("driverMapPlaceCategory"),scope=byId("driverMapPlaceScope"),results=byId("driverMapPlaceResults"),selection=byId("driverMapPlaceSelection");
   if(!input||!button||!results||!selection)return;
   let sequence=0;
   const selectPlace=place=>{
@@ -826,12 +834,20 @@ function setupDriverMapPlaceTool() {
     if(queryText.length<2){results.innerHTML='<div class="map-place-state">اكتب حرفين على الأقل للبحث.</div>';return;}
     button.disabled=true;results.innerHTML='<div class="map-place-state">جاري البحث عن المكان…</div>';
     try{
-      const places=await searchDriverMapPlaces(queryText);if(requestId!==sequence)return;results.innerHTML="";
+      const places=await searchDriverMapPlaces(queryText,{category:category?.value||"",scope:scope?.value||"nearby"});if(requestId!==sequence)return;results.innerHTML="";
       if(!places.length){results.innerHTML='<div class="map-place-state">لم نجد نتيجة. جرّب اسم الحي أو شارعًا قريبًا.</div>';return;}
-      places.forEach(place=>{const item=document.createElement("button");item.type="button";item.className="map-place-result";const pin=document.createElement("span");pin.textContent="⌖";const copy=document.createElement("span"),title=document.createElement("strong"),detail=document.createElement("small");title.textContent=driverPlaceName(place);detail.textContent=driverPlaceDetail(place);copy.append(title,detail);item.append(pin,copy);item.addEventListener("click",()=>selectPlace(place));results.appendChild(item);});
+      places.forEach(place=>{const item=document.createElement("button");item.type="button";item.className="map-place-result";const pin=document.createElement("span");pin.textContent="⌖";const copy=document.createElement("span"),title=document.createElement("strong"),detail=document.createElement("small"),distance=document.createElement("span");title.textContent=driverPlaceName(place);detail.textContent=driverPlaceDetail(place);const km=driverPlaceDistance(place);distance.className="map-place-distance";distance.textContent=km==null?"":`يبعد ${km<1?Math.max(1,Math.round(km*1000))+" م":km.toFixed(1)+" كم"} عن مركز الخريطة`;copy.append(title,detail,distance);item.append(pin,copy);item.addEventListener("click",()=>selectPlace(place));results.appendChild(item);});
     }catch(error){console.error(error);results.innerHTML='<div class="map-place-state">تعذر البحث الآن. تحقق من الإنترنت وحاول مجددًا.</div>';}finally{button.disabled=false;}
   };
   button.addEventListener("click",run);input.addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();run();}});
+  [category,scope].forEach(control=>control?.addEventListener("change",()=>{if(input.value.trim().length>=2)run();}));
+  locateButton?.addEventListener("click",()=>{
+    const usePosition=position=>{state.lastPosition=position;showOwnPosition(position);selectPlace({lat:position.coords.latitude,lon:position.coords.longitude,name:"موقعي الحالي",display_name:`دقة الموقع نحو ${Math.round(position.coords.accuracy||0)} متر`,namedetails:{"name:ar":"موقعي الحالي"}});locateButton.disabled=false;locateButton.textContent="⌖ تحديد موقعي على الخريطة";};
+    if(state.lastPosition)return usePosition(state.lastPosition);
+    if(!navigator.geolocation)return toast("تحديد الموقع غير مدعوم في هذا المتصفح");
+    locateButton.disabled=true;locateButton.textContent="جاري تحديد موقعك…";
+    navigator.geolocation.getCurrentPosition(usePosition,error=>{console.error(error);locateButton.disabled=false;locateButton.textContent="⌖ تحديد موقعي على الخريطة";toast(error.code===1?"اسمح للموقع من إعدادات المتصفح":"تعذر تحديد الموقع؛ تحقق من GPS");},{enableHighAccuracy:true,maximumAge:5000,timeout:12000});
+  });
   byId("driverSaveMapLandmark")?.addEventListener("click",async()=>{
     if(!state.user)return toast("سجّل الدخول أولًا");const name=byId("driverMapLandmarkName")?.value.trim();if(!name||name.length<3)return toast("اكتب اسم المعلم بوضوح");initializeDriverMap();const center=state.map.getCenter(),point=state.mapSearchSelection||{latitude:center.lat,longitude:center.lng};
     try{await addDoc(collection(db,"landmarks"),{name,category:byId("driverMapLandmarkCategory")?.value||"place",latitude:Number(point.latitude),longitude:Number(point.longitude),createdBy:state.user.uid,createdByName:state.driverData?.name||"كابتن كروة",createdByRole:"driver",status:"active",createdAt:serverTimestamp(),createdAtISO:new Date().toISOString()});byId("driverMapLandmarkName").value="";driverMapSearchCache.clear();selection.textContent=`تمت إضافة المعلم: ${name}`;toast("تمت إضافة المعلم إلى خريطة كروة");}catch(error){console.error(error);toast("تعذر إضافة المعلم — تحقق من الاتصال والصلاحيات");}

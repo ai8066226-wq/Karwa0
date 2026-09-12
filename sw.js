@@ -1,5 +1,5 @@
-const CACHE='karwa-phase32-neon-search-landmarks-v1';
-const CORE=['./','./index.html','./driver.html','./admin.html','./portal.css','./app.js?v=32','./driver.js?v=32','./admin.js','./pwa.js?v=32','./manifest.webmanifest','./karwa-icon.svg'];
+const CACHE='karwa-phase33-advanced-map-search-v1';
+const CORE=['./','./index.html','./driver.html','./admin.html','./portal.css','./app.js?v=33','./driver.js?v=33','./admin.js','./pwa.js?v=33','./manifest.webmanifest','./karwa-icon.svg'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(CORE.map(url=>new Request(url,{cache:'reload'})))).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener('message',e=>{if(e.data?.type==='SKIP_WAITING')self.skipWaiting()});
