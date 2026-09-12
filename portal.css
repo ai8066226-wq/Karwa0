@@ -388,6 +388,27 @@ input:focus, select:focus { border-color: var(--mint); outline: 0; box-shadow: 0
 
 .financial-breakdown strong { color: var(--navy); }
 
+.support-ticket-card { border-right: 4px solid var(--mint); }
+
+.ticket-message {
+  margin: 12px 0;
+  padding: 11px;
+  border-radius: 11px;
+  color: var(--navy);
+  background: var(--background);
+  white-space: pre-wrap;
+}
+
+.ticket-admin-reply {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-right: 3px solid var(--mint);
+  border-radius: 10px;
+  color: #08694f;
+  background: #eafaf5;
+  font-size: 13px;
+}
+
 .blocked-card { text-align: center; }
 .blocked-icon {
   width: 66px;

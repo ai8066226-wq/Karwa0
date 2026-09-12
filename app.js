@@ -11,6 +11,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getFirestore,
@@ -66,7 +67,16 @@ const state = {
   notifications: true,
   unsubscribeOrders: null,
   unsubscribeRatings: null,
+  unsubscribeAddresses: null,
+  unsubscribeSupportTickets: null,
   ratings: [],
+  addresses: [],
+  supportTickets: [],
+  orderFeedInitialized: false,
+  ticketFeedInitialized: false,
+  knownOrderStates: new Map(),
+  knownTicketStates: new Map(),
+  unreadNotifications: 0,
   ratingOrderId: null,
   ratingScore: 0,
   trackingUnsubscribe: null,
@@ -87,6 +97,21 @@ const state = {
 };
 
 const formatMoney = value => Number(value || 0).toLocaleString("ar-IQ") + " د.ع";
+const escapeHtml = value => String(value ?? "").replace(/[&<>'"]/g, char => ({
+  "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
+})[char]);
+
+function timestampValue(value, fallback = "") {
+  if (value?.toMillis) return value.toMillis();
+  if (value?.seconds) return Number(value.seconds) * 1000;
+  const parsed = Date.parse(fallback);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatDate(value, fallback = "") {
+  const timestamp = timestampValue(value, fallback);
+  return timestamp ? new Date(timestamp).toLocaleString("ar-IQ", { dateStyle: "short", timeStyle: "short" }) : "الآن";
+}
 
 function showToast(message) {
   const element = byId("toast");
@@ -431,6 +456,136 @@ async function loadUserProfile(user) {
   renderBalance();
 }
 
+function renderNotificationBadge() {
+  const badge = byId("notificationBadge");
+  badge.hidden = state.unreadNotifications < 1;
+  badge.textContent = state.unreadNotifications > 9 ? "9+" : String(state.unreadNotifications);
+}
+
+function signalNotification(message) {
+  if (!state.notifications) return;
+  state.unreadNotifications += 1;
+  renderNotificationBadge();
+  showToast(message);
+}
+
+function ticketStatusLabel(status) {
+  return ({ open: "قيد المراجعة", answered: "تم الرد", closed: "مغلقة" })[status] || "قيد المراجعة";
+}
+
+function ticketStatusClass(status) {
+  return status === "closed" ? "cancelled" : status === "answered" ? "complete" : "active";
+}
+
+function renderNotificationCenter() {
+  const orderItems = state.orders.slice(0, 8).map(order => ({
+    time: timestampValue(order.updatedAt || order.createdAt, order.createdAtISO),
+    icon: serviceIcons[order.type] || "🧾",
+    title: order.title || "طلب كروة",
+    text: order.cancelled
+      ? "تم إلغاء الطلب"
+      : `${orderStatuses[Number(order.statusIndex || 0)]}${order.driverName ? ` • الكابتن ${order.driverName}` : ""}`,
+    date: formatDate(order.updatedAt || order.createdAt, order.createdAtISO)
+  }));
+  const ticketItems = state.supportTickets.slice(0, 8).map(ticket => ({
+    time: timestampValue(ticket.updatedAt || ticket.createdAt),
+    icon: "💬",
+    title: `الدعم: ${ticket.category || "استفسار"}`,
+    text: ticket.adminReply || ticketStatusLabel(ticket.status),
+    date: formatDate(ticket.updatedAt || ticket.createdAt)
+  }));
+  const items = [...orderItems, ...ticketItems].sort((a, b) => b.time - a.time).slice(0, 12);
+  byId("notificationList").innerHTML = items.length
+    ? items.map(item => `
+      <article class="feature-item">
+        <div class="feature-item-head"><strong>${item.icon} ${escapeHtml(item.title)}</strong><small>${escapeHtml(item.date)}</small></div>
+        <p>${escapeHtml(item.text)}</p>
+      </article>`).join("")
+    : `<div class="empty-mini">لا توجد إشعارات بعد.</div>`;
+}
+
+function fillSupportOrders() {
+  const select = byId("supportOrder");
+  const currentValue = select.value;
+  select.innerHTML = `<option value="">بدون طلب محدد</option>` + state.orders.slice(0, 20).map(order =>
+    `<option value="${escapeHtml(order.firestoreId)}">${escapeHtml(order.id || "طلب")} — ${escapeHtml(order.title || "خدمة كروة")}</option>`
+  ).join("");
+  if ([...select.options].some(option => option.value === currentValue)) select.value = currentValue;
+}
+
+function renderAddresses() {
+  byId("addressesList").innerHTML = state.addresses.length
+    ? state.addresses.map(address => `
+      <article class="feature-item">
+        <div class="feature-item-head"><strong>⌖ ${escapeHtml(address.label || "عنوان")}</strong><small>${address.location ? "محفوظ على الخريطة" : "عنوان نصي"}</small></div>
+        <p>${escapeHtml(address.address || "")}${address.notes ? `<br>${escapeHtml(address.notes)}` : ""}</p>
+        <div class="mini-actions">
+          <button type="button" data-address-action="pickup" data-id="${address.firestoreId}">نقطة انطلاق</button>
+          <button type="button" data-address-action="destination" data-id="${address.firestoreId}">وجهة</button>
+          <button class="danger-mini" type="button" data-address-action="delete" data-id="${address.firestoreId}">حذف</button>
+        </div>
+      </article>`).join("")
+    : `<div class="empty-mini">لا توجد عناوين محفوظة.</div>`;
+}
+
+function renderSupportTickets() {
+  const tickets = [...state.supportTickets].sort((a, b) =>
+    timestampValue(b.updatedAt || b.createdAt) - timestampValue(a.updatedAt || a.createdAt)
+  );
+  byId("supportTicketsList").innerHTML = tickets.length
+    ? tickets.map(ticket => `
+      <article class="feature-item">
+        <div class="feature-item-head">
+          <strong>💬 ${escapeHtml(ticket.category || "استفسار")}</strong>
+          <span class="status-chip ${ticketStatusClass(ticket.status)}">${ticketStatusLabel(ticket.status)}</span>
+        </div>
+        <small>${escapeHtml(formatDate(ticket.createdAt))}${ticket.orderCode ? ` • ${escapeHtml(ticket.orderCode)}` : ""}</small>
+        <p>${escapeHtml(ticket.message || "")}</p>
+        ${ticket.adminReply ? `<p class="ticket-reply"><strong>رد الإدارة:</strong> ${escapeHtml(ticket.adminReply)}</p>` : ""}
+      </article>`).join("")
+    : `<div class="empty-mini">لم ترسل أي تذكرة دعم بعد.</div>`;
+}
+
+function subscribeToAddresses(user) {
+  if (state.unsubscribeAddresses) state.unsubscribeAddresses();
+  state.unsubscribeAddresses = onSnapshot(collection(db, "users", user.uid, "addresses"), snapshot => {
+    state.addresses = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }))
+      .sort((a, b) => timestampValue(b.createdAt) - timestampValue(a.createdAt));
+    renderAddresses();
+  }, error => {
+    console.error(error);
+    showToast("تعذر تحميل العناوين المحفوظة");
+  });
+}
+
+function subscribeToSupportTickets(user) {
+  if (state.unsubscribeSupportTickets) state.unsubscribeSupportTickets();
+  const ticketsQuery = query(collection(db, "supportTickets"), where("userId", "==", user.uid));
+  state.unsubscribeSupportTickets = onSnapshot(ticketsQuery, snapshot => {
+    if (state.ticketFeedInitialized) {
+      snapshot.docChanges().forEach(change => {
+        if (change.type !== "modified") return;
+        const ticket = change.doc.data();
+        const nextState = `${ticket.status || "open"}:${ticket.adminReply || ""}`;
+        if (state.knownTicketStates.get(change.doc.id) !== nextState) {
+          signalNotification(ticket.adminReply ? "وصل رد جديد من فريق الدعم" : "تم تحديث حالة تذكرة الدعم");
+        }
+      });
+    }
+    state.supportTickets = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
+    state.knownTicketStates = new Map(state.supportTickets.map(ticket => [
+      ticket.firestoreId,
+      `${ticket.status || "open"}:${ticket.adminReply || ""}`
+    ]));
+    state.ticketFeedInitialized = true;
+    renderSupportTickets();
+    renderNotificationCenter();
+  }, error => {
+    console.error(error);
+    showToast("تعذر تحميل تذاكر الدعم");
+  });
+}
+
 function subscribeToOrders(user) {
   if (state.unsubscribeOrders) state.unsubscribeOrders();
   const ordersQuery = query(
@@ -438,6 +593,20 @@ function subscribeToOrders(user) {
     where("userId", "==", user.uid)
   );
   state.unsubscribeOrders = onSnapshot(ordersQuery, snapshot => {
+    if (state.orderFeedInitialized) {
+      snapshot.docChanges().forEach(change => {
+        if (change.type !== "modified") return;
+        const order = change.doc.data();
+        const nextState = `${order.cancelled === true}:${Number(order.statusIndex || 0)}:${order.driverId || ""}`;
+        const previousState = state.knownOrderStates.get(change.doc.id);
+        if (previousState && previousState !== nextState) {
+          const message = order.cancelled
+            ? "تم إلغاء أحد طلباتك"
+            : `تحديث الرحلة: ${orderStatuses[Number(order.statusIndex || 0)]}`;
+          signalNotification(message);
+        }
+      });
+    }
     state.orders = snapshot.docs.map(item => {
       const data = item.data();
       return {
@@ -446,6 +615,11 @@ function subscribeToOrders(user) {
         createdAtISO: data.createdAt?.toDate?.().toISOString() || data.createdAtISO || new Date().toISOString()
       };
     }).sort((a, b) => new Date(b.createdAtISO) - new Date(a.createdAtISO));
+    state.knownOrderStates = new Map(state.orders.map(order => [
+      order.firestoreId,
+      `${order.cancelled === true}:${Number(order.statusIndex || 0)}:${order.driverId || ""}`
+    ]));
+    state.orderFeedInitialized = true;
 
     state.activeOrder = state.orders.find(order =>
       !order.cancelled && Number(order.statusIndex || 0) < orderStatuses.length - 1
@@ -464,6 +638,8 @@ function subscribeToOrders(user) {
     }
     renderOrders();
     renderTracking();
+    fillSupportOrders();
+    renderNotificationCenter();
     syncTrackingSubscription();
   }, error => {
     console.error(error);
@@ -1014,6 +1190,10 @@ byId("notificationSwitch").addEventListener("click", async () => {
   renderNotificationSwitch();
   try {
     await saveUserData({ notifications: state.notifications });
+    if (!state.notifications) {
+      state.unreadNotifications = 0;
+      renderNotificationBadge();
+    }
     showToast(state.notifications ? "تم تشغيل الإشعارات" : "تم إيقاف الإشعارات");
   } catch (error) {
     state.notifications = previous;
@@ -1023,28 +1203,155 @@ byId("notificationSwitch").addEventListener("click", async () => {
   }
 });
 
+const notificationModal = byId("notificationModal");
+const addressesModal = byId("addressesModal");
+const supportModal = byId("supportModal");
+
 byId("notificationButton").addEventListener("click", () => {
-  showToast(state.activeOrder ? "لديك تحديث على طلبك" : "لا توجد إشعارات جديدة");
+  if (!requireUser()) return;
+  state.unreadNotifications = 0;
+  renderNotificationBadge();
+  renderNotificationCenter();
+  notificationModal.classList.add("show");
+});
+
+byId("closeNotifications").addEventListener("click", () => notificationModal.classList.remove("show"));
+notificationModal.addEventListener("click", event => {
+  if (event.target === notificationModal) notificationModal.classList.remove("show");
 });
 
 byId("savedAddresses").addEventListener("click", () => {
-  showToast("إدارة العناوين ستكون في المرحلة التالية");
+  if (!requireUser()) return;
+  byId("addressLocationHint").textContent = state.customerLocation
+    ? "سيتم حفظ الإحداثيات المحددة حاليًا مع العنوان."
+    : "حدد موقعك من الخريطة أولًا إذا أردت استخدام العنوان بنقرة واحدة.";
+  renderAddresses();
+  addressesModal.classList.add("show");
 });
 
-const supportModal = byId("supportModal");
+byId("closeAddresses").addEventListener("click", () => addressesModal.classList.remove("show"));
+addressesModal.addEventListener("click", event => {
+  if (event.target === addressesModal) addressesModal.classList.remove("show");
+});
+
+byId("addressForm").addEventListener("submit", async event => {
+  event.preventDefault();
+  if (!requireUser()) return;
+  const button = byId("saveAddress");
+  const address = byId("addressText").value.trim();
+  if (address.length < 4) {
+    showToast("اكتب عنوانًا واضحًا");
+    return;
+  }
+  setButtonBusy(button, true, "جاري الحفظ…");
+  try {
+    const addressRef = doc(collection(db, "users", state.user.uid, "addresses"));
+    await setDoc(addressRef, {
+      userId: state.user.uid,
+      label: byId("addressLabel").value,
+      address: address.slice(0, 160),
+      notes: byId("addressNotes").value.trim().slice(0, 160),
+      location: state.customerLocation ? { ...state.customerLocation } : null,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    byId("addressForm").reset();
+    showToast("تم حفظ العنوان");
+  } catch (error) {
+    console.error(error);
+    showToast("تعذر حفظ العنوان. انشر قواعد Firestore الجديدة.");
+  } finally {
+    setButtonBusy(button, false);
+  }
+});
+
+byId("addressesList").addEventListener("click", async event => {
+  const button = event.target.closest("button[data-address-action]");
+  if (!button || !state.user) return;
+  const address = state.addresses.find(item => item.firestoreId === button.dataset.id);
+  if (!address) return;
+  if (button.dataset.addressAction === "delete") {
+    if (!confirm(`هل تريد حذف عنوان ${address.label || "المحفوظ"}؟`)) return;
+    try {
+      await deleteDoc(doc(db, "users", state.user.uid, "addresses", address.firestoreId));
+      showToast("تم حذف العنوان");
+    } catch (error) {
+      console.error(error);
+      showToast("تعذر حذف العنوان");
+    }
+    return;
+  }
+
+  const isPickup = button.dataset.addressAction === "pickup";
+  byId(isPickup ? "rideFrom" : "rideTo").value = address.address;
+  if (address.location) {
+    const latitude = Number(address.location.latitude);
+    const longitude = Number(address.location.longitude);
+    if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+      if (isPickup) setCustomerLocation(latitude, longitude);
+      else setDestinationLocation(latitude, longitude);
+    }
+  } else {
+    showToast("تم إدخال العنوان؛ حدده على الخريطة لإكمال الحجز");
+  }
+  addressesModal.classList.remove("show");
+  switchView("home");
+});
+
 document.querySelectorAll("[data-open-support]").forEach(button => {
-  button.addEventListener("click", () => supportModal.classList.add("show"));
+  button.addEventListener("click", () => {
+    if (!requireUser()) return;
+    fillSupportOrders();
+    renderSupportTickets();
+    supportModal.classList.add("show");
+  });
 });
 byId("closeSupport").addEventListener("click", () => supportModal.classList.remove("show"));
-byId("startSupportChat").addEventListener("click", () => {
-  supportModal.classList.remove("show");
-  showToast("تم بدء محادثة دعم تجريبية");
-});
 supportModal.addEventListener("click", event => {
   if (event.target === supportModal) supportModal.classList.remove("show");
 });
+
+byId("supportForm").addEventListener("submit", async event => {
+  event.preventDefault();
+  if (!requireUser()) return;
+  const message = byId("supportMessage").value.trim();
+  if (message.length < 10) {
+    showToast("اكتب تفاصيل أكثر عن المشكلة");
+    return;
+  }
+  const button = byId("submitSupportTicket");
+  const order = state.orders.find(item => item.firestoreId === byId("supportOrder").value);
+  setButtonBusy(button, true, "جاري الإرسال…");
+  try {
+    const ticketRef = doc(collection(db, "supportTickets"));
+    await setDoc(ticketRef, {
+      userId: state.user.uid,
+      userName: state.name,
+      email: state.user.email || "",
+      category: byId("supportCategory").value,
+      orderId: order?.firestoreId || "",
+      orderCode: order?.id || "",
+      message: message.slice(0, 600),
+      status: "open",
+      adminReply: "",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    byId("supportForm").reset();
+    fillSupportOrders();
+    showToast("تم إرسال التذكرة إلى الإدارة");
+  } catch (error) {
+    console.error(error);
+    showToast("تعذر إرسال التذكرة. انشر قواعد Firestore الجديدة.");
+  } finally {
+    setButtonBusy(button, false);
+  }
+});
+
 document.addEventListener("keydown", event => {
   if (event.key === "Escape") supportModal.classList.remove("show");
+  if (event.key === "Escape") addressesModal.classList.remove("show");
+  if (event.key === "Escape") notificationModal.classList.remove("show");
   if (event.key === "Escape") closeRatingModal();
 });
 
@@ -1057,6 +1364,10 @@ renderTracking();
 renderOrders();
 renderCart();
 renderBalance();
+renderAddresses();
+renderSupportTickets();
+renderNotificationCenter();
+renderNotificationBadge();
 
 try {
   await setPersistence(auth, browserLocalPersistence);
@@ -1075,11 +1386,26 @@ onAuthStateChanged(auth, async user => {
       state.unsubscribeRatings();
       state.unsubscribeRatings = null;
     }
+    if (state.unsubscribeAddresses) {
+      state.unsubscribeAddresses();
+      state.unsubscribeAddresses = null;
+    }
+    if (state.unsubscribeSupportTickets) {
+      state.unsubscribeSupportTickets();
+      state.unsubscribeSupportTickets = null;
+    }
     state.name = "ضيف";
     state.role = "customer";
     state.balance = 0;
     state.orders = [];
     state.ratings = [];
+    state.addresses = [];
+    state.supportTickets = [];
+    state.orderFeedInitialized = false;
+    state.ticketFeedInitialized = false;
+    state.knownOrderStates = new Map();
+    state.knownTicketStates = new Map();
+    state.unreadNotifications = 0;
     state.activeOrder = null;
     if (state.trackingUnsubscribe) state.trackingUnsubscribe();
     state.trackingUnsubscribe = null;
@@ -1090,6 +1416,10 @@ onAuthStateChanged(auth, async user => {
     renderBalance();
     renderOrders();
     renderTracking();
+    renderAddresses();
+    renderSupportTickets();
+    renderNotificationCenter();
+    renderNotificationBadge();
     openAuthModal();
     return;
   }
@@ -1108,6 +1438,8 @@ onAuthStateChanged(auth, async user => {
     }
     subscribeToOrders(user);
     subscribeToRatings(user);
+    subscribeToAddresses(user);
+    subscribeToSupportTickets(user);
   } catch (error) {
     console.error(error);
     showToast("تم الدخول، لكن تعذر تحميل بيانات الحساب. تحقق من Firestore.");

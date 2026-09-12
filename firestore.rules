@@ -51,6 +51,41 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    match /users/{userId}/addresses/{addressId} {
+      allow read: if own(userId);
+
+      allow create: if own(userId)
+                    && isCustomer()
+                    && request.resource.data.keys().hasOnly([
+                      'userId', 'label', 'address', 'notes', 'location',
+                      'createdAt', 'updatedAt'
+                    ])
+                    && request.resource.data.userId == request.auth.uid
+                    && request.resource.data.label is string
+                    && request.resource.data.label.size() <= 40
+                    && request.resource.data.address is string
+                    && request.resource.data.address.size() >= 4
+                    && request.resource.data.address.size() <= 160
+                    && request.resource.data.notes is string
+                    && request.resource.data.notes.size() <= 160
+                    && (request.resource.data.location == null
+                        || (request.resource.data.location.latitude is number
+                            && request.resource.data.location.longitude is number
+                            && request.resource.data.location.latitude >= -90
+                            && request.resource.data.location.latitude <= 90
+                            && request.resource.data.location.longitude >= -180
+                            && request.resource.data.location.longitude <= 180));
+
+      allow update: if own(userId)
+                    && isCustomer()
+                    && request.resource.data.userId == resource.data.userId
+                    && request.resource.data.createdAt == resource.data.createdAt
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                      .hasOnly(['label', 'address', 'notes', 'location', 'updatedAt']);
+
+      allow delete: if own(userId);
+    }
+
     match /driverApplications/{userId} {
       allow create: if own(userId)
                     && request.resource.data.userId == request.auth.uid
@@ -193,6 +228,49 @@ service cloud.firestore {
                   && (resource.data.customerId == request.auth.uid
                       || resource.data.driverId == request.auth.uid
                       || isAdmin());
+
+      allow delete: if isAdmin();
+    }
+
+    match /supportTickets/{ticketId} {
+      allow create: if isCustomer()
+                    && request.resource.data.keys().hasOnly([
+                      'userId', 'userName', 'email', 'category', 'orderId',
+                      'orderCode', 'message', 'status', 'adminReply',
+                      'createdAt', 'updatedAt'
+                    ])
+                    && request.resource.data.userId == request.auth.uid
+                    && request.resource.data.userName is string
+                    && request.resource.data.userName.size() <= 100
+                    && request.resource.data.email is string
+                    && request.resource.data.email.size() <= 160
+                    && request.resource.data.category in ['رحلة', 'دفع', 'حساب', 'شكوى', 'أخرى']
+                    && request.resource.data.orderId is string
+                    && request.resource.data.orderCode is string
+                    && ((request.resource.data.orderId == ''
+                         && request.resource.data.orderCode == '')
+                        || (request.resource.data.orderId != ''
+                            && exists(/databases/$(database)/documents/orders/$(request.resource.data.orderId))
+                            && get(/databases/$(database)/documents/orders/$(request.resource.data.orderId)).data.userId == request.auth.uid
+                            && get(/databases/$(database)/documents/orders/$(request.resource.data.orderId)).data.id == request.resource.data.orderCode))
+                    && request.resource.data.message is string
+                    && request.resource.data.message.size() >= 10
+                    && request.resource.data.message.size() <= 600
+                    && request.resource.data.status == 'open'
+                    && request.resource.data.adminReply == '';
+
+      allow read: if signedIn()
+                  && (resource.data.userId == request.auth.uid || isAdmin());
+
+      allow update: if isAdmin()
+                    && request.resource.data.userId == resource.data.userId
+                    && request.resource.data.status in ['open', 'answered', 'closed']
+                    && request.resource.data.adminReply is string
+                    && request.resource.data.adminReply.size() <= 600
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                      'status', 'adminReply', 'repliedBy', 'repliedAt',
+                      'closedBy', 'closedAt', 'reopenedBy', 'reopenedAt', 'updatedAt'
+                    ]);
 
       allow delete: if isAdmin();
     }

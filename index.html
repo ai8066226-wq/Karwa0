@@ -1246,6 +1246,108 @@
       flex: 1;
     }
 
+    .feature-modal {
+      max-height: calc(100vh - 36px);
+      overflow-y: auto;
+    }
+
+    .notification-button { position: relative; }
+
+    .notification-badge {
+      position: absolute;
+      top: -5px;
+      right: -5px;
+      min-width: 19px;
+      height: 19px;
+      padding: 0 5px;
+      display: grid;
+      place-items: center;
+      border: 2px solid white;
+      border-radius: 999px;
+      color: white;
+      background: var(--orange);
+      font-size: 10px;
+      font-weight: 900;
+    }
+
+    .feature-list {
+      margin-top: 14px;
+      display: grid;
+      gap: 9px;
+    }
+
+    .feature-item {
+      padding: 13px;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      background: #fbfcfe;
+    }
+
+    .feature-item-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .feature-item strong,
+    .feature-item small { display: block; }
+    .feature-item small { margin-top: 3px; color: var(--muted); }
+    .feature-item p { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
+
+    .status-chip {
+      padding: 6px 10px;
+      display: inline-flex;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .status-chip.pending { color: #805000; background: #fff1c9; }
+    .status-chip.active { color: #08745c; background: #dff8f1; }
+    .status-chip.complete { color: #385084; background: #e8efff; }
+    .status-chip.cancelled { color: #a92935; background: #ffe6e8; }
+
+    .mini-actions {
+      margin-top: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+    }
+
+    .mini-actions button {
+      padding: 7px 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      color: var(--navy);
+      background: white;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .mini-actions button.danger-mini { color: var(--danger); }
+
+    .ticket-reply {
+      padding: 9px 11px;
+      border-right: 3px solid var(--mint);
+      border-radius: 10px;
+      color: var(--mint-dark) !important;
+      background: #eefbf8;
+    }
+
+    .empty-mini {
+      padding: 20px 10px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    #saveAddress,
+    #submitSupportTicket {
+      width: 100%;
+      margin-top: 10px;
+    }
+
     #authModal {
       align-items: center;
     }
@@ -1598,7 +1700,9 @@
         </button>
 
         <div class="top-actions">
-          <button class="icon-button" id="notificationButton" aria-label="الإشعارات">♢</button>
+          <button class="icon-button notification-button" id="notificationButton" aria-label="الإشعارات">
+            <span>♢</span><span class="notification-badge" id="notificationBadge" hidden>0</span>
+          </button>
           <button class="avatar" id="accountButton" aria-label="فتح الحساب">
             <span id="smallAvatar">م</span>
           </button>
@@ -2029,30 +2133,76 @@
     </div>
   </div>
 
-  <div class="modal-backdrop" id="supportModal" role="dialog" aria-modal="true">
-    <div class="modal">
-      <h2>كيف نساعدك؟</h2>
-      <p>اختر طريقة التواصل. الخيارات الحالية تجريبية.</p>
-
-      <div class="payment-card">
-        <span>💬</span>
-        <div>
-          <strong>محادثة مباشرة</strong>
-          <small>عادةً نرد خلال دقيقتين</small>
-        </div>
-      </div>
-
-      <div class="payment-card">
-        <span>☎</span>
-        <div>
-          <strong>اتصال هاتفي</strong>
-          <small>متاح على مدار الساعة</small>
-        </div>
-      </div>
-
+  <div class="modal-backdrop" id="notificationModal" role="dialog" aria-modal="true" aria-labelledby="notificationTitle">
+    <div class="modal feature-modal">
+      <h2 id="notificationTitle">مركز الإشعارات</h2>
+      <p>تحديثات الرحلات وردود فريق الدعم تظهر هنا مباشرةً.</p>
+      <div class="feature-list" id="notificationList"></div>
       <div class="modal-actions">
-        <button class="secondary-button" id="closeSupport">إغلاق</button>
-        <button class="primary-button" id="startSupportChat">ابدأ المحادثة</button>
+        <button class="secondary-button" id="closeNotifications" type="button">إغلاق</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="addressesModal" role="dialog" aria-modal="true" aria-labelledby="addressesTitle">
+    <div class="modal feature-modal">
+      <h2 id="addressesTitle">العناوين المحفوظة</h2>
+      <p>احفظ البيت أو العمل واستخدمه بنقرة واحدة عند الحجز.</p>
+      <form id="addressForm">
+        <div class="field">
+          <label for="addressLabel">اسم المكان</label>
+          <select id="addressLabel">
+            <option value="البيت">البيت</option>
+            <option value="العمل">العمل</option>
+            <option value="مكان مفضل">مكان مفضل</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="addressText">العنوان</label>
+          <input id="addressText" maxlength="160" placeholder="مثال: بغداد، المنصور، شارع 14 رمضان" required>
+        </div>
+        <div class="field">
+          <label for="addressNotes">تفاصيل إضافية</label>
+          <input id="addressNotes" maxlength="160" placeholder="رقم المنزل أو أقرب نقطة دالة">
+        </div>
+        <small class="muted" id="addressLocationHint">حدد موقعك من الخريطة لحفظ الإحداثيات مع العنوان.</small>
+        <button class="primary-button" id="saveAddress" type="submit">حفظ العنوان</button>
+      </form>
+      <div class="feature-list" id="addressesList"></div>
+      <div class="modal-actions">
+        <button class="secondary-button" id="closeAddresses" type="button">إغلاق</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="supportModal" role="dialog" aria-modal="true">
+    <div class="modal feature-modal">
+      <h2>الدعم والشكاوى</h2>
+      <p>أرسل تذكرة وسيظهر رد الإدارة هنا مباشرةً.</p>
+      <form id="supportForm">
+        <div class="field">
+          <label for="supportCategory">نوع الطلب</label>
+          <select id="supportCategory">
+            <option value="رحلة">مشكلة في رحلة</option>
+            <option value="دفع">الدفع أو المحفظة</option>
+            <option value="حساب">الحساب</option>
+            <option value="شكوى">شكوى</option>
+            <option value="أخرى">أخرى</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="supportOrder">الطلب المرتبط</label>
+          <select id="supportOrder"><option value="">بدون طلب محدد</option></select>
+        </div>
+        <div class="field">
+          <label for="supportMessage">تفاصيل المشكلة</label>
+          <textarea id="supportMessage" maxlength="600" placeholder="اشرح المشكلة بوضوح" required></textarea>
+        </div>
+        <button class="primary-button" id="submitSupportTicket" type="submit">إرسال التذكرة</button>
+      </form>
+      <div class="feature-list" id="supportTicketsList"></div>
+      <div class="modal-actions">
+        <button class="secondary-button" id="closeSupport" type="button">إغلاق</button>
       </div>
     </div>
   </div>

@@ -47,6 +47,7 @@ const state = {
   applications: [],
   drivers: [],
   ratings: [],
+  supportTickets: [],
   orders: [],
   roleUnsubscribe: null,
   dashboardUnsubscribes: []
@@ -56,6 +57,12 @@ const money = value => Number(value || 0).toLocaleString("ar-IQ") + " د.ع";
 const escapeHtml = value => String(value ?? "").replace(/[&<>'"]/g, char => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
 })[char]);
+const dateText = value => {
+  const milliseconds = value?.toMillis?.() || Number(value?.seconds || 0) * 1000;
+  return milliseconds
+    ? new Date(milliseconds).toLocaleString("ar-IQ", { dateStyle: "short", timeStyle: "short" })
+    : "الآن";
+};
 
 function toast(message) {
   const element = byId("toast");
@@ -135,6 +142,7 @@ function renderMetrics() {
   byId("blockedCount").textContent = state.drivers.filter(driver => driver.blocked === true).length;
   byId("pendingCount").textContent = state.applications.filter(item => item.status === "pending").length;
   byId("ordersCount").textContent = state.orders.length;
+  byId("supportCount").textContent = state.supportTickets.filter(ticket => ticket.status !== "closed").length;
   byId("revenueTotal").textContent = money(revenue);
   byId("commissionTotal").textContent = money(commission);
   byId("financialGross").textContent = money(revenue);
@@ -206,6 +214,51 @@ function renderRatings() {
         ${rating.comment ? `<p>${escapeHtml(rating.comment)}</p>` : ""}
       </article>`).join("")
     : `<div class="empty"><span>★</span>لا توجد تقييمات بعد.</div>`;
+}
+
+function supportStatusLabel(status) {
+  return ({ open: "جديدة", answered: "تم الرد", closed: "مغلقة" })[status] || "جديدة";
+}
+
+function supportStatusClass(status) {
+  return status === "closed" ? "cancelled" : status === "answered" ? "complete" : "pending";
+}
+
+function supportTicketCard(ticket) {
+  const replyAction = ticket.status !== "closed"
+    ? `<button class="primary" data-action="reply-ticket" data-id="${ticket.firestoreId}">كتابة رد</button>`
+    : `<button class="secondary" data-action="reopen-ticket" data-id="${ticket.firestoreId}">إعادة فتح</button>`;
+  const closeAction = ticket.status !== "closed"
+    ? `<button class="danger" data-action="close-ticket" data-id="${ticket.firestoreId}">إغلاق التذكرة</button>`
+    : "";
+  return `
+    <article class="order-card support-ticket-card">
+      <div class="order-top">
+        <h3>💬 ${escapeHtml(ticket.category || "استفسار")}</h3>
+        <span class="status-chip ${supportStatusClass(ticket.status)}">${supportStatusLabel(ticket.status)}</span>
+      </div>
+      <div class="order-meta">
+        <span>${escapeHtml(ticket.userName || "عميل كروة")}</span>
+        <span>${escapeHtml(ticket.email || "")}</span>
+        <span>${escapeHtml(dateText(ticket.createdAt))}</span>
+        ${ticket.orderCode ? `<span>الطلب: ${escapeHtml(ticket.orderCode)}</span>` : ""}
+      </div>
+      <p class="ticket-message">${escapeHtml(ticket.message || "")}</p>
+      ${ticket.adminReply ? `<p class="ticket-admin-reply"><strong>الرد الحالي:</strong> ${escapeHtml(ticket.adminReply)}</p>` : ""}
+      <div class="order-actions">${replyAction}${closeAction}</div>
+    </article>`;
+}
+
+function renderSupportTickets() {
+  const tickets = [...state.supportTickets].sort((a, b) => {
+    if (a.status === "open" && b.status !== "open") return -1;
+    if (b.status === "open" && a.status !== "open") return 1;
+    return Number(b.updatedAt?.seconds || b.createdAt?.seconds || 0)
+      - Number(a.updatedAt?.seconds || a.createdAt?.seconds || 0);
+  });
+  byId("supportTicketsList").innerHTML = tickets.length
+    ? tickets.map(supportTicketCard).join("")
+    : `<div class="empty"><span>💬</span>لا توجد تذاكر دعم.</div>`;
 }
 
 function applicationCard(application) {
@@ -312,12 +365,18 @@ function openDashboard() {
     renderDrivers();
     renderRatings();
   });
+  const supportUnsubscribe = onSnapshot(collection(db, "supportTickets"), snapshot => {
+    state.supportTickets = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
+    renderSupportTickets();
+    renderMetrics();
+  });
   state.dashboardUnsubscribes.push(
     usersUnsubscribe,
     applicationsUnsubscribe,
     ordersUnsubscribe,
     driversUnsubscribe,
-    ratingsUnsubscribe
+    ratingsUnsubscribe,
+    supportUnsubscribe
   );
 }
 
@@ -408,6 +467,36 @@ document.addEventListener("click", async event => {
         updatedAt: serverTimestamp()
       });
       toast("تم إلغاء الطلب");
+    } else if (button.dataset.action === "reply-ticket") {
+      const ticket = state.supportTickets.find(item => item.firestoreId === id);
+      if (!ticket) throw new Error("NOT_FOUND");
+      const reply = prompt("اكتب الرد الذي سيظهر للعميل:", ticket.adminReply || "")?.trim();
+      if (!reply) return;
+      await updateDoc(doc(db, "supportTickets", id), {
+        status: "answered",
+        adminReply: reply.slice(0, 600),
+        repliedBy: state.user.uid,
+        repliedAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      toast("تم إرسال الرد للعميل");
+    } else if (button.dataset.action === "close-ticket") {
+      if (!confirm("هل تريد إغلاق هذه التذكرة؟")) return;
+      await updateDoc(doc(db, "supportTickets", id), {
+        status: "closed",
+        closedBy: state.user.uid,
+        closedAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      toast("تم إغلاق التذكرة");
+    } else if (button.dataset.action === "reopen-ticket") {
+      await updateDoc(doc(db, "supportTickets", id), {
+        status: "open",
+        reopenedBy: state.user.uid,
+        reopenedAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      toast("تمت إعادة فتح التذكرة");
     }
   } catch (error) {
     console.error(error);
