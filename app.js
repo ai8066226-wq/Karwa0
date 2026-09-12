@@ -749,8 +749,19 @@ byId("foodFilter").addEventListener("click", () => showToast("المطاعم م�
 
 function renderTracking() {
   const card = byId("trackingCard");
+  const tripToggle = byId("tripPanelToggle");
   card.classList.toggle("show", Boolean(state.activeOrder));
-  if (!state.activeOrder) return;
+  tripToggle?.classList.toggle("hidden", !state.activeOrder);
+  if (!state.activeOrder) {
+    byId("home")?.classList.remove("trip-panel-hidden");
+    if (tripToggle) {
+      tripToggle.setAttribute("aria-expanded", "true");
+      tripToggle.setAttribute("aria-label", "إخفاء معلومات الرحلة");
+      const label = tripToggle.querySelector("strong");
+      if (label) label.textContent = "إخفاء الرحلة";
+    }
+    return;
+  }
   const order = state.activeOrder;
   const statusIndex = Number(order.statusIndex || 0);
   byId("trackingTitle").textContent = order.title;

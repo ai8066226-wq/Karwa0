@@ -1613,11 +1613,25 @@ body.customer-map-mode .location-button small{color:#526278}body.customer-map-mo
 .map-recenter-button{position:absolute;z-index:880;left:18px;bottom:104px;width:52px;height:52px;display:grid;place-items:center;border:2px solid #fff;border-radius:50%;color:#0a2540;background:#fff;box-shadow:0 9px 25px rgba(10,37,64,.23);font-size:24px;font-weight:900}
 #home.customer-options-open .map-destination-quick,#home.customer-options-open .map-recenter-button{opacity:0;pointer-events:none}
 #home .tracking-card.show{top:auto;right:auto;left:50%;bottom:18px;width:min(620px,calc(100% - 36px));max-height:48%;color:#fff;background:linear-gradient(135deg,#0a2540,#135e72);border:1px solid rgba(255,255,255,.2);transform:translateX(-50%)}
-#home .tracking-card.show + .main-grid .map-destination-quick{display:none}
+#home .tracking-card.show ~ .main-grid .map-destination-quick{display:none}
 #home .tracking-card .tracking-header p,#home .tracking-card .tracking-header small{color:#e6f0f6}
 #home .tracking-card .tracking-status{color:#063f3b;background:#8df0e6}
 #home .tracking-card .trip-live-strip>div{border-color:rgba(255,255,255,.2);background:rgba(255,255,255,.1)}#home .tracking-card .trip-live-strip small{color:#dce8f0}#home .tracking-card .trip-live-strip strong{color:#fff}
 #home .tracking-card .trip-stage-hint{color:#0a2540;background:#b9f3ec}
+#home .tracking-card.show{width:min(500px,calc(100% - 36px));max-height:40%;padding:13px 14px;overflow:auto;border-radius:20px;box-shadow:0 15px 40px rgba(10,37,64,.26);transition:opacity .22s ease,transform .28s cubic-bezier(.22,.8,.25,1)}
+#home .tracking-card .tracking-header{align-items:flex-start;gap:8px}#home .tracking-card .tracking-header strong{font-size:15px}#home .tracking-card .tracking-header p{margin:3px 0;font-size:12px;line-height:1.45}#home .tracking-card .tracking-header small{display:block;font-size:10px;line-height:1.45}
+#home .tracking-card .tracking-status{padding:5px 8px;font-size:10px}#home .tracking-card .progress{height:6px;margin:9px 0 8px}
+#home .tracking-card .trip-live-strip{gap:5px;margin-top:7px}#home .tracking-card .trip-live-strip>div{padding:6px 5px;border-radius:10px}#home .tracking-card .trip-live-strip small{font-size:9px}#home .tracking-card .trip-live-strip strong{font-size:12px}
+#home .tracking-card .trip-stage-hint{margin:7px 0 0;padding:6px 9px;border-radius:9px;font-size:10px}
+#home .tracking-card #tripOtpBox{margin-top:7px!important;padding:8px 10px!important;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.1)!important}#home .tracking-card #tripOtpBox>strong{font-size:12px}#home .tracking-card #tripOtpBox small{font-size:9px;color:#e6f0f6}
+#home .tracking-card .tracking-actions{margin-top:8px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+#home .tracking-card .tracking-actions button,#home .tracking-card .tracking-actions a{min-height:38px;padding:6px 7px;border:1px solid rgba(255,255,255,.42);border-radius:10px;color:#fff;background:rgba(255,255,255,.1);font-size:11px;line-height:1.35;font-weight:800}
+#home .tracking-card .tracking-actions #sosTrip{color:#fff!important;border-color:#fb7185!important;background:#9f1239}
+.trip-panel-toggle{position:absolute;z-index:890;left:16px;top:50%;min-width:108px;min-height:50px;padding:10px 13px;display:flex;align-items:center;justify-content:center;gap:8px;border:2px solid #fff;border-radius:17px;color:#fff;background:#0a2540;box-shadow:0 12px 30px rgba(10,37,64,.3);font-weight:900;transform:translateY(-50%);transition:transform .2s,background .2s,color .2s}
+.trip-panel-toggle span{width:27px;height:27px;display:grid;place-items:center;border-radius:50%;color:#0a2540;background:#7de4e1;font-size:16px}.trip-panel-toggle strong{font-size:12px;white-space:nowrap}
+.trip-panel-toggle[aria-expanded="false"]{color:#0a2540;background:#fff}.trip-panel-toggle[aria-expanded="false"] span{color:#fff;background:#d3401f}
+#home.trip-panel-hidden .tracking-card.show{opacity:0;pointer-events:none;transform:translate(-50%,28px) scale(.96)}
+#home.customer-options-open .trip-panel-toggle{opacity:0;pointer-events:none}
 #customerOptionsPanel{color:#0a2540;background:#f7fafc!important}
 .map-options-header{border-color:#d3dde7;background:rgba(255,255,255,.98)}.map-options-header small{color:#526278}
 #customerOptionsPanel label{color:#172f4b}#customerOptionsPanel input,#customerOptionsPanel select,#customerOptionsPanel textarea{min-height:48px;border:1.5px solid #b9c8d8;color:#0a2540;background:#fff}#customerOptionsPanel input::placeholder,#customerOptionsPanel textarea::placeholder{color:#66758a;opacity:1}
@@ -1633,11 +1647,15 @@ body.customer-map-mode .location-button small{color:#526278}body.customer-map-mo
  .map-recenter-button{left:12px;bottom:174px}
  #home .map-information{bottom:172px;left:72px;max-width:205px}
  #home .tracking-card.show{right:8px;left:8px;bottom:88px;width:auto;max-height:50dvh;transform:none}
+ #home .tracking-card.show{max-height:38dvh;padding:11px 12px}
+ .trip-panel-toggle{left:10px;top:50%;min-width:100px;min-height:48px;padding:9px 11px}
+ #home.trip-panel-hidden .tracking-card.show{transform:translateY(24px) scale(.97)}
 }
 @media(max-width:550px){
  #home .welcome{left:auto;width:calc(100% - 76px)}
  #home .welcome h1{font-size:17px}.map-destination-quick strong{font-size:15px}
  #home .map-information{display:none}.map-options-toggle{min-width:104px;min-height:50px}
+ #home .tracking-card .tracking-actions{grid-template-columns:1fr 1fr}
 }
 </style>
 </head>
@@ -1733,6 +1751,8 @@ body.customer-map-mode .location-button small{color:#526278}body.customer-map-mo
               <button class="secondary-button" id="sosTrip" style="border-color:#dc2626;color:#b91c1c">🆘 SOS / سلامة</button>
             </div>
           </div>
+
+          <button class="trip-panel-toggle hidden" id="tripPanelToggle" type="button" aria-controls="trackingCard" aria-expanded="true" aria-label="إخفاء معلومات الرحلة"><span aria-hidden="true">▤</span><strong>إخفاء الرحلة</strong></button>
 
           <div class="main-grid">
             <button class="map-options-toggle" id="customerOptionsToggle" type="button" aria-controls="customerOptionsPanel" aria-expanded="false"><span aria-hidden="true">☰</span><strong>الخدمات</strong></button>
@@ -2227,6 +2247,7 @@ window.addEventListener("DOMContentLoaded",()=>{
   const panel=document.getElementById("customerOptionsPanel");
   const destination=document.getElementById("customerDestinationQuick");
   const recenter=document.getElementById("customerRecenterButton");
+  const tripToggle=document.getElementById("tripPanelToggle");
   if(!home||!toggle||!close||!scrim||!panel)return;
   const refreshMap=()=>window.setTimeout(()=>window.dispatchEvent(new Event("resize")),330);
   const setOpen=open=>{
@@ -2242,6 +2263,13 @@ window.addEventListener("DOMContentLoaded",()=>{
   toggle.addEventListener("click",()=>setOpen(true));
   destination?.addEventListener("click",()=>{setOpen(true);window.setTimeout(()=>document.getElementById("rideTo")?.focus(),150)});
   recenter?.addEventListener("click",()=>document.getElementById("useRideLocation")?.click());
+  tripToggle?.addEventListener("click",()=>{
+    const hidden=home.classList.toggle("trip-panel-hidden");
+    tripToggle.setAttribute("aria-expanded",String(!hidden));
+    tripToggle.setAttribute("aria-label",hidden?"إظهار معلومات الرحلة":"إخفاء معلومات الرحلة");
+    const label=tripToggle.querySelector("strong");
+    if(label)label.textContent=hidden?"عرض الرحلة":"إخفاء الرحلة";
+  });
   close.addEventListener("click",()=>{setOpen(false);toggle.focus({preventScroll:true})});
   scrim.addEventListener("click",()=>setOpen(false));
   document.addEventListener("keydown",event=>{if(event.key==="Escape"&&home.classList.contains("customer-options-open"))setOpen(false)});
