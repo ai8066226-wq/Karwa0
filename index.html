@@ -7,6 +7,7 @@
   <meta name="description" content="كروة — تطبيق عربي لحجز المشاوير وتوصيل الأغراض والطعام">
   <title>كروة | الحجز والتوصيل</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css">
 
   <style>
     :root {
@@ -1527,6 +1528,13 @@
     .map-confirm-bar{display:none;align-items:center;justify-content:space-between;gap:12px;margin:10px 0 14px;padding:10px 12px;border:1px solid #dfe6ef;border-radius:14px;background:#fff}.map-confirm-bar.show{display:flex}.map-confirm-bar span{font-size:12px;color:#526078;line-height:1.5}.map-confirm-bar button{border:0;border-radius:10px;padding:9px 12px;background:#102044;color:#fff;font-weight:800;white-space:nowrap}.center-pin{position:absolute;z-index:650;left:50%;top:50%;transform:translate(-50%,-100%);display:none;pointer-events:none;font-size:38px;filter:drop-shadow(0 5px 4px rgba(0,0,0,.25))}.map-card.center-pick .center-pin{display:block}.map-card.center-pick #customerMap{cursor:grab}.map-search-hint{font-size:11px;color:#748197;margin-top:5px}.place-result .distance{font-size:10px;color:#d65b2b;font-weight:800;margin-top:4px;display:block}.map-pick-actions{grid-template-columns:repeat(3,minmax(0,1fr))!important}
     @media(max-width:760px){.map-card,#customerMap{min-height:430px!important}.place-result small{max-width:250px}.service-panel .panel-heading{align-items:center}.map-pick-actions{display:grid!important;grid-template-columns:1fr 1fr}.map-pick-button{padding:9px 6px!important}.route-summary{display:grid!important;grid-template-columns:1fr 1fr}.route-summary #routeMode{grid-column:1/-1}.card{border-radius:18px!important}}
 
+  
+    /* Phase 14 — live trip experience */
+    .trip-live-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}.trip-live-strip>div{background:#f7f9fc;border:1px solid #e7ebf2;border-radius:14px;padding:10px;text-align:center}.trip-live-strip small{display:block;color:var(--muted);font-size:11px}.trip-live-strip strong{display:block;margin-top:3px;color:var(--navy);font-size:14px}.trip-stage-hint{margin:10px 0 0;padding:9px 12px;border-radius:12px;background:rgba(255,107,53,.08);color:#9b431f;font-size:12px;font-weight:800}.tracking-actions a.secondary-button{text-decoration:none;text-align:center;display:flex;align-items:center;justify-content:center}.tracking-actions .hidden{display:none!important}.karwa-map-marker.driver{transition:transform .2s ease;box-shadow:0 8px 24px rgba(16,32,68,.25)}
+    @media(max-width:600px){.trip-live-strip{grid-template-columns:1fr 1fr}.trip-live-strip>div:last-child{grid-column:1/-1}.tracking-card{border-radius:22px}.tracking-actions{grid-template-columns:1fr 1fr!important}}
+
+    .map-search-button{margin:-4px 0 10px;border:0;border-radius:12px;padding:10px 16px;background:#102044;color:#fff;font-weight:800;box-shadow:0 6px 16px rgba(16,32,68,.12)}
+    .maplibregl-canvas{outline:none}.maplibregl-ctrl-attrib{font-size:10px!important}.leaflet-maplibre-gl{border-radius:inherit}
   </style>
   <link rel="manifest" href="./manifest.webmanifest">
   <meta name="theme-color" content="#111827">
@@ -1604,9 +1612,13 @@
               <span class="tracking-status" id="trackingStatus"></span>
             </div>
 
-            <div class="progress">
-              <span id="progressBar"></span>
+            <div class="progress"><span id="progressBar"></span></div>
+            <div class="trip-live-strip">
+              <div><small>الوصول المتوقع</small><strong id="liveEta">—</strong></div>
+              <div><small>المسافة المتبقية</small><strong id="liveDistance">—</strong></div>
+              <div><small>المسار</small><strong id="liveRouteSource">بانتظار الكابتن</strong></div>
             </div>
+            <p class="trip-stage-hint" id="tripStageHint">نبحث عن كابتن قريب</p>
             <div id="tripOtpBox" class="hidden" style="margin-top:14px;padding:14px;border-radius:16px;background:rgba(255,107,53,.08)">
               <strong>رمز بدء الرحلة: <span id="tripOtp" style="font-size:1.35rem;letter-spacing:4px">—</span></strong>
               <small style="display:block;margin-top:6px">أعطِ هذا الرمز للكابتن فقط بعد وصوله إليك. • حالة الدفع: <span id="paymentTripStatus">—</span></small>
@@ -1615,6 +1627,7 @@
             <div class="tracking-actions">
               <button id="advanceOrder" disabled>تحديث مباشر من الكابتن</button>
               <button id="cancelOrder">إلغاء الطلب</button>
+              <a class="secondary-button hidden" id="callDriver" href="#">📞 اتصال بالكابتن</a>
               <button class="secondary-button" id="shareTrip">🔗 مشاركة الرحلة</button>
               <button class="secondary-button" id="sosTrip" style="border-color:#dc2626;color:#b91c1c">🆘 SOS / سلامة</button>
             </div>
@@ -2088,6 +2101,8 @@
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
+  <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
   <script type="module" src="./app.js"></script>
   <script src="./pwa.js"></script>
 </body>

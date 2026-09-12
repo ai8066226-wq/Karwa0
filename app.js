@@ -110,7 +110,11 @@ const state = {
   routeSource: "",
   savedAddresses: [],
   centerPickActive: false,
-  centerPickTimer: null
+  centerPickTimer: null,
+  liveRouteTimer: null,
+  lastLiveRouteAt: 0,
+  lastLiveRoutePoint: null,
+  driverAnimationFrame: null
 };
 
 const formatMoney = value => Number(value || 0).toLocaleString("ar-IQ") + " د.ع";
@@ -174,10 +178,12 @@ function initializeCustomerMap() {
   state.map = window.L.map("customerMap", { zoomControl: false, attributionControl: true }).setView([36.34, 43.13], 13);
   window.L.control.zoom({position:"bottomleft"}).addTo(state.map);
   state.map.on("click", e => { if(!state.centerPickActive) setBookingPoint(state.mapPickMode, e.latlng.lat, e.latlng.lng); });
-  state.map.on("move",()=>{if(!state.centerPickActive)return;clearTimeout(state.centerPickTimer);byId("mapCenterLabel").textContent="جارٍ تحديد العنوان…";state.centerPickTimer=setTimeout(async()=>{const c=state.map.getCenter();const name=await reverseGeocode(c.lat,c.lng);byId("mapCenterLabel").textContent=name||`الموقع: ${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`;},450);});
-  const streets=window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(state.map);
-  const light=window.L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",{maxZoom:20,attribution:'&copy; OpenStreetMap &copy; CARTO'});
-  window.L.control.layers({"الخريطة":streets,"خريطة هادئة":light},null,{position:"bottomright",collapsed:true}).addTo(state.map);
+  state.map.on("move",()=>{if(!state.centerPickActive)return;clearTimeout(state.centerPickTimer);byId("mapCenterLabel").textContent="جارٍ تحديد العنوان…";state.centerPickTimer=setTimeout(async()=>{const c=state.map.getCenter();const name=await reverseGeocode(c.lat,c.lng);byId("mapCenterLabel").textContent=name||`الموقع: ${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`;},1250);});
+  // Phase 15: vector map, no API key. OpenFreeMap uses OpenStreetMap data.
+  const liberty=window.L.maplibreGL({style:"https://tiles.openfreemap.org/styles/liberty"}).addTo(state.map);
+  const bright=window.L.maplibreGL({style:"https://tiles.openfreemap.org/styles/bright"});
+  const positron=window.L.maplibreGL({style:"https://tiles.openfreemap.org/styles/positron"});
+  window.L.control.layers({"تفصيلية":liberty,"واضحة":bright,"هادئة":positron},null,{position:"bottomright",collapsed:true}).addTo(state.map);
 }
 
 function setCustomerLocation(latitude, longitude) {
@@ -193,17 +199,34 @@ function setCustomerLocation(latitude, longitude) {
   drawLiveRoute();
 }
 
-function drawLiveRoute() {
-  if (!state.map || !state.customerMarker || !state.driverMarker) return;
-  const points = [state.customerMarker.getLatLng(), state.driverMarker.getLatLng()];
-  if (state.routeLine) state.routeLine.setLatLngs(points);
-  else state.routeLine = window.L.polyline(points, {
-    color: "#ff6b35",
-    weight: 5,
-    opacity: .85,
-    dashArray: "9 9"
-  }).addTo(state.map);
-  state.map.fitBounds(window.L.latLngBounds(points), { padding: [45, 45], maxZoom: 16 });
+function liveTargetForOrder(){
+  const o=state.activeOrder, s=Number(o?.statusIndex||0);
+  if(!o) return state.customerLocation;
+  if(s>=3 && o.destinationLocation) return o.destinationLocation;
+  return o.pickupLocation || state.customerLocation;
+}
+function liveDistanceText(km){return km<1?`${Math.max(1,Math.round(km*1000))} م`:`${km.toFixed(1)} كم`;}
+function animateDriverMarker(point){
+  if(!state.driverMarker){state.driverMarker=window.L.marker(point,{icon:mapIcon("driver")}).addTo(state.map).bindPopup("موقع الكابتن");return;}
+  const from=state.driverMarker.getLatLng(), to=window.L.latLng(point);
+  if(state.driverAnimationFrame) cancelAnimationFrame(state.driverAnimationFrame);
+  const started=performance.now(), duration=900;
+  const tick=now=>{const t=Math.min(1,(now-started)/duration),e=1-Math.pow(1-t,3);state.driverMarker.setLatLng([from.lat+(to.lat-from.lat)*e,from.lng+(to.lng-from.lng)*e]);if(t<1)state.driverAnimationFrame=requestAnimationFrame(tick);};
+  state.driverAnimationFrame=requestAnimationFrame(tick);
+}
+async function drawLiveRoute(force=false) {
+  if (!state.map || !state.driverMarker) return;
+  const target=liveTargetForOrder(); if(!target)return;
+  const d=state.driverMarker.getLatLng(), now=Date.now();
+  const moved=state.lastLiveRoutePoint?haversineKm({latitude:d.lat,longitude:d.lng},state.lastLiveRoutePoint):Infinity;
+  if(!force && now-state.lastLiveRouteAt<12000 && moved<0.12)return;
+  state.lastLiveRouteAt=now; state.lastLiveRoutePoint={latitude:d.lat,longitude:d.lng};
+  let coords=[[d.lat,d.lng],[target.latitude,target.longitude]],km=haversineKm({latitude:d.lat,longitude:d.lng},target),mins=0,source="تقديري";
+  try{const u=`https://router.project-osrm.org/route/v1/driving/${d.lng},${d.lat};${target.longitude},${target.latitude}?overview=full&geometries=geojson`;const r=await fetch(u,{signal:AbortSignal.timeout(5000)});const x=await r.json();const route=x.routes?.[0];if(route){coords=route.geometry.coordinates.map(([lng,lat])=>[lat,lng]);km=route.distance/1000;mins=route.duration/60;source="طرق فعلية";}}catch(e){mins=(km*1.28/28)*60;km*=1.28;}
+  if(!mins)mins=(km/28)*60;
+  if(state.routeLine)state.routeLine.setLatLngs(coords);else state.routeLine=window.L.polyline(coords,{color:"#ff6b35",weight:6,opacity:.9}).addTo(state.map);
+  byId("liveEta").textContent=`${Math.max(1,Math.round(mins))} دقيقة`; byId("liveDistance").textContent=liveDistanceText(km); byId("liveRouteSource").textContent=source;
+  if(force)state.map.fitBounds(state.routeLine.getBounds(),{padding:[55,55],maxZoom:16});
 }
 
 function clearDriverLocation() {
@@ -219,14 +242,13 @@ function showDriverLocation(data) {
   const longitude = Number(data.longitude);
   if (!state.map || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
   const point = [latitude, longitude];
-  if (state.driverMarker) state.driverMarker.setLatLng(point);
-  else state.driverMarker = window.L.marker(point, { icon: mapIcon("driver") })
-    .addTo(state.map)
-    .bindPopup("موقع الكابتن");
-  byId("mapInfoTitle").textContent = "الكابتن يتحرك نحوك";
-  byId("mapInfoText").textContent = `آخر تحديث الآن${data.accuracy ? ` • دقة ${Math.round(data.accuracy)} متر` : ""}`;
-  if (state.customerMarker) drawLiveRoute();
-  else state.map.setView(point, 15);
+  animateDriverMarker(point);
+  const s=Number(state.activeOrder?.statusIndex||0);
+  byId("mapInfoTitle").textContent = s>=3 ? "الرحلة متجهة إلى الوجهة" : "الكابتن يتحرك نحوك";
+  const age=data.updatedAt?.toMillis?Math.max(0,Date.now()-data.updatedAt.toMillis()):0;
+  const quality=Number(data.accuracy||0)>80?" • دقة GPS منخفضة":"";
+  byId("mapInfoText").textContent = `${age>30000?"آخر تحديث منذ "+Math.round(age/1000)+" ث":"الموقع مباشر"}${data.accuracy ? ` • دقة ${Math.round(data.accuracy)} م` : ""}${quality}`;
+  drawLiveRoute(!state.routeLine);
 }
 
 function syncTrackingSubscription() {
@@ -726,9 +748,10 @@ function renderTracking() {
   byId("trackingTitle").textContent = order.title;
   byId("trackingRoute").textContent = order.route;
   byId("trackingCode").textContent = "رقم الطلب: " + order.id;
-  byId("trackingDriver").textContent = order.driverName
-    ? ` • الكابتن: ${order.driverName}${order.driverPhone ? ` — ${order.driverPhone}` : ""}`
-    : " • بانتظار قبول كابتن";
+  byId("trackingDriver").textContent = order.driverName ? ` • الكابتن: ${order.driverName}` : " • بانتظار قبول كابتن";
+  const call=byId("callDriver"); if(call){call.classList.toggle("hidden",!order.driverPhone);call.href=order.driverPhone?`tel:${String(order.driverPhone).replace(/[^+\d]/g,"")}`:"#";}
+  const stageHint=byId("tripStageHint"); if(stageHint)stageHint.textContent=statusIndex===0?"نبحث عن كابتن قريب":statusIndex===1?"الكابتن في الطريق إلى نقطة الانطلاق":statusIndex===2?"الكابتن وصل — تحقق من السيارة ثم أعطه رمز الرحلة":statusIndex===3?"الرحلة جارية نحو الوجهة":"وصلت بالسلامة";
+  if(order.driverId && state.driverMarker) drawLiveRoute(true);
   byId("trackingStatus").textContent = orderStatuses[statusIndex] || "قيد المتابعة";
   byId("tripOtpBox").classList.toggle("hidden", !(order.driverId && statusIndex < 3));
   byId("tripOtp").textContent = order.tripOtp || "—";
@@ -1013,11 +1036,20 @@ async function searchPlaces(q){
   const seen=new Set(); return out.filter(x=>{const k=`${Number(x.lat).toFixed(4)},${Number(x.lon).toFixed(4)}`;if(seen.has(k))return false;seen.add(k);return true}).slice(0,7);
 }
 function setupPlaceSearch(inputId,resultsId,type){
-  const input=byId(inputId),box=byId(resultsId); let seq=0;
-  input.addEventListener("input",()=>{clearTimeout(geoTimer);const q=input.value.trim();const my=++seq;if(q.length<2){box.innerHTML="";return}box.innerHTML='<div class="place-search-state">جاري البحث…</div>';
-    geoTimer=setTimeout(async()=>{const data=await searchPlaces(q);if(my!==seq)return;box.innerHTML="";if(!data.length){box.innerHTML='<div class="place-search-state">لم نجد المكان. جرّب اسم الحي أو أقرب معلم، أو حدده من الخريطة.</div>';return}data.forEach(x=>{const b=document.createElement("button");b.type="button";b.className="place-result";const title=cleanPlaceLabel(x),full=x.display_name||title,dist=distanceFromMapCenter(x);b.innerHTML=`<span class="place-pin">⌖</span><span><strong>${title}</strong><small>${full}</small>${dist!=null?`<span class="distance">يبعد تقريبًا ${dist<1?Math.round(dist*1000)+" م":dist.toFixed(1)+" كم"} عن مركز الخريطة</span>`:""}</span>`;b.onclick=()=>{box.innerHTML="";setBookingPoint(type,Number(x.lat),Number(x.lon),title);state.map?.setView([Number(x.lat),Number(x.lon)],16)};box.appendChild(b)});},350);
-  });
-  input.addEventListener("focus",()=>{if(input.value.trim().length>=2)input.dispatchEvent(new Event("input"))});
+  const input=byId(inputId),box=byId(resultsId); let seq=0, busy=false;
+  const run=async()=>{
+    const q=input.value.trim(); const my=++seq;
+    if(q.length<2){box.innerHTML="";return}
+    if(busy)return; busy=true; box.innerHTML='<div class="place-search-state">جاري البحث…</div>';
+    try{
+      const data=await searchPlaces(q); if(my!==seq)return; box.innerHTML="";
+      if(!data.length){box.innerHTML='<div class="place-search-state">لم نجد المكان. جرّب اسم الحي أو أقرب معلم، أو حدده من الخريطة.</div>';return}
+      data.forEach(x=>{const b=document.createElement("button");b.type="button";b.className="place-result";const title=cleanPlaceLabel(x),full=x.display_name||title,dist=distanceFromMapCenter(x);b.innerHTML=`<span class="place-pin">⌖</span><span><strong>${title}</strong><small>${full}</small>${dist!=null?`<span class="distance">يبعد تقريبًا ${dist<1?Math.round(dist*1000)+" م":dist.toFixed(1)+" كم"} عن مركز الخريطة</span>`:""}</span>`;b.onclick=()=>{box.innerHTML="";input.value=title;setBookingPoint(type,Number(x.lat),Number(x.lon),title);state.map?.setView([Number(x.lat),Number(x.lon)],16)};box.appendChild(b)});
+    } finally {busy=false}
+  };
+  input.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();run()}});
+  const btn=document.createElement("button"); btn.type="button"; btn.className="map-search-button"; btn.textContent="بحث"; btn.setAttribute("aria-label","البحث عن المكان"); btn.onclick=run;
+  input.insertAdjacentElement("afterend",btn);
 }
 
 setupPlaceSearch("rideFrom","rideFromResults","pickup");setupPlaceSearch("rideTo","rideToResults","destination");

@@ -87,7 +87,10 @@ const state = {
   map: null,
   driverMarker: null,
   pickupMarker: null,
-  routeLine: null
+  destinationMarker: null,
+  routeLine: null,
+  lastRouteAt: 0,
+  lastRoutePoint: null
 };
 
 const money = value => Number(value || 0).toLocaleString("ar-IQ") + " د.ع";
@@ -116,10 +119,7 @@ function mapIcon(type) {
 function initializeDriverMap() {
   if (!window.L || state.map) return;
   state.map = window.L.map("driverMap").setView([33.3152, 44.3661], 12);
-  window.L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-  }).addTo(state.map);
+  window.L.maplibreGL({style:"https://tiles.openfreemap.org/styles/liberty"}).addTo(state.map);
 }
 
 function setLocationStatus(text, mode = "pending") {
@@ -127,36 +127,22 @@ function setLocationStatus(text, mode = "pending") {
   byId("locationStatus").className = `status-chip ${mode}`;
 }
 
-function drawPickupRoute() {
+function haversine(a,b){const R=6371,r=v=>v*Math.PI/180,dl=r(b.latitude-a.latitude),dn=r(b.longitude-a.longitude);const x=Math.sin(dl/2)**2+Math.cos(r(a.latitude))*Math.cos(r(b.latitude))*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(x));}
+async function drawPickupRoute(force=false) {
   if (!state.map) return;
-  const activeOrder = state.orders.find(order =>
-    order.driverId === state.user?.uid && !order.cancelled && Number(order.statusIndex || 0) < 4
-  );
-  const pickup = activeOrder?.pickupLocation;
-  if (!pickup || !Number.isFinite(Number(pickup.latitude)) || !Number.isFinite(Number(pickup.longitude))) {
-    if (state.pickupMarker) state.map.removeLayer(state.pickupMarker);
-    if (state.routeLine) state.map.removeLayer(state.routeLine);
-    state.pickupMarker = null;
-    state.routeLine = null;
-    return;
-  }
-
-  const pickupPoint = [Number(pickup.latitude), Number(pickup.longitude)];
-  if (state.pickupMarker) state.pickupMarker.setLatLng(pickupPoint);
-  else state.pickupMarker = window.L.marker(pickupPoint, { icon: mapIcon("pickup") })
-    .addTo(state.map)
-    .bindPopup("موقع العميل");
-
-  if (!state.driverMarker) return;
-  const points = [state.driverMarker.getLatLng(), state.pickupMarker.getLatLng()];
-  if (state.routeLine) state.routeLine.setLatLngs(points);
-  else state.routeLine = window.L.polyline(points, {
-    color: "#ff6b35",
-    weight: 5,
-    opacity: .85,
-    dashArray: "9 9"
-  }).addTo(state.map);
-  state.map.fitBounds(window.L.latLngBounds(points), { padding: [40, 40], maxZoom: 16 });
+  const activeOrder = state.orders.find(order => order.driverId === state.user?.uid && !order.cancelled && Number(order.statusIndex || 0) < 4);
+  const s=Number(activeOrder?.statusIndex||0), target=s>=3?activeOrder?.destinationLocation:activeOrder?.pickupLocation;
+  if (!target || !Number.isFinite(Number(target.latitude)) || !Number.isFinite(Number(target.longitude))) return;
+  const targetPoint=[Number(target.latitude),Number(target.longitude)];
+  if(state.pickupMarker)state.pickupMarker.setLatLng(targetPoint);else state.pickupMarker=window.L.marker(targetPoint,{icon:mapIcon("pickup")}).addTo(state.map);
+  state.pickupMarker.bindPopup(s>=3?"الوجهة":"موقع العميل");
+  if(!state.driverMarker)return; const pos=state.driverMarker.getLatLng(), now=Date.now();
+  const moved=state.lastRoutePoint?haversine({latitude:pos.lat,longitude:pos.lng},state.lastRoutePoint):Infinity;if(!force&&now-state.lastRouteAt<12000&&moved<.12)return;state.lastRouteAt=now;state.lastRoutePoint={latitude:pos.lat,longitude:pos.lng};
+  let coords=[[pos.lat,pos.lng],targetPoint],km=haversine(state.lastRoutePoint,target),mins=0;
+  try{const u=`https://router.project-osrm.org/route/v1/driving/${pos.lng},${pos.lat};${target.longitude},${target.latitude}?overview=full&geometries=geojson`;const r=await fetch(u,{signal:AbortSignal.timeout(5000)}),x=await r.json(),route=x.routes?.[0];if(route){coords=route.geometry.coordinates.map(([lng,lat])=>[lat,lng]);km=route.distance/1000;mins=route.duration/60;}}catch(e){km*=1.28;}if(!mins)mins=km/28*60;
+  if(state.routeLine)state.routeLine.setLatLngs(coords);else state.routeLine=window.L.polyline(coords,{color:"#ff6b35",weight:6,opacity:.9}).addTo(state.map);
+  byId("driverEta").textContent=`${Math.max(1,Math.round(mins))} دقيقة`;byId("driverRemaining").textContent=km<1?`${Math.round(km*1000)} م`:`${km.toFixed(1)} كم`;byId("driverNavTarget").textContent=s>=3?"إلى الوجهة":"إلى الراكب";
+  if(force)state.map.fitBounds(state.routeLine.getBounds(),{padding:[40,40],maxZoom:16});
 }
 
 function showOwnPosition(position) {
@@ -169,8 +155,9 @@ function showOwnPosition(position) {
     .addTo(state.map)
     .bindPopup("موقعك الحالي");
   state.map.setView(point, 15);
-  setLocationStatus("الموقع مباشر", "approved");
-  byId("locationHint").textContent = `دقة الموقع نحو ${Math.round(position.coords.accuracy || 0)} متر.`;
+  const acc=Math.round(position.coords.accuracy||0);
+  setLocationStatus(acc>100?"GPS ضعيف":"الموقع مباشر", acc>100?"pending":"approved");
+  byId("locationHint").textContent = acc>100?`دقة الموقع منخفضة (${acc} م). انتقل لمكان مفتوح لتحسين التتبع.`:`دقة الموقع نحو ${acc} متر.`;
   drawPickupRoute();
 }
 
@@ -555,7 +542,7 @@ document.addEventListener("click", async event => {
         });
       });
       if (state.lastPosition) await sharePosition(state.lastPosition, true);
-      toast("تم قبول الطلب بنجاح");
+      setTimeout(()=>drawPickupRoute(true),400); toast("تم قبول الطلب بنجاح");
     } else if (button.dataset.action === "advance") {
       const order = state.orders.find(item => item.firestoreId === button.dataset.id);
       if (!order) throw new Error("ORDER_NOT_FOUND");
@@ -571,7 +558,7 @@ document.addEventListener("click", async event => {
       if (next === 3) fields.startedAt = serverTimestamp();
       if (next === 4) { fields.completedAt = serverTimestamp(); fields.paymentStatus = "paid"; }
       await updateDoc(orderRef, fields);
-      toast(statuses[next]);
+      setTimeout(()=>drawPickupRoute(true),400); toast(statuses[next]);
     }
   } catch (error) {
     console.error(error);

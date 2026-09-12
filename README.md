@@ -1,3 +1,19 @@
+# Karwa Phase 14 — Live Driver Tracking & Ride Experience (Spark Edition)
+
+هذه النسخة مبنية فوق Phase 13 ومتوافقة مع Firebase Spark للعمليات الأساسية.
+
+## الجديد
+- تتبع مباشر للكابتن مع حركة سلسة لعلامة السيارة.
+- ETA ومسافة متبقية باستخدام مسار طرق OSRM مع fallback تلقائي.
+- يتحول هدف المسار بعد بدء الرحلة من الراكب إلى الوجهة.
+- شريط رحلة احترافي للراكب مع المرحلة الحالية وزر اتصال بالكابتن.
+- لوحة ملاحة للكابتن تعرض الهدف ووقت الوصول والمسافة.
+- تنبيه جودة GPS عند ضعف الدقة، وتقليل إعادة حساب المسار إلى تغييرات مفيدة.
+- المحافظة على الحجز وقبول الطلب عبر Firestore مباشرة بدون Cloud Functions.
+
+## ملاحظة إنتاجية
+OSRM وNominatim العامان مناسبان للتطوير والاختبار. للإطلاق التجاري استخدم مزود خرائط/توجيه بحدود استخدام واتفاقية خدمة مناسبة أو استضافة خاصة.
+
 # Karwa Phase 11 — Spark Edition
 
 هذه النسخة معدلة للعمل في العمليات الأساسية بدون Cloud Functions: إنشاء الرحلة، قبول الكابتن، تحديث مراحل الرحلة وإلغاء الراكب تتم مباشرة عبر Firestore مع Transaction عند القبول.
@@ -116,3 +132,11 @@ firebase deploy --only hosting
 تأكد في Firebase Console أن Functions التالية موجودة على الأقل: `createRideOrderV2`, `quoteRide`, `cancelOrderV2`, `acceptOrder`, `advanceTrip`. كما يجب أن يكون مستند `users/{uid}` للراكب بقيمة `role: customer`، ومستند الكابتن `users/{uid}` بقيمة `role: driver` مع وجود `drivers/{uid}` وأن `online: true` عند قبول الطلب.
 
 ملاحظة التوزيع: خلال أول 30 ثانية من إنشاء الرحلة قد يرفض الخادم قبول كابتن غير موجود في `dispatchCandidateIds` برسالة `NOT_IN_DISPATCH_ROUND`. الواجهة الآن تشرح ذلك بدل عرض «تعذر تنفيذ العملية».
+
+
+## Phase 15 — Free Professional Maps
+- استبدال طبقة الخريطة التقليدية بطبقة Vector حديثة عبر MapLibre GL + OpenFreeMap (Liberty/Bright/Positron) بدون API key.
+- بيانات الخريطة من OpenStreetMap، مع أسماء الطرق والمعالم ونقاط الاهتمام حسب توفرها في OSM.
+- البحث أصبح بزر «بحث» أو Enter بدل autocomplete المستمر، التزامًا بسياسة Nominatim العامة.
+- لا توجد رسوم Google Maps ولا حاجة إلى Firebase Blaze لهذه الخريطة.
+- OpenFreeMap خدمة عامة مجانية بلا SLA؛ عند التوسع التجاري الكبير يُنصح بالاستضافة الذاتية أو مزود بموثوقية تعاقدية.
