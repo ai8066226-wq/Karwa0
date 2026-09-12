@@ -1740,6 +1740,26 @@ body.customer-map-mode #home{height:100dvh!important}
 @media(max-width:430px){.customer-settings-actions{grid-template-columns:1fr 1fr}.customer-settings-action{font-size:11px}.customer-profile-card{grid-template-columns:48px minmax(0,1fr)}.customer-settings-avatar{width:48px;height:48px}}
 @media(prefers-reduced-motion:reduce){.customer-settings-toggle,.customer-settings-scrim,.customer-settings-panel,#customerMap{transition:none}}
 </style>
+<style id="phase31-customer-map-controls">
+/* ضبط عناصر الخريطة بعد إزالة شريط التنقل من شاشة الرئيسية */
+body.customer-map-mode .mobile-navigation{display:none!important}
+#home .map-card .leaflet-bottom.leaflet-left{top:calc(50% - 162px)!important;bottom:auto!important;left:10px!important}
+#home .map-card .leaflet-control-zoom{margin:0!important;box-shadow:0 10px 28px rgba(10,37,64,.24)!important}
+.customer-map-credit{left:6px!important;bottom:2px!important;z-index:900!important;padding:2px 6px!important;border-radius:7px!important;background:rgba(255,255,255,.82)!important}
+#home.map-theme-night .customer-map-credit{background:rgba(5,22,38,.84)!important}
+@media(max-width:950px){
+ #customerOptionsPanel{bottom:8px!important}
+ .customer-settings-panel{bottom:max(6px,env(safe-area-inset-bottom))!important}
+ .map-destination-quick{bottom:24px!important}
+ .map-recenter-button{bottom:102px!important}
+ #home .tracking-card.show{bottom:24px!important}
+ #home .map-card .leaflet-bottom.leaflet-left{top:calc(50% - 158px)!important;bottom:auto!important;left:10px!important}
+ .customer-map-credit{bottom:max(2px,env(safe-area-inset-bottom))!important}
+}
+@media(max-width:550px){
+ #home .map-card .leaflet-bottom.leaflet-left{top:calc(50% - 154px)!important}
+}
+</style>
 </head>
 
 <body>
@@ -2374,7 +2394,7 @@ body.customer-map-mode #home{height:100dvh!important}
   <script>try{if(window.maplibregl&&maplibregl.setRTLTextPlugin&&(!maplibregl.getRTLTextPluginStatus||maplibregl.getRTLTextPluginStatus()==="unavailable")){maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",true).catch(()=>{});}}catch(e){}</script>
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
   <script type="module" src="./app.js?v=30"></script>
-  <script src="./pwa.js?v=30"></script>
+  <script src="./pwa.js?v=31"></script>
 
 <script id="phase20-map-first-js">
 window.addEventListener("DOMContentLoaded",()=>{
