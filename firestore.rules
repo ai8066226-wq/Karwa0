@@ -3,11 +3,23 @@ service cloud.firestore { match /databases/{database}/documents {
  function signed(){return request.auth!=null;}
  function own(id){return signed()&&request.auth.uid==id;}
  function userDoc(){return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;}
- function role(){return signed()?userDoc().role:null;}
+ function userExists(){return signed()&&exists(/databases/$(database)/documents/users/$(request.auth.uid));}
+ function role(){return userExists()?userDoc().get('role',null):null;}
  function admin(){return signed()&&role()=='admin';}
  function driver(){return signed()&&role()=='driver';}
  function customer(){return signed()&&role()=='customer';}
- match /users/{uid}{allow create:if own(uid)&&request.resource.data.role=='customer';allow read:if own(uid)||admin();allow update:if admin()||(own(uid)&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','email','notifications','savedAddresses','balance','updatedAt']));allow delete:if admin(); match /pushTokens/{id}{allow read:if own(uid)||admin();allow write:if own(uid);}}
+ match /users/{uid}{
+   allow create:if own(uid)&&request.resource.data.role=='customer';
+   allow read:if own(uid)||admin();
+   allow update:if admin()||(own(uid)&&(
+     request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','email','notifications','savedAddresses','balance','updatedAt'])
+     || (!resource.data.keys().hasAny(['role'])
+       && request.resource.data.role=='customer'
+       && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role','email','updatedAt']))
+   ));
+   allow delete:if admin();
+   match /pushTokens/{id}{allow read:if own(uid)||admin();allow write:if own(uid);}
+ }
  match /driverApplications/{uid}{allow create:if own(uid)&&request.resource.data.userId==request.auth.uid;allow read:if own(uid)||admin();allow update,delete:if admin();}
  match /drivers/{uid}{allow read:if signed();allow create,delete:if admin();allow update:if admin()||(own(uid)&&driver()&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['online','latitude','longitude','locationAccuracy','locationUpdatedAt','updatedAt']));}
  match /orders/{id}{

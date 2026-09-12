@@ -364,13 +364,25 @@ async function saveUserData(values) {
 async function loadUserProfile(user) {
   const userRef = doc(db, "users", user.uid);
   const snapshot = await getDoc(userRef);
+  let profileNeedsMigration = false;
   if (snapshot.exists()) {
     const data = snapshot.data();
     state.role = data.role || "customer";
     state.name = data.name || user.displayName || user.email?.split("@")[0] || "مستخدم كروة";
     state.balance = Number(data.balance ?? 25000);
     state.notifications = data.notifications !== false;
-    if (!data.role) await saveUserData({ role: "customer" });
+    if (!data.role) {
+      try {
+        await setDoc(userRef, {
+          role: "customer",
+          email: data.email || user.email || "",
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      } catch (error) {
+        profileNeedsMigration = true;
+        console.warn("تعذر إكمال ترقية ملف العميل القديم؛ انشر قواعد Firestore المرفقة", error);
+      }
+    }
   } else {
     state.role = "customer";
     state.name = user.displayName || user.email?.split("@")[0] || "مستخدم كروة";
@@ -389,6 +401,7 @@ async function loadUserProfile(user) {
   renderProfile();
   renderNotificationSwitch();
   renderBalance();
+  return { profileNeedsMigration };
 }
 
 function subscribeToOrders(user) {
@@ -1141,7 +1154,7 @@ onAuthStateChanged(auth, async user => {
   closeAuthModal();
   byId("connectionBadge").textContent = "متصل ومحفوظ سحابيًا";
   try {
-    await loadUserProfile(user);
+    const profileStatus = await loadUserProfile(user);
     if (state.role !== "customer") {
       const roleName = state.role === "driver" ? "كابتن" : "مدير";
       const destination = state.role === "driver" ? "بوابة الكابتن" : "لوحة الإدارة";
@@ -1153,9 +1166,16 @@ onAuthStateChanged(auth, async user => {
     subscribeToOrders(user);
     subscribeToRatings(user);
     startCustomerCommunity();
+    if (profileStatus?.profileNeedsMigration) {
+      byId("connectionBadge").textContent = "متصل • مزامنة الحساب قيد التحديث";
+    }
   } catch (error) {
     console.error(error);
-    showToast("تم الدخول، لكن تعذر تحميل بيانات الحساب. تحقق من Firestore.");
+    const errorCode = String(error?.code || "");
+    showToast(errorCode.includes("permission-denied")
+      ? "تعذر الوصول إلى ملف الحساب. انشر قواعد Firestore المرفقة ثم أعد فتح التطبيق."
+      : "تعذر مزامنة بيانات الحساب مؤقتًا. تحقق من الاتصال ثم حاول مجددًا.");
+    byId("connectionBadge").textContent = "متصل • المزامنة متوقفة";
     state.name = user.displayName || user.email?.split("@")[0] || "مستخدم كروة";
     renderProfile();
   }
