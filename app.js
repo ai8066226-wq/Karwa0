@@ -120,7 +120,14 @@ const vehiclePricing = {
 };
 function haversineKm(a,b){const R=6371,toRad=v=>v*Math.PI/180;const dLat=toRad(b.latitude-a.latitude),dLon=toRad(b.longitude-a.longitude);const x=Math.sin(dLat/2)**2+Math.cos(toRad(a.latitude))*Math.cos(toRad(b.latitude))*Math.sin(dLon/2)**2;return 2*R*Math.asin(Math.sqrt(x));}
 function calculateRidePrice(){const cfg=vehiclePricing[state.vehicle]||vehiclePricing["اقتصادي"];const raw=cfg.base+state.routeDistanceKm*cfg.perKm+state.routeDurationMin*cfg.perMin;state.ridePrice=Math.max(cfg.minimum,Math.ceil(raw/250)*250);byId("ridePrice").textContent=formatMoney(state.ridePrice);}
-function pointLabel(prefix,p){return `${prefix} (${p.latitude.toFixed(5)}, ${p.longitude.toFixed(5)})`;}
+function pointLabel(prefix,p){return p?.label || `${prefix} (${p.latitude.toFixed(5)}, ${p.longitude.toFixed(5)})`;}
+function cleanPlaceLabel(x){
+  const a=x?.address||{}; const parts=[x?.name||a.amenity||a.shop||a.tourism||a.road,a.neighbourhood||a.suburb||a.quarter,a.city||a.town||a.village||a.county,a.state].filter(Boolean);
+  return [...new Set(parts)].slice(0,4).join("، ") || x?.display_name || "موقع محدد";
+}
+async function reverseGeocode(lat,lng){
+  try{const u=`https://nominatim.openstreetmap.org/reverse?format=jsonv2&accept-language=ar&zoom=18&addressdetails=1&lat=${lat}&lon=${lng}`;const r=await fetch(u,{headers:{Accept:"application/json"},signal:AbortSignal.timeout(6000)});if(!r.ok)throw 0;const x=await r.json();return cleanPlaceLabel(x);}catch(e){return null;}
+}
 function bookingIcon(type){if(!window.L)return null;return window.L.divIcon({className:"",html:`<div class="karwa-map-marker ${type}"><span>${type==="pickup"?"📍":"🏁"}</span></div>`,iconSize:[42,42],iconAnchor:[21,38]});}
 function updateRouteSummary(){byId("routeSummary").children[0].textContent=`المسافة: ${state.routeDistanceKm?state.routeDistanceKm.toFixed(1)+" كم":"—"}`;byId("routeSummary").children[1].textContent=`الوقت: ${state.routeDurationMin?Math.round(state.routeDurationMin)+" دقيقة":"—"}`;byId("routeMode").textContent=state.routeSource==="roads"?"مسار طرق فعلي":state.routeSource==="fallback"?"تقدير احتياطي مباشر":"اختر نقطتين من الخريطة";}
 async function calculateBookingRoute(){
@@ -131,7 +138,14 @@ async function calculateBookingRoute(){
   catch(e){const straight=haversineKm(a,b);state.routeDistanceKm=straight*1.28;state.routeDurationMin=(state.routeDistanceKm/28)*60;state.routeSource="fallback";coords=[[a.latitude,a.longitude],[b.latitude,b.longitude]];}
   if(state.bookingRouteLine)state.bookingRouteLine.setLatLngs(coords);else state.bookingRouteLine=window.L.polyline(coords,{color:"#ff6b35",weight:5,opacity:.9}).addTo(state.map);state.map.fitBounds(state.bookingRouteLine.getBounds(),{padding:[35,35]});calculateRidePrice();updateRouteSummary();
 }
-function setBookingPoint(type,lat,lng){const p={latitude:Number(lat),longitude:Number(lng)};if(type==="pickup"){state.pickupLocation=p;state.customerLocation=p;byId("rideFrom").value=pointLabel("نقطة الانطلاق",p);if(state.pickupMarker)state.pickupMarker.setLatLng([p.latitude,p.longitude]);else state.pickupMarker=window.L.marker([p.latitude,p.longitude],{icon:bookingIcon("pickup")}).addTo(state.map);state.mapPickMode="destination";}else{state.destinationLocation=p;byId("rideTo").value=pointLabel("الوجهة",p);if(state.destinationMarker)state.destinationMarker.setLatLng([p.latitude,p.longitude]);else state.destinationMarker=window.L.marker([p.latitude,p.longitude],{icon:bookingIcon("destination")}).addTo(state.map);}document.querySelectorAll(".map-pick-button").forEach(b=>b.classList.toggle("active",b.id===(state.mapPickMode==="pickup"?"pickRideFrom":"pickRideTo")));calculateBookingRoute();}
+async function setBookingPoint(type,lat,lng,label=""){
+  initializeCustomerMap(); const p={latitude:Number(lat),longitude:Number(lng),label:label||""};
+  const input=byId(type==="pickup"?"rideFrom":"rideTo"); input.value=label||"جارٍ تحديد اسم المكان…";
+  if(type==="pickup"){state.pickupLocation=p;state.customerLocation=p;if(state.pickupMarker)state.pickupMarker.setLatLng([p.latitude,p.longitude]);else state.pickupMarker=window.L.marker([p.latitude,p.longitude],{icon:bookingIcon("pickup"),draggable:true}).addTo(state.map);state.pickupMarker.off("dragend").on("dragend",e=>{const q=e.target.getLatLng();setBookingPoint("pickup",q.lat,q.lng)});state.mapPickMode="destination";}
+  else{state.destinationLocation=p;if(state.destinationMarker)state.destinationMarker.setLatLng([p.latitude,p.longitude]);else state.destinationMarker=window.L.marker([p.latitude,p.longitude],{icon:bookingIcon("destination"),draggable:true}).addTo(state.map);state.destinationMarker.off("dragend").on("dragend",e=>{const q=e.target.getLatLng();setBookingPoint("destination",q.lat,q.lng)});}
+  if(!label){const found=await reverseGeocode(p.latitude,p.longitude);p.label=found||pointLabel(type==="pickup"?"نقطة الانطلاق":"الوجهة",p);input.value=p.label;}else input.value=label;
+  document.querySelectorAll(".map-pick-button").forEach(b=>b.classList.toggle("active",b.id===(state.mapPickMode==="pickup"?"pickRideFrom":"pickRideTo")));calculateBookingRoute();
+}
 
 
 function showToast(message) {
@@ -155,12 +169,12 @@ function mapIcon(type) {
 
 function initializeCustomerMap() {
   if (!window.L || state.map) return;
-  state.map = window.L.map("customerMap", { zoomControl: true }).setView([33.3152, 44.3661], 12);
+  state.map = window.L.map("customerMap", { zoomControl: false, attributionControl: true }).setView([36.34, 43.13], 13);
+  window.L.control.zoom({position:"bottomleft"}).addTo(state.map);
   state.map.on("click", e => setBookingPoint(state.mapPickMode, e.latlng.lat, e.latlng.lng));
-  window.L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-  }).addTo(state.map);
+  const streets=window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(state.map);
+  const light=window.L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",{maxZoom:20,attribution:'&copy; OpenStreetMap &copy; CARTO'});
+  window.L.control.layers({"الخريطة":streets,"خريطة هادئة":light},null,{position:"bottomright",collapsed:true}).addTo(state.map);
 }
 
 function setCustomerLocation(latitude, longitude) {
@@ -976,7 +990,21 @@ document.addEventListener("keydown", event => {
 
 
 function printInvoice(order){const w=window.open("","_blank","width=520,height=700");if(!w)return showToast("اسمح بالنوافذ المنبثقة لعرض الفاتورة");w.document.write(`<html dir="rtl"><head><title>فاتورة ${order.id}</title><style>body{font-family:Arial;padding:30px}h1{color:#102044}.row{display:flex;justify-content:space-between;border-bottom:1px solid #ddd;padding:10px 0}</style></head><body><h1>كروة — فاتورة رحلة</h1><div class="row"><b>رقم الرحلة</b><span>${order.id}</span></div><div class="row"><b>المسار</b><span>${order.route}</span></div><div class="row"><b>الكابتن</b><span>${order.driverName||"—"}</span></div><div class="row"><b>المبلغ</b><span>${formatMoney(order.price)}</span></div><div class="row"><b>الدفع</b><span>${order.payment||"—"}</span></div><div class="row"><b>التاريخ</b><span>${new Date(order.createdAtISO||Date.now()).toLocaleString("ar-IQ")}</span></div><script>window.onload=()=>window.print()<\/script></body></html>`);w.document.close();}
-let geoTimer; function setupPlaceSearch(inputId,resultsId,type){const input=byId(inputId),box=byId(resultsId);input.addEventListener("input",()=>{clearTimeout(geoTimer);const q=input.value.trim();if(q.length<3){box.innerHTML="";return}geoTimer=setTimeout(async()=>{try{const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=5&accept-language=ar&q=${encodeURIComponent(q)}`,{headers:{"Accept":"application/json"}});const data=await r.json();box.innerHTML="";data.forEach(x=>{const b=document.createElement("button");b.type="button";b.className="place-result";b.textContent=x.display_name;b.onclick=()=>{input.value=x.display_name;box.innerHTML="";setBookingPoint(type,Number(x.lat),Number(x.lon));};box.appendChild(b)});}catch(e){box.innerHTML="";}},450)});}
+let geoTimer;
+async function searchPlaces(q){
+  const center=state.map?.getCenter(); const view=center?`&viewbox=${center.lng-1.8},${center.lat+1.2},${center.lng+1.8},${center.lat-1.2}`:"";
+  const queries=[q,`${q} العراق`]; let out=[];
+  for(const term of queries){try{const r=await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=8&countrycodes=iq&accept-language=ar${view}&q=${encodeURIComponent(term)}`,{headers:{Accept:"application/json"},signal:AbortSignal.timeout(6000)});if(r.ok){const data=await r.json();out.push(...data)}}catch(e){} if(out.length>=5)break;}
+  const seen=new Set(); return out.filter(x=>{const k=`${Number(x.lat).toFixed(4)},${Number(x.lon).toFixed(4)}`;if(seen.has(k))return false;seen.add(k);return true}).slice(0,7);
+}
+function setupPlaceSearch(inputId,resultsId,type){
+  const input=byId(inputId),box=byId(resultsId); let seq=0;
+  input.addEventListener("input",()=>{clearTimeout(geoTimer);const q=input.value.trim();const my=++seq;if(q.length<2){box.innerHTML="";return}box.innerHTML='<div class="place-search-state">جاري البحث…</div>';
+    geoTimer=setTimeout(async()=>{const data=await searchPlaces(q);if(my!==seq)return;box.innerHTML="";if(!data.length){box.innerHTML='<div class="place-search-state">لم نجد المكان. جرّب اسم الحي أو أقرب معلم، أو حدده من الخريطة.</div>';return}data.forEach(x=>{const b=document.createElement("button");b.type="button";b.className="place-result";const title=cleanPlaceLabel(x),full=x.display_name||title;b.innerHTML=`<span class="place-pin">⌖</span><span><strong>${title}</strong><small>${full}</small></span>`;b.onclick=()=>{box.innerHTML="";setBookingPoint(type,Number(x.lat),Number(x.lon),title);state.map?.setView([Number(x.lat),Number(x.lon)],16)};box.appendChild(b)});},350);
+  });
+  input.addEventListener("focus",()=>{if(input.value.trim().length>=2)input.dispatchEvent(new Event("input"))});
+}
+
 setupPlaceSearch("rideFrom","rideFromResults","pickup");setupPlaceSearch("rideTo","rideToResults","destination");
 
 setAuthMode("login");

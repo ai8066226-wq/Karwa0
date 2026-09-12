@@ -410,3 +410,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .order-bottom { flex-direction: column; }
   .order-actions, .order-actions button { width: 100%; }
 }
+
+/* Phase 12 UI refinement */
+body{letter-spacing:.01em}.topbar{box-shadow:0 5px 22px rgba(16,32,68,.04)}.shell{width:min(1240px,calc(100% - 28px))}.hero{border-radius:28px;padding:30px}.card,.stat{border-color:#e3e8f0}.card{border-radius:22px}.order-card{border-radius:18px;transition:.18s transform,.18s box-shadow}.order-card:hover{transform:translateY(-1px);box-shadow:0 10px 28px rgba(16,32,68,.07)}input,select,textarea{min-height:48px;background:#fff}.primary,.secondary,.danger,.ghost{min-height:43px}.orders{gap:13px}@media(max-width:760px){.shell{width:min(100% - 20px,1240px);margin-top:14px}.hero{padding:21px;border-radius:20px}.card{padding:16px;border-radius:18px}.topbar{min-height:64px;padding:9px 12px}.logo{width:40px;height:40px}}
