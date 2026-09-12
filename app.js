@@ -1165,7 +1165,11 @@ onAuthStateChanged(auth, async user => {
     }
     subscribeToOrders(user);
     subscribeToRatings(user);
-    startCustomerCommunity();
+    try {
+      startCustomerCommunityLayers();
+    } catch (communityError) {
+      console.warn("تعذر تشغيل طبقة مجتمع كروة دون التأثير على مزامنة الحساب", communityError);
+    }
     if (profileStatus?.profileNeedsMigration) {
       byId("connectionBadge").textContent = "متصل • مزامنة الحساب قيد التحديث";
     }
