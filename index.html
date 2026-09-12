@@ -1545,6 +1545,33 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <meta name="theme-color" content="#111827">
   <link rel="icon" href="./karwa-icon.svg" type="image/svg+xml">
+
+<style id="phase20-map-first">
+/* Phase 20 — Map First floating interface */
+#home{position:relative;min-height:calc(100vh - 76px);overflow:hidden}
+#home .welcome{position:absolute;z-index:45;top:14px;right:18px;left:18px;pointer-events:none}
+#home .welcome>div,#home .welcome .demo-badge{pointer-events:auto;background:rgba(255,255,255,.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);box-shadow:0 10px 32px rgba(16,32,68,.12);border:1px solid rgba(255,255,255,.8);border-radius:18px;padding:10px 14px}
+#home .welcome h1{font-size:clamp(18px,2.3vw,27px);margin:0}#home .welcome p{margin:3px 0 0}
+#home .main-grid{position:relative!important;display:block!important;height:calc(100vh - 76px);min-height:620px;margin:0!important}
+#home .main-grid>.map-card{position:absolute!important;inset:0!important;width:auto!important;height:auto!important;min-height:0!important;border-radius:0!important;margin:0!important;box-shadow:none!important;z-index:1;background:#e9eef4}
+#customerMap{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;min-height:100%!important;border-radius:0!important}
+#home .main-grid>.card:not(.map-card){position:absolute;z-index:35;right:18px;bottom:18px;width:min(430px,calc(100% - 36px));max-height:72vh;overflow:auto;margin:0!important;border:1px solid rgba(255,255,255,.82);border-radius:24px!important;background:rgba(255,255,255,.95);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);box-shadow:0 18px 55px rgba(16,32,68,.22)!important;scrollbar-width:thin}
+#home .tracking-card{position:absolute;z-index:40;left:18px;top:92px;width:min(390px,calc(100% - 36px));margin:0!important;background:rgba(255,255,255,.95);backdrop-filter:blur(18px);border-radius:22px;box-shadow:0 16px 45px rgba(16,32,68,.18)}
+#home .map-information{position:absolute;z-index:12;left:18px;bottom:18px;right:auto;max-width:min(360px,calc(100% - 36px));margin:0!important}
+.phase20-sheet-handle{display:flex;align-items:center;justify-content:center;position:sticky;top:0;z-index:20;margin:-2px -2px 8px;padding:8px;background:linear-gradient(rgba(255,255,255,.98),rgba(255,255,255,.88));border:0;width:calc(100% + 4px);cursor:pointer}
+.phase20-sheet-handle:before{content:"";width:44px;height:5px;border-radius:999px;background:#c9d0da}.phase20-sheet-handle:after{content:"تصغير";position:absolute;left:12px;font-size:11px;color:#68758a;font-weight:800}
+.phase20-collapsed{max-height:72px!important;overflow:hidden!important}.phase20-collapsed .phase20-sheet-handle:after{content:"فتح"}
+.maplibregl-ctrl-top-left{top:88px!important}.maplibregl-ctrl-top-right{top:88px!important}
+@media(max-width:760px){
+ #home{min-height:calc(100dvh - 62px)}#home .main-grid{height:calc(100dvh - 62px);min-height:560px}
+ #home .welcome{top:8px;right:10px;left:10px}#home .welcome>div{padding:8px 11px}#home .welcome p{display:none}#home .welcome .demo-badge{padding:7px 9px}
+ #home .tracking-card{top:76px;left:10px;width:calc(100% - 20px);max-height:185px;overflow:auto}
+ #home .main-grid>.card:not(.map-card){right:8px;left:8px;bottom:max(8px,env(safe-area-inset-bottom));width:auto;max-height:52dvh;border-radius:24px 24px 18px 18px!important}
+ #home .map-information{left:10px;bottom:calc(52dvh + 18px);max-width:250px;padding:8px 10px!important}
+ #home .map-information small{display:none}.maplibregl-ctrl-top-left,.maplibregl-ctrl-top-right{top:72px!important}
+ .service-tabs{position:sticky;top:27px;z-index:15;background:rgba(255,255,255,.96);padding-top:4px}
+}
+</style>
 </head>
 
 <body>
@@ -2114,5 +2141,12 @@
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
   <script type="module" src="./app.js"></script>
   <script src="./pwa.js"></script>
+
+<script id="phase20-map-first-js">
+window.addEventListener('DOMContentLoaded',()=>{
+ const sheet=document.querySelector('#home .main-grid>.card:not(.map-card)');
+ if(sheet&&!sheet.querySelector('.phase20-sheet-handle')){const h=document.createElement('button');h.type='button';h.className='phase20-sheet-handle';h.setAttribute('aria-label','فتح أو تصغير لوحة الحجز');h.onclick=()=>{sheet.classList.toggle('phase20-collapsed');setTimeout(()=>{try{window.customerMap&&window.customerMap.invalidateSize&&window.customerMap.invalidateSize()}catch(e){}},220)};sheet.prepend(h)}
+});
+</script>
 </body>
 </html>
