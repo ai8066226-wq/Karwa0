@@ -37,8 +37,9 @@ const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
 const functions = getFunctions(firebaseApp);
-const createRideOrderSecure = httpsCallable(functions, "createRideOrder");
-const cancelOrderSecure = httpsCallable(functions, "cancelOrder");
+const createRideOrderSecure = httpsCallable(functions, "createRideOrderV2");
+const quoteRideSecure = httpsCallable(functions, "quoteRide");
+const cancelOrderSecure = httpsCallable(functions, "cancelOrderV2");
 
 const byId = id => document.getElementById(id);
 const orderStatuses = [
@@ -83,7 +84,8 @@ const state = {
   mapPickMode: "pickup",
   routeDistanceKm: 0,
   routeDurationMin: 0,
-  routeSource: ""
+  routeSource: "",
+  savedAddresses: []
 };
 
 const formatMoney = value => Number(value || 0).toLocaleString("ar-IQ") + " د.ع";
@@ -513,10 +515,10 @@ async function createOrder(type, title, route, price, options = {}) {
       pickupLocation: options.pickupLocation || null,
       destinationLocation: options.destinationLocation || null,
       distanceKm: Number(options.distanceKm || 0), durationMin: Number(options.durationMin || 0),
-      routeSource: options.routeSource || ""
+      routeSource: options.routeSource || "", scheduledAt: options.scheduledAt || null, couponCode: byId("couponCode")?.value?.trim() || ""
     });
     state.ridePrice = Number(result.data.price || state.ridePrice);
-    showToast("تم إنشاء الطلب وتسعيره بأمان عبر الخادم");
+    showToast(`تم الحجز • السعر النهائي ${formatMoney(result.data.price)}${Number(result.data.discount||0)>0?` • خصم ${formatMoney(result.data.discount)}`:""}${Number(result.data.surgeMultiplier||1)>1?` • طلب مرتفع ×${result.data.surgeMultiplier}`:""}`);
     return true;
   }
   const createdAtISO = new Date().toISOString();
@@ -574,6 +576,11 @@ async function createOrder(type, title, route, price, options = {}) {
   return true;
 }
 
+byId("applyCoupon")?.addEventListener("click", async () => {
+  if (!requireUser() || !state.routeDistanceKm) return showToast("حدد المسار أولًا");
+  try { const q=await quoteRideSecure({vehicle:state.vehicle,distanceKm:state.routeDistanceKm,durationMin:state.routeDurationMin,couponCode:byId("couponCode").value.trim()}); state.ridePrice=Number(q.data.price); byId("ridePrice").textContent=formatMoney(state.ridePrice); byId("couponStatus").textContent=q.data.couponValid ? `تم تطبيق خصم ${formatMoney(q.data.discount)}${Number(q.data.surgeMultiplier)>1?` • معامل الطلب ×${q.data.surgeMultiplier}`:""}` : "الكود غير صالح أو لا ينطبق على هذه الرحلة"; } catch(e){ console.error(e); showToast("تعذر التحقق من الكوبون"); }
+});
+
 byId("bookRide").addEventListener("click", async event => {
   if (!requireUser()) return;
   const from = byId("rideFrom").value.trim();
@@ -593,7 +600,8 @@ byId("bookRide").addEventListener("click", async event => {
       payment: state.payment,
       walletCharge: state.payment === "المحفظة" ? state.ridePrice : 0,
       pickupLocation: state.pickupLocation, destinationLocation: state.destinationLocation,
-      distanceKm: state.routeDistanceKm, durationMin: state.routeDurationMin, routeSource: state.routeSource
+      distanceKm: state.routeDistanceKm, durationMin: state.routeDurationMin, routeSource: state.routeSource,
+      scheduledAt: byId("scheduleRideAt")?.value || null
     });
   } catch (error) {
     console.error(error);
@@ -733,7 +741,14 @@ function renderOrders() {
     const date = new Date(order.createdAtISO || Date.now());
     route.textContent = `${order.route} • ${date.toLocaleDateString("ar-IQ")}`;
     if (order.driverName) route.textContent += ` • الكابتن: ${order.driverName}`;
+    if (order.scheduledAt) route.textContent += ` • مجدولة: ${new Date(order.scheduledAt).toLocaleString("ar-IQ")}`;
     details.append(title, route);
+    if (order.type === "ride") {
+      const actions=document.createElement("div"); actions.className="order-actions";
+      const repeat=document.createElement("button"); repeat.className="mini-action"; repeat.textContent="↻ إعادة الحجز"; repeat.onclick=()=>{ if(order.pickupLocation&&order.destinationLocation){ setBookingPoint("pickup",order.pickupLocation.latitude,order.pickupLocation.longitude); setBookingPoint("destination",order.destinationLocation.latitude,order.destinationLocation.longitude); switchView("home"); showToast("تم تحميل مسار الرحلة السابقة"); } }; actions.appendChild(repeat);
+      if (!order.cancelled && Number(order.statusIndex||0)>=4){ const inv=document.createElement("button"); inv.className="mini-action"; inv.textContent="🧾 الفاتورة"; inv.onclick=()=>printInvoice(order); actions.appendChild(inv); }
+      details.appendChild(actions);
+    }
     const price = document.createElement("div");
     price.className = "order-price";
     const amount = document.createElement("strong");
@@ -918,18 +933,22 @@ byId("notificationButton").addEventListener("click", () => {
   showToast(state.activeOrder ? "لديك تحديث على طلبك" : "لا توجد إشعارات جديدة");
 });
 
-byId("savedAddresses").addEventListener("click", () => {
-  showToast("إدارة العناوين ستكون في المرحلة التالية");
-});
+const addressesModal=byId("addressesModal");
+async function loadSavedAddresses(){ if(!state.user)return; const snap=await getDoc(doc(db,"users",state.user.uid)); state.savedAddresses=snap.data()?.savedAddresses||[]; renderSavedAddresses(); }
+function renderSavedAddresses(){ const box=byId("savedAddressList"); if(!box)return; box.innerHTML=state.savedAddresses.length?"":"<div class=\"empty-state\">لا توجد عناوين محفوظة</div>"; state.savedAddresses.forEach((a,i)=>{const el=document.createElement("div");el.className="card order-item";el.innerHTML=`<div class="order-icon">⌖</div><div class="order-details"><strong>${a.label}</strong><small>${a.text}</small></div>`;el.onclick=()=>{setBookingPoint("destination",a.latitude,a.longitude);addressesModal.classList.remove("show");switchView("home");};box.appendChild(el);}); }
+byId("savedAddresses").addEventListener("click", async()=>{if(!requireUser())return;await loadSavedAddresses();addressesModal.classList.add("show");});
+byId("closeAddresses").onclick=()=>addressesModal.classList.remove("show");
+byId("addressForm").onsubmit=async e=>{e.preventDefault();if(!state.destinationLocation)return showToast("حدد وجهة على الخريطة أولًا");const a={label:byId("addressLabel").value.trim(),text:byId("addressText").value.trim(),...state.destinationLocation};state.savedAddresses=[...state.savedAddresses,a].slice(-10);await updateDoc(doc(db,"users",state.user.uid),{savedAddresses:state.savedAddresses,updatedAt:serverTimestamp()});renderSavedAddresses();showToast("تم حفظ العنوان");};
 
 const supportModal = byId("supportModal");
 document.querySelectorAll("[data-open-support]").forEach(button => {
   button.addEventListener("click", () => supportModal.classList.add("show"));
 });
 byId("closeSupport").addEventListener("click", () => supportModal.classList.remove("show"));
-byId("startSupportChat").addEventListener("click", () => {
-  supportModal.classList.remove("show");
-  showToast("تم بدء محادثة دعم تجريبية");
+byId("startSupportChat").addEventListener("click", async () => {
+  if(!requireUser())return; const message=byId("supportMessage").value.trim(); if(message.length<5)return showToast("اكتب تفاصيل المشكلة");
+  await setDoc(doc(collection(db,"supportTickets")),{userId:state.user.uid,category:byId("supportCategory").value,message,status:"open",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
+  byId("supportMessage").value=""; supportModal.classList.remove("show"); showToast("تم إرسال تذكرة الدعم");
 });
 supportModal.addEventListener("click", event => {
   if (event.target === supportModal) supportModal.classList.remove("show");
@@ -938,6 +957,11 @@ document.addEventListener("keydown", event => {
   if (event.key === "Escape") supportModal.classList.remove("show");
   if (event.key === "Escape") closeRatingModal();
 });
+
+
+function printInvoice(order){const w=window.open("","_blank","width=520,height=700");if(!w)return showToast("اسمح بالنوافذ المنبثقة لعرض الفاتورة");w.document.write(`<html dir="rtl"><head><title>فاتورة ${order.id}</title><style>body{font-family:Arial;padding:30px}h1{color:#102044}.row{display:flex;justify-content:space-between;border-bottom:1px solid #ddd;padding:10px 0}</style></head><body><h1>كروة — فاتورة رحلة</h1><div class="row"><b>رقم الرحلة</b><span>${order.id}</span></div><div class="row"><b>المسار</b><span>${order.route}</span></div><div class="row"><b>الكابتن</b><span>${order.driverName||"—"}</span></div><div class="row"><b>المبلغ</b><span>${formatMoney(order.price)}</span></div><div class="row"><b>الدفع</b><span>${order.payment||"—"}</span></div><div class="row"><b>التاريخ</b><span>${new Date(order.createdAtISO||Date.now()).toLocaleString("ar-IQ")}</span></div><script>window.onload=()=>window.print()<\/script></body></html>`);w.document.close();}
+let geoTimer; function setupPlaceSearch(inputId,resultsId,type){const input=byId(inputId),box=byId(resultsId);input.addEventListener("input",()=>{clearTimeout(geoTimer);const q=input.value.trim();if(q.length<3){box.innerHTML="";return}geoTimer=setTimeout(async()=>{try{const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=5&accept-language=ar&q=${encodeURIComponent(q)}`,{headers:{"Accept":"application/json"}});const data=await r.json();box.innerHTML="";data.forEach(x=>{const b=document.createElement("button");b.type="button";b.className="place-result";b.textContent=x.display_name;b.onclick=()=>{input.value=x.display_name;box.innerHTML="";setBookingPoint(type,Number(x.lat),Number(x.lon));};box.appendChild(b)});}catch(e){box.innerHTML="";}},450)});}
+setupPlaceSearch("rideFrom","rideFromResults","pickup");setupPlaceSearch("rideTo","rideToResults","destination");
 
 setAuthMode("login");
 initializeCustomerMap();

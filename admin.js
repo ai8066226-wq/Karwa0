@@ -246,6 +246,9 @@ function orderCard(order) {
           <span>${order.driverName ? `الكابتن: ${escapeHtml(order.driverName)}` : "بانتظار كابتن"}</span>
         </div>
         <span class="order-price">${money(order.price)}</span>
+        ${Number(order.surgeMultiplier||1)>1?`<div class="order-meta"><span>طلب مرتفع ×${Number(order.surgeMultiplier).toFixed(2)}</span></div>`:""}
+        ${Number(order.discountAmount||0)>0?`<div class="order-meta"><span>خصم ${money(order.discountAmount)}</span><span>${escapeHtml(order.couponCode||"")}</span></div>`:""}
+        ${Array.isArray(order.dispatchCandidateIds)?`<div class="order-meta"><span>مرشحو التوزيع: ${order.dispatchCandidateIds.length}</span><span>الجولة ${Number(order.dispatchRound||1)}</span></div>`:""}
         ${Number(order.statusIndex||0)>=4&&!order.cancelled?`<div class="order-meta"><span>عمولة كروة: ${money(order.commissionAmount)}</span><span>صافي الكابتن: ${money(order.driverEarnings)}</span></div>`:""}
       </div>
       ${order.cancelled && order.cancellationReason ? `<p class="admin-note danger-note">سبب الإلغاء: ${escapeHtml(order.cancellationReason)}</p>` : ""}

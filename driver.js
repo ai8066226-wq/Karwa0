@@ -155,7 +155,6 @@ async function sharePosition(position, force = false) {
   const activeOrders = state.orders.filter(order =>
     order.driverId === state.user.uid && !order.cancelled && Number(order.statusIndex || 0) < 4
   );
-  if (!activeOrders.length) return;
   state.lastLocationWrite = now;
   const location = {
     driverId: state.user.uid,
@@ -166,6 +165,7 @@ async function sharePosition(position, force = false) {
     speed: Number.isFinite(position.coords.speed) ? position.coords.speed : null,
     updatedAt: serverTimestamp()
   };
+  await updateDoc(doc(db, "drivers", state.user.uid), { latitude: location.latitude, longitude: location.longitude, locationAccuracy: location.accuracy, locationUpdatedAt: serverTimestamp(), updatedAt: serverTimestamp() }).catch(()=>{});
   const results = await Promise.allSettled(activeOrders.map(order =>
     setDoc(doc(db, "orders", order.firestoreId, "tracking", "current"), location, { merge: true })
   ));
@@ -386,9 +386,12 @@ function orderCard(order, mode) {
 }
 
 function renderOrders() {
-  const available = state.orders.filter(order =>
-    !order.cancelled && Number(order.statusIndex || 0) < 4 && !order.driverId
-  ).sort((a,b) => distanceToOrder(a) - distanceToOrder(b));
+  const now=Date.now();
+  const available = state.orders.filter(order => {
+    if(order.cancelled || Number(order.statusIndex || 0) >= 4 || order.driverId) return false;
+    const exp=order.dispatchExpiresAt?.seconds ? order.dispatchExpiresAt.seconds*1000 : new Date(order.dispatchExpiresAt||0).getTime();
+    return !exp || exp<=now || !Array.isArray(order.dispatchCandidateIds) || !order.dispatchCandidateIds.length || order.dispatchCandidateIds.includes(state.user?.uid);
+  }).sort((a,b) => distanceToOrder(a) - distanceToOrder(b));
   const mine = state.orders.filter(order =>
     order.driverId === state.user?.uid && !order.cancelled && Number(order.statusIndex || 0) < 4
   );
