@@ -1,4 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
+import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-functions.js";
 import {
   browserLocalPersistence,
   getAuth,
@@ -32,6 +33,9 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig, "karwa-driver-portal");
 const auth = getAuth(app);
 const db = getFirestore(app);
+const functions = getFunctions(app);
+const acceptOrderSecure = httpsCallable(functions, "acceptOrder");
+const advanceTripSecure = httpsCallable(functions, "advanceTrip");
 
 try {
   await setPersistence(auth, browserLocalPersistence);
@@ -506,42 +510,19 @@ document.addEventListener("click", async event => {
   try {
     if (button.dataset.action === "accept") {
       if (!state.driverData?.online) throw new Error("OFFLINE");
-      await runTransaction(db, async transaction => {
-        const snapshot = await transaction.get(orderRef);
-        if (!snapshot.exists()) throw new Error("ORDER_NOT_FOUND");
-        const order = snapshot.data();
-        if (order.driverId || order.cancelled || Number(order.statusIndex || 0) >= 4) throw new Error("ORDER_TAKEN");
-        transaction.update(orderRef, {
-          driverId: state.user.uid,
-          driverName: state.driverData.name || state.userData?.name || "كابتن كروة",
-          driverPhone: state.driverData.phone || "",
-          assignmentStatus: "accepted",
-          statusIndex: 1,
-          acceptedAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
-      });
+      await acceptOrderSecure({ orderId: button.dataset.id });
       if (state.lastPosition) await sharePosition(state.lastPosition, true);
-      toast("تم قبول الطلب");
+      toast("تم قبول الطلب بأمان عبر الخادم");
     } else if (button.dataset.action === "advance") {
       const order = state.orders.find(item => item.firestoreId === button.dataset.id);
       if (!order) throw new Error("ORDER_NOT_FOUND");
-      const current = Number(order.statusIndex || 0);
-      const next = current + 1;
+      const next = Number(order.statusIndex || 0) + 1;
+      let otp = "";
       if (next === 3) {
-        const entered = prompt("أدخل رمز بدء الرحلة المكوّن من 4 أرقام:", "");
-        if (!entered) throw new Error("OTP_REQUIRED");
-        if (String(entered).trim() !== String(order.tripOtp || "")) throw new Error("OTP_INVALID");
+        otp = prompt("أدخل رمز بدء الرحلة المكوّن من 4 أرقام:", "") || "";
+        if (!otp) throw new Error("OTP_REQUIRED");
       }
-      const patch = {
-        statusIndex: next,
-        assignmentStatus: next >= 4 ? "completed" : "active",
-        updatedAt: serverTimestamp()
-      };
-      if (next === 2) patch.arrivedAt = serverTimestamp();
-      if (next === 3) patch.startedAt = serverTimestamp();
-      if (next === 4) { patch.completedAt = serverTimestamp(); patch.paymentStatus = "paid"; }
-      await updateDoc(orderRef, patch);
+      await advanceTripSecure({ orderId: button.dataset.id, otp });
       toast(statuses[next]);
     }
   } catch (error) {

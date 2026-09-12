@@ -1,4 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
+import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-functions.js";
 import {
   browserLocalPersistence,
   createUserWithEmailAndPassword,
@@ -35,6 +36,9 @@ const firebaseConfig = {
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
+const functions = getFunctions(firebaseApp);
+const createRideOrderSecure = httpsCallable(functions, "createRideOrder");
+const cancelOrderSecure = httpsCallable(functions, "cancelOrder");
 
 const byId = id => document.getElementById(id);
 const orderStatuses = [
@@ -334,6 +338,14 @@ function subscribeToOrders(user) {
     state.activeOrder = state.orders.find(order =>
       !order.cancelled && Number(order.statusIndex || 0) < orderStatuses.length - 1
     ) || null;
+    if (state.activeOrder?.firestoreId && !state.activeOrder.tripOtp) {
+      getDoc(doc(db, "orderSecrets", state.activeOrder.firestoreId)).then(secret => {
+        if (secret.exists() && state.activeOrder?.firestoreId === secret.id) {
+          state.activeOrder.tripOtp = secret.data().tripOtp;
+          renderTracking();
+        }
+      }).catch(() => {});
+    }
     renderOrders();
     renderTracking();
     syncTrackingSubscription();
@@ -495,6 +507,18 @@ function requireUser() {
 
 async function createOrder(type, title, route, price, options = {}) {
   if (!requireUser()) return false;
+  if (type === "ride") {
+    const result = await createRideOrderSecure({
+      title, route, vehicle: state.vehicle, payment: options.payment || "نقدًا",
+      pickupLocation: options.pickupLocation || null,
+      destinationLocation: options.destinationLocation || null,
+      distanceKm: Number(options.distanceKm || 0), durationMin: Number(options.durationMin || 0),
+      routeSource: options.routeSource || ""
+    });
+    state.ridePrice = Number(result.data.price || state.ridePrice);
+    showToast("تم إنشاء الطلب وتسعيره بأمان عبر الخادم");
+    return true;
+  }
   const createdAtISO = new Date().toISOString();
   const orderRef = doc(collection(db, "orders"));
   const order = {
@@ -671,11 +695,9 @@ byId("cancelOrder").addEventListener("click", async event => {
   const button = event.currentTarget;
   setButtonBusy(button, true, "جاري الإلغاء…");
   try {
-    await updateDoc(doc(db, "orders", state.activeOrder.firestoreId), {
-      cancelled: true,
-      cancelledBy: "customer",
-      cancellationReason: prompt("سبب الإلغاء (اختياري):", "") || "",
-      updatedAt: serverTimestamp()
+    await cancelOrderSecure({
+      orderId: state.activeOrder.firestoreId,
+      reason: prompt("سبب الإلغاء (اختياري):", "") || ""
     });
     showToast("تم إلغاء الطلب");
   } catch (error) {
