@@ -113,6 +113,8 @@ const state = {
   mapTheme: readCustomerPreference("karwa.customer.mapTheme", "day") === "night" ? "night" : "day",
   mapView: readCustomerPreference("karwa.customer.mapView", "2d") === "3d" ? "3d" : "2d",
   autoFollow: readCustomerPreference("karwa.customer.autoFollow", "true") !== "false",
+  mapSearchMarker: null,
+  mapSearchSelection: null,
   customerMarker: null,
   driverMarker: null,
   routeLine: null,
@@ -203,7 +205,25 @@ function initializeCustomerMap() {
   state.map.on("move",()=>{if(!state.centerPickActive)return;clearTimeout(state.centerPickTimer);byId("mapCenterLabel").textContent="جارٍ تحديد العنوان…";state.centerPickTimer=setTimeout(async()=>{const c=state.map.getCenter();const name=await reverseGeocode(c.lat,c.lng);byId("mapCenterLabel").textContent=name||`الموقع: ${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`;},1250);});
   // خريطة متجهية بلا مفتاح API، ويتحكم العميل بمظهرها من لوحة الإعدادات.
   state.baseLayer = window.L.maplibreGL({ style: CUSTOMER_MAP_STYLES[state.mapTheme] }).addTo(state.map);
+  const maplibreMap = state.baseLayer.getMaplibreMap?.();
+  maplibreMap?.on("style.load", () => window.setTimeout(applyCustomerNightLabels, 0));
   applyCustomerMapPreferences();
+  window.setTimeout(applyCustomerNightLabels, 500);
+}
+
+function applyCustomerNightLabels() {
+  if (state.mapTheme !== "night") return;
+  const maplibreMap = state.baseLayer?.getMaplibreMap?.();
+  const layers = maplibreMap?.getStyle?.()?.layers || [];
+  layers.forEach(layer => {
+    if (layer.type !== "symbol" || !layer.layout?.["text-field"]) return;
+    try {
+      maplibreMap.setPaintProperty(layer.id, "text-color", "#78ffd6");
+      maplibreMap.setPaintProperty(layer.id, "text-halo-color", "#001f26");
+      maplibreMap.setPaintProperty(layer.id, "text-halo-width", 1.8);
+      maplibreMap.setPaintProperty(layer.id, "text-halo-blur", 0.35);
+    } catch (_) {}
+  });
 }
 
 function renderCustomerSettingsInfo() {
@@ -249,9 +269,13 @@ function applyCustomerMapPreferences() {
 function setCustomerMapTheme(theme) {
   state.mapTheme = theme === "night" ? "night" : "day";
   writeCustomerPreference("karwa.customer.mapTheme", state.mapTheme);
-  try { state.baseLayer?.getMaplibreMap?.().setStyle(CUSTOMER_MAP_STYLES[state.mapTheme]); }
+  try {
+    const maplibreMap = state.baseLayer?.getMaplibreMap?.();
+    if (maplibreMap) maplibreMap.setStyle(CUSTOMER_MAP_STYLES[state.mapTheme]);
+  }
   catch (error) { console.warn("تعذر تبديل نمط الخريطة فورًا", error); }
   applyCustomerMapPreferences();
+  if (state.mapTheme === "night") window.setTimeout(applyCustomerNightLabels, 450);
   showToast(state.mapTheme === "night" ? "تم تفعيل الخريطة الليلية" : "تم تفعيل الخريطة النهارية");
 }
 
@@ -1254,6 +1278,112 @@ function setupPlaceSearch(inputId,resultsId,type){
 
 setupPlaceSearch("rideFrom","rideFromResults","pickup");setupPlaceSearch("rideTo","rideToResults","destination");
 
+function customerMapSearchIcon() {
+  return window.L.divIcon({ className: "", html: '<div class="map-search-marker"><span>⌖</span></div>', iconSize: [42, 42], iconAnchor: [21, 38] });
+}
+
+function setupCustomerMapPlaceTool() {
+  const input = byId("customerMapPlaceSearch");
+  const button = byId("customerMapPlaceSearchButton");
+  const results = byId("customerMapPlaceResults");
+  const selection = byId("customerMapPlaceSelection");
+  if (!input || !button || !results || !selection) return;
+  let sequence = 0;
+  const selectPlace = place => {
+    const latitude = Number(place.lat);
+    const longitude = Number(place.lon);
+    const name = arabicPlaceName(place);
+    state.mapSearchSelection = { latitude, longitude, name };
+    input.value = name;
+    byId("customerMapLandmarkName").value ||= name;
+    selection.textContent = `تم تحديد: ${name}`;
+    results.innerHTML = "";
+    initializeCustomerMap();
+    const point = [latitude, longitude];
+    if (state.mapSearchMarker) state.mapSearchMarker.setLatLng(point);
+    else state.mapSearchMarker = window.L.marker(point, { icon: customerMapSearchIcon() }).addTo(state.map);
+    const popupLabel = document.createElement("strong");
+    popupLabel.textContent = name;
+    state.mapSearchMarker.bindPopup(popupLabel).openPopup();
+    state.map.setView(point, 16);
+    showToast("تم تحديد المكان على الخريطة");
+  };
+  const run = async () => {
+    const queryText = input.value.trim();
+    const requestId = ++sequence;
+    if (queryText.length < 2) {
+      results.innerHTML = '<div class="map-place-state">اكتب حرفين على الأقل للبحث.</div>';
+      return;
+    }
+    button.disabled = true;
+    results.innerHTML = '<div class="map-place-state">جاري البحث عن المكان…</div>';
+    try {
+      const places = await searchPlaces(queryText);
+      if (requestId !== sequence) return;
+      results.innerHTML = "";
+      if (!places.length) {
+        results.innerHTML = '<div class="map-place-state">لم نجد نتيجة. جرّب اسم الحي أو شارعًا قريبًا.</div>';
+        return;
+      }
+      places.slice(0, 8).forEach(place => {
+        const item = document.createElement("button");
+        item.type = "button";
+        item.className = "map-place-result";
+        const pin = document.createElement("span");
+        pin.textContent = "⌖";
+        const copy = document.createElement("span");
+        const title = document.createElement("strong");
+        const detail = document.createElement("small");
+        title.textContent = arabicPlaceName(place);
+        detail.textContent = place.display_name || cleanPlaceLabel(place);
+        copy.append(title, detail);
+        item.append(pin, copy);
+        item.addEventListener("click", () => selectPlace(place));
+        results.appendChild(item);
+      });
+    } catch (error) {
+      console.error(error);
+      results.innerHTML = '<div class="map-place-state">تعذر البحث الآن. تحقق من الإنترنت وحاول مجددًا.</div>';
+    } finally {
+      button.disabled = false;
+    }
+  };
+  button.addEventListener("click", run);
+  input.addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); run(); } });
+  byId("customerSaveMapLandmark")?.addEventListener("click", async () => {
+    const user = auth.currentUser;
+    if (!user) return showToast("سجّل الدخول أولًا");
+    const name = byId("customerMapLandmarkName")?.value.trim();
+    if (!name || name.length < 3) return showToast("اكتب اسم المعلم بوضوح");
+    initializeCustomerMap();
+    const center = state.map.getCenter();
+    const point = state.mapSearchSelection || { latitude: center.lat, longitude: center.lng };
+    try {
+      await addDoc(collection(db, "landmarks"), {
+        name,
+        category: byId("customerMapLandmarkCategory")?.value || "place",
+        latitude: Number(point.latitude),
+        longitude: Number(point.longitude),
+        createdBy: user.uid,
+        createdByName: state.name || "مستخدم كروة",
+        createdByRole: "customer",
+        status: "active",
+        createdAt: serverTimestamp(),
+        createdAtISO: new Date().toISOString()
+      });
+      byId("customerMapLandmarkName").value = "";
+      placeSearchCache.clear();
+      selection.textContent = `تمت إضافة المعلم: ${name}`;
+      showToast("تمت إضافة المعلم إلى خريطة كروة");
+    } catch (error) {
+      console.error(error);
+      showToast("تعذر إضافة المعلم — تحقق من الاتصال والصلاحيات");
+    }
+  });
+}
+
+setupCustomerMapPlaceTool();
+
 setAuthMode("login");
 document.body.classList.add("customer-map-mode");
 initializeCustomerMap();
@@ -1384,4 +1514,3 @@ function startCustomerCommunityLayers(){if(customerCommunity.started||!state.map
  onSnapshot(collection(db,"roadReports"),snap=>{const live=new Set();snap.forEach(d=>{const x=d.data();if(!customerReportLive(x))return;live.add(d.id);const ll=[Number(x.latitude),Number(x.longitude)];if(!Number.isFinite(ll[0])||!Number.isFinite(ll[1]))return;const c=Number(x.confirmations||0);let m=customerCommunity.reports.get(d.id);if(!m){m=window.L.marker(ll,{icon:customerCommunityIcon(x.type,"report",c)}).addTo(state.map);customerCommunity.reports.set(d.id,m)}else{m.setLatLng(ll);m.setIcon(customerCommunityIcon(x.type,"report",c));}const label=customerReportMeta[x.type]?.[1]||"بلاغ طريق";m.bindPopup(`<div dir="rtl"><b>${label}</b>${x.note?`<br>${x.note}`:""}<br><small>${c?`مؤكد من ${c} كابتن`:'بلاغ حديث من مجتمع كروة'}</small></div>`)});for(const [id,m] of customerCommunity.reports)if(!live.has(id)){state.map.removeLayer(m);customerCommunity.reports.delete(id)}});
  onSnapshot(collection(db,"landmarks"),snap=>{const live=new Set(),data=[];snap.forEach(d=>{const x=d.data();if(x.status==="hidden")return;data.push({...x,id:d.id});live.add(d.id);const ll=[Number(x.latitude),Number(x.longitude)];if(!Number.isFinite(ll[0])||!Number.isFinite(ll[1]))return;let m=customerCommunity.landmarks.get(d.id);if(!m){m=window.L.marker(ll,{icon:customerCommunityIcon(null,"landmark")}).addTo(state.map);customerCommunity.landmarks.set(d.id,m)}else m.setLatLng(ll);m.bindPopup(`<div dir="rtl"><b>${x.name||"معلم كروة"}</b><br><small>${x.category||"معلم محلي"} · أضيف بواسطة ${x.createdByRole==='driver'?'كابتن':'عميل'}</small></div>`)});customerCommunity.landmarkData=data;placeSearchCache.clear();for(const [id,m] of customerCommunity.landmarks)if(!live.has(id)){state.map.removeLayer(m);customerCommunity.landmarks.delete(id)}});
 }
-byId("saveLandmark")?.addEventListener("click",async()=>{const user=auth.currentUser;if(!user)return showToast("سجّل الدخول أولًا");const name=byId("landmarkName")?.value.trim();if(!name||name.length<3)return showToast("اكتب اسم المعلم بوضوح");initializeCustomerMap();const c=state.map.getCenter();try{await addDoc(collection(db,"landmarks"),{name,category:byId("landmarkCategory")?.value||"place",latitude:c.lat,longitude:c.lng,createdBy:user.uid,createdByName:state.name||"مستخدم كروة",createdByRole:"customer",status:"active",createdAt:serverTimestamp(),createdAtISO:new Date().toISOString()});byId("landmarkName").value="";showToast("تمت إضافة المعلم إلى خريطة كروة") }catch(e){console.error(e);showToast("تعذر إضافة المعلم — انشر قواعد Firestore الجديدة")}});

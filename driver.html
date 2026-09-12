@@ -153,6 +153,10 @@ body.driver-map-mode #driverView{height:100dvh!important}
 }
 @media(prefers-reduced-motion:reduce){.driver-settings-toggle,.driver-settings-scrim,.driver-settings-panel,#driverMap{transition:none}}
 </style>
+<style id="phase32-map-place-tools">
+.map-place-tool{display:grid;gap:9px}.map-place-tool h3{margin-bottom:1px!important}.map-place-search-row{display:grid;grid-template-columns:minmax(0,1fr) 48px;gap:7px}.map-place-search-row input,.map-landmark-editor input,.map-landmark-editor select{width:100%;min-width:0;min-height:44px;padding:9px 11px;border:1.5px solid #b9c8d8;border-radius:12px;color:#0a2540;background:#fff;font:inherit;font-size:12px;box-sizing:border-box}.map-place-search-row input:focus,.map-landmark-editor input:focus,.map-landmark-editor select:focus{border-color:#008f88;outline:3px solid rgba(0,143,136,.14)}.map-place-search-row>button{min-height:44px;border:0;border-radius:12px;color:#fff;background:#0a2540;font-size:24px;font-weight:900;cursor:pointer}.map-place-results{max-height:190px;display:grid;gap:5px;overflow:auto}.map-place-results:empty{display:none}.map-place-result{width:100%;padding:9px 10px;display:grid;grid-template-columns:32px minmax(0,1fr);gap:8px;align-items:center;border:1px solid #d5e0e8;border-radius:12px;color:#0a2540;background:#fff;text-align:right;cursor:pointer}.map-place-result:hover{border-color:#4cc9c4;background:#effcf9}.map-place-result>span:first-child{width:32px;height:32px;display:grid;place-items:center;border-radius:10px;color:#004e4b;background:#dff8f3;font-size:17px}.map-place-result strong,.map-place-result small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.map-place-result strong{font-size:12px}.map-place-result small{margin-top:2px;color:#617186;font-size:9px}.map-place-state{padding:10px;border-radius:11px;color:#526278;background:#edf2f6;font-size:11px;text-align:center}.map-place-selection{padding:8px 10px;border:1px solid #c7e7e3;border-radius:11px;color:#006b66;background:#effcf9;font-size:10px;line-height:1.45}.map-landmark-editor{display:grid;grid-template-columns:minmax(0,1fr) minmax(110px,.7fr);gap:7px}.map-landmark-editor>button{grid-column:1/-1;min-height:43px;border:0;border-radius:12px;color:#fff;background:linear-gradient(135deg,#00746f,#0b8e86);font-weight:900;cursor:pointer}.map-place-hint{color:#617186;font-size:9px;line-height:1.5}.map-search-marker{width:38px;height:38px;display:grid;place-items:center;border:3px solid #fff;border-radius:50% 50% 50% 8px;color:#052d35;background:#78ffd6;box-shadow:0 0 0 5px rgba(120,255,214,.2),0 8px 24px rgba(0,31,38,.35);font-size:19px;transform:rotate(-45deg)}.map-search-marker span{transform:rotate(45deg)}
+@media(max-width:430px){.map-landmark-editor{grid-template-columns:1fr}.map-landmark-editor>button{grid-column:auto}.map-place-results{max-height:160px}}
+</style>
 </head>
 <body>
   <header class="topbar">
@@ -310,7 +314,6 @@ body.driver-map-mode #driverView{height:100dvh!important}
           </div>
           <input id="roadReportNote" class="report-note" placeholder="ملاحظة اختيارية عن البلاغ">
           <small class="muted">يمكن للكباتن تأكيد البلاغات القريبة. البلاغات غير المؤكدة تنتهي أسرع تلقائيًا.</small>
-          <details class="driver-landmark-panel"><summary>📌 إضافة معلم إلى خريطة كروة</summary><div class="landmark-form"><input id="driverLandmarkName" class="report-note" placeholder="اسم المعلم، مثال: صيدلية النور"><select id="driverLandmarkCategory" class="report-note"><option value="place">معلم</option><option value="shop">متجر</option><option value="restaurant">مطعم</option><option value="medical">مركز صحي</option><option value="school">مدرسة / جامعة</option><option value="other">أخرى</option></select><button type="button" id="saveDriverLandmark" class="primary-btn">حفظ عند موقعي الحالي</button><small class="muted">يُحفظ المعلم عند GPS الحالي للكابتن ويظهر للعميل والكباتن.</small></div></details>
         </div>
         <div class="card">
           <div class="online-row">
@@ -350,6 +353,21 @@ body.driver-map-mode #driverView{height:100dvh!important}
           <div><dt>التقييم</dt><dd id="driverSettingsRating">جديد</dd></div>
           <div><dt>التنبيهات</dt><dd id="driverSettingsWarnings">0</dd></div>
         </dl>
+        <section class="driver-settings-group map-place-tool" aria-labelledby="driverPlaceToolTitle">
+          <h3 id="driverPlaceToolTitle">البحث والمعالم</h3>
+          <div class="map-place-search-row">
+            <input id="driverMapPlaceSearch" autocomplete="off" placeholder="ابحث عن شارع، مطعم أو معلم">
+            <button type="button" id="driverMapPlaceSearchButton" aria-label="بحث عن مكان">⌕</button>
+          </div>
+          <div class="map-place-results" id="driverMapPlaceResults" aria-live="polite"></div>
+          <div class="map-place-selection" id="driverMapPlaceSelection">اختر نتيجة أو حرّك الخريطة إلى موقع المعلم.</div>
+          <div class="map-landmark-editor">
+            <input id="driverMapLandmarkName" maxlength="80" placeholder="اسم المعلم الجديد">
+            <select id="driverMapLandmarkCategory" aria-label="تصنيف المعلم"><option value="place">معلم</option><option value="shop">متجر</option><option value="restaurant">مطعم</option><option value="medical">مركز صحي</option><option value="school">مدرسة / جامعة</option><option value="other">أخرى</option></select>
+            <button type="button" id="driverSaveMapLandmark">＋ إضافة المعلم على الخريطة</button>
+          </div>
+          <small class="map-place-hint">إذا اخترت نتيجة يُحفظ المعلم عندها، وإلا يُحفظ عند مركز الخريطة.</small>
+        </section>
         <section class="driver-settings-group" aria-labelledby="driverMapAppearanceTitle">
           <h3 id="driverMapAppearanceTitle">مظهر الخريطة</h3>
           <div class="driver-settings-label"><span>الإضاءة</span><span id="driverThemeValue">نهاري</span></div>
@@ -380,8 +398,8 @@ body.driver-map-mode #driverView{height:100dvh!important}
   <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
   <script>try{if(window.maplibregl&&maplibregl.setRTLTextPlugin&&(!maplibregl.getRTLTextPluginStatus||maplibregl.getRTLTextPluginStatus()==="unavailable")){maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",true).catch(()=>{});}}catch(e){}</script>
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
-  <script type="module" src="./driver.js?v=29"></script>
-  <script src="./pwa.js?v=31"></script>
+  <script type="module" src="./driver.js?v=32"></script>
+  <script src="./pwa.js?v=32"></script>
 <script id="phase20-driver-map-first-js">
 window.addEventListener("DOMContentLoaded",()=>{
   const view=document.getElementById("driverView");

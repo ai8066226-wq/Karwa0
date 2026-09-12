@@ -104,6 +104,8 @@ const state = {
   mapTheme: readDriverPreference("karwa.driver.mapTheme", "day") === "night" ? "night" : "day",
   mapView: readDriverPreference("karwa.driver.mapView", "2d") === "3d" ? "3d" : "2d",
   autoFollow: readDriverPreference("karwa.driver.autoFollow", "true") !== "false",
+  mapSearchMarker: null,
+  mapSearchSelection: null,
   driverMarker: null,
   pickupMarker: null,
   destinationMarker: null,
@@ -139,7 +141,25 @@ function initializeDriverMap() {
   if (!window.L || state.map) return;
   state.map = window.L.map("driverMap", { attributionControl: false }).setView([33.3152, 44.3661], 12);
   state.baseLayer = window.L.maplibreGL({ style: DRIVER_MAP_STYLES[state.mapTheme] }).addTo(state.map);
+  const maplibreMap = state.baseLayer.getMaplibreMap?.();
+  maplibreMap?.on("style.load", () => window.setTimeout(applyDriverNightLabels, 0));
   applyDriverMapPreferences();
+  window.setTimeout(applyDriverNightLabels, 500);
+}
+
+function applyDriverNightLabels() {
+  if (state.mapTheme !== "night") return;
+  const maplibreMap = state.baseLayer?.getMaplibreMap?.();
+  const layers = maplibreMap?.getStyle?.()?.layers || [];
+  layers.forEach(layer => {
+    if (layer.type !== "symbol" || !layer.layout?.["text-field"]) return;
+    try {
+      maplibreMap.setPaintProperty(layer.id, "text-color", "#78ffd6");
+      maplibreMap.setPaintProperty(layer.id, "text-halo-color", "#001f26");
+      maplibreMap.setPaintProperty(layer.id, "text-halo-width", 1.8);
+      maplibreMap.setPaintProperty(layer.id, "text-halo-blur", 0.35);
+    } catch (_) {}
+  });
 }
 
 function updateDriverSettingsInfo() {
@@ -192,6 +212,7 @@ function setDriverMapTheme(theme) {
   const maplibreMap = state.baseLayer?.getMaplibreMap?.();
   if (maplibreMap) maplibreMap.setStyle(DRIVER_MAP_STYLES[state.mapTheme]);
   applyDriverMapPreferences();
+  if (state.mapTheme === "night") window.setTimeout(applyDriverNightLabels, 450);
   toast(state.mapTheme === "night" ? "تم تفعيل الخريطة الليلية" : "تم تفعيل الخريطة النهارية");
 }
 
@@ -743,7 +764,7 @@ window.karwaRateCustomer=async(orderId)=>{const score=Number(prompt("قيّم ا
 window.karwaDriverSOS=async(orderId)=>{if(!confirm("إرسال تنبيه سلامة عاجل للإدارة؟"))return;try{await createDriverSafetyEvent({orderId,kind:"driver_sos",latitude:state.lastPosition?.latitude||null,longitude:state.lastPosition?.longitude||null,note:"SOS من الكابتن"});toast("تم إرسال تنبيه السلامة");}catch(e){console.error(e);toast("تعذر إرسال التنبيه");}};
 
 // Phase 19 — verified community traffic + landmarks for customer and driver
-const communityLayers={reports:new Map(),landmarks:new Map(),started:false,nearbyAlerted:new Set()};
+const communityLayers={reports:new Map(),landmarks:new Map(),landmarkData:[],started:false,nearbyAlerted:new Set()};
 const reportMeta={traffic:["🚦","ازدحام"],accident:["💥","حادث"],closure:["⛔","شارع مغلق"],roadwork:["🚧","حفريات / أعمال طريق"],hazard:["⚠️","عائق على الطريق"]};
 function communityIcon(kind,type="report",confirmations=0){const meta=reportMeta[kind]||["📌","بلاغ"],badge=type==='report'&&confirmations?`<b class="confirm-badge">${confirmations}</b>`:"";return window.L.divIcon({className:"",html:`<div class="${type==='landmark'?'landmark-marker':'road-report-marker'}">${type==='landmark'?'📍':meta[0]}${badge}</div>`,iconSize:[38,38],iconAnchor:[19,19]});}
 function reportLifetimeMs(x){const c=Number(x.confirmations||0);if(x.type==='closure')return c>=2?6*3600000:2*3600000;if(c>=3)return 4*3600000;if(c>=1)return 2*3600000;return 60*60000;}
@@ -753,8 +774,67 @@ function startDriverCommunityLayers(){if(communityLayers.started||!state.map||!s
   onSnapshot(collection(db,"roadReports"),snap=>{const live=new Set();snap.forEach(d=>{const x=d.data();if(!reportIsLive(x))return;live.add(d.id);const ll=[Number(x.latitude),Number(x.longitude)];if(!Number.isFinite(ll[0])||!Number.isFinite(ll[1]))return;const label=reportMeta[x.type]?.[1]||"بلاغ طريق",c=Number(x.confirmations||0),mine=(x.confirmedBy||[]).includes(state.user.uid)||x.reportedBy===state.user.uid;let m=communityLayers.reports.get(d.id);if(!m){m=window.L.marker(ll,{icon:communityIcon(x.type,"report",c)}).addTo(state.map);communityLayers.reports.set(d.id,m)}else{m.setLatLng(ll);m.setIcon(communityIcon(x.type,"report",c));}m.bindPopup(`<div dir="rtl"><b>${label}</b>${x.note?`<br>${x.note}`:""}<br><small>${c?`أكده ${c} من الكباتن`:'بانتظار تأكيد كابتن آخر'}</small>${mine?'':`<br><button class="report-confirm" onclick="karwaConfirmRoadReport('${d.id}')">✓ ما زال موجودًا</button>`}</div>`);
     const p=state.lastPosition?.coords;if(p){const dist=haversine({latitude:p.latitude,longitude:p.longitude},{latitude:ll[0],longitude:ll[1]});if(dist<0.7&&!communityLayers.nearbyAlerted.has(d.id)&&x.reportedBy!==state.user.uid){communityLayers.nearbyAlerted.add(d.id);toast(`تنبيه أمامك: ${label} على بعد ${Math.max(50,Math.round(dist*1000))} م`);}}
   });for(const [id,m] of communityLayers.reports)if(!live.has(id)){state.map.removeLayer(m);communityLayers.reports.delete(id)}});
-  onSnapshot(collection(db,"landmarks"),snap=>{const live=new Set();snap.forEach(d=>{const x=d.data();if(x.status==="hidden")return;live.add(d.id);const ll=[Number(x.latitude),Number(x.longitude)];if(!Number.isFinite(ll[0])||!Number.isFinite(ll[1]))return;let m=communityLayers.landmarks.get(d.id);if(!m){m=window.L.marker(ll,{icon:communityIcon(null,"landmark")}).addTo(state.map);communityLayers.landmarks.set(d.id,m)}else m.setLatLng(ll);m.bindPopup(`<div dir="rtl"><b>${x.name||"معلم كروة"}</b><br><small>${x.category||"معلم محلي"} · أضيف بواسطة ${x.createdByRole==='driver'?'كابتن':'عميل'}</small></div>`)});for(const [id,m] of communityLayers.landmarks)if(!live.has(id)){state.map.removeLayer(m);communityLayers.landmarks.delete(id)}});
+  onSnapshot(collection(db,"landmarks"),snap=>{const live=new Set(),data=[];snap.forEach(d=>{const x=d.data();if(x.status==="hidden")return;data.push({...x,id:d.id});live.add(d.id);const ll=[Number(x.latitude),Number(x.longitude)];if(!Number.isFinite(ll[0])||!Number.isFinite(ll[1]))return;let m=communityLayers.landmarks.get(d.id);if(!m){m=window.L.marker(ll,{icon:communityIcon(null,"landmark")}).addTo(state.map);communityLayers.landmarks.set(d.id,m)}else m.setLatLng(ll);m.bindPopup(`<div dir="rtl"><b>${x.name||"معلم كروة"}</b><br><small>${x.category||"معلم محلي"} · أضيف بواسطة ${x.createdByRole==='driver'?'كابتن':'عميل'}</small></div>`)});communityLayers.landmarkData=data;driverMapSearchCache.clear();for(const [id,m] of communityLayers.landmarks)if(!live.has(id)){state.map.removeLayer(m);communityLayers.landmarks.delete(id)}});
 }
 async function submitRoadReport(type){if(!state.user)return toast("سجّل الدخول أولًا");const p=state.lastPosition?.coords;if(!p||!Number.isFinite(Number(p.latitude)))return toast("فعّل GPS وانتظر تحديد موقعك");const meta=reportMeta[type];if(!meta)return;try{await addDoc(collection(db,"roadReports"),{type,note:byId("roadReportNote")?.value.trim()||"",latitude:Number(p.latitude),longitude:Number(p.longitude),reportedBy:state.user.uid,reporterName:state.driverData?.name||"كابتن كروة",confirmedBy:[state.user.uid],confirmations:1,active:true,createdAt:serverTimestamp(),createdAtISO:new Date().toISOString()});if(byId("roadReportNote"))byId("roadReportNote").value="";toast(`تم إرسال بلاغ: ${meta[1]}`)}catch(e){console.error(e);toast("تعذر حفظ البلاغ — انشر قواعد Firestore الجديدة")}}
 document.querySelectorAll("[data-road-report]").forEach(b=>b.addEventListener("click",()=>submitRoadReport(b.dataset.roadReport)));
-byId("saveDriverLandmark")?.addEventListener("click",async()=>{if(!state.user)return toast("سجّل الدخول أولًا");const name=byId("driverLandmarkName")?.value.trim(),p=state.lastPosition?.coords;if(!name||name.length<3)return toast("اكتب اسم المعلم بوضوح");if(!p)return toast("فعّل GPS وانتظر تحديد موقعك");try{await addDoc(collection(db,"landmarks"),{name,category:byId("driverLandmarkCategory")?.value||"place",latitude:Number(p.latitude),longitude:Number(p.longitude),createdBy:state.user.uid,createdByName:state.driverData?.name||"كابتن كروة",createdByRole:"driver",status:"active",createdAt:serverTimestamp(),createdAtISO:new Date().toISOString()});byId("driverLandmarkName").value="";toast("تمت إضافة المعلم إلى خريطة كروة");}catch(e){console.error(e);toast("تعذر إضافة المعلم — انشر قواعد Firestore الجديدة");}});
+const driverMapSearchCache = new Map();
+function normalizeDriverPlaceSearch(value) { return String(value || "").trim().replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").replace(/[\u064B-\u065F]/g, "").replace(/\s+/g, " ").toLowerCase(); }
+function driverPlaceName(place) { const names=place?.namedetails||{},address=place?.address||{};return names["name:ar"]||names.name||place?.name||address.amenity||address.shop||address.tourism||address.road||String(place?.display_name||"مكان محدد").split(",")[0]; }
+function driverPlaceDetail(place) { const address=place?.address||{};return place?.display_name||[address.road,address.suburb,address.city||address.town,address.state].filter(Boolean).join("، ")||"موقع على الخريطة"; }
+async function searchDriverMapPlaces(queryText) {
+  const key = normalizeDriverPlaceSearch(queryText);
+  if (driverMapSearchCache.has(key)) return driverMapSearchCache.get(key);
+  initializeDriverMap();
+  const bounds = state.map?.getBounds?.();
+  const view = bounds ? `&viewbox=${bounds.getWest()},${bounds.getNorth()},${bounds.getEast()},${bounds.getSouth()}` : "";
+  let remote = [];
+  for (const term of [queryText, `${queryText} العراق`]) {
+    try {
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&namedetails=1&dedupe=1&limit=14&countrycodes=iq&accept-language=ar,ku,en${view}&bounded=0&q=${encodeURIComponent(term)}`, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(7000) });
+      if (response.ok) remote.push(...await response.json());
+    } catch (_) {}
+    if (remote.length >= 10) break;
+  }
+  const local = communityLayers.landmarkData
+    .filter(item => normalizeDriverPlaceSearch(item.name).includes(key))
+    .map(item => ({ lat:item.latitude, lon:item.longitude, name:item.name, display_name:`${item.name} — معلم مضاف في كروة`, namedetails:{"name:ar":item.name}, osm_type:"karwa", osm_id:item.id, importance:1 }));
+  const seen = new Set();
+  const places = [...local, ...remote].filter(place => {
+    const id = place.osm_type && place.osm_id ? `${place.osm_type}:${place.osm_id}` : `${Number(place.lat).toFixed(5)},${Number(place.lon).toFixed(5)}`;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return Number.isFinite(Number(place.lat)) && Number.isFinite(Number(place.lon));
+  }).sort((a,b)=>Number(b.importance||0)-Number(a.importance||0)).slice(0,8);
+  driverMapSearchCache.set(key, places);
+  if (driverMapSearchCache.size > 40) driverMapSearchCache.delete(driverMapSearchCache.keys().next().value);
+  return places;
+}
+function driverMapSearchIcon() { return window.L.divIcon({ className:"", html:'<div class="map-search-marker"><span>⌖</span></div>', iconSize:[42,42], iconAnchor:[21,38] }); }
+function setupDriverMapPlaceTool() {
+  const input=byId("driverMapPlaceSearch"),button=byId("driverMapPlaceSearchButton"),results=byId("driverMapPlaceResults"),selection=byId("driverMapPlaceSelection");
+  if(!input||!button||!results||!selection)return;
+  let sequence=0;
+  const selectPlace=place=>{
+    const latitude=Number(place.lat),longitude=Number(place.lon),name=driverPlaceName(place),point=[latitude,longitude];
+    state.mapSearchSelection={latitude,longitude,name};input.value=name;byId("driverMapLandmarkName").value ||= name;selection.textContent=`تم تحديد: ${name}`;results.innerHTML="";initializeDriverMap();
+    if(state.mapSearchMarker)state.mapSearchMarker.setLatLng(point);else state.mapSearchMarker=window.L.marker(point,{icon:driverMapSearchIcon()}).addTo(state.map);
+    state.mapSearchMarker.bindPopup(escapeHtml(name)).openPopup();state.map.setView(point,16);toast("تم تحديد المكان على الخريطة");
+  };
+  const run=async()=>{
+    const queryText=input.value.trim(),requestId=++sequence;
+    if(queryText.length<2){results.innerHTML='<div class="map-place-state">اكتب حرفين على الأقل للبحث.</div>';return;}
+    button.disabled=true;results.innerHTML='<div class="map-place-state">جاري البحث عن المكان…</div>';
+    try{
+      const places=await searchDriverMapPlaces(queryText);if(requestId!==sequence)return;results.innerHTML="";
+      if(!places.length){results.innerHTML='<div class="map-place-state">لم نجد نتيجة. جرّب اسم الحي أو شارعًا قريبًا.</div>';return;}
+      places.forEach(place=>{const item=document.createElement("button");item.type="button";item.className="map-place-result";const pin=document.createElement("span");pin.textContent="⌖";const copy=document.createElement("span"),title=document.createElement("strong"),detail=document.createElement("small");title.textContent=driverPlaceName(place);detail.textContent=driverPlaceDetail(place);copy.append(title,detail);item.append(pin,copy);item.addEventListener("click",()=>selectPlace(place));results.appendChild(item);});
+    }catch(error){console.error(error);results.innerHTML='<div class="map-place-state">تعذر البحث الآن. تحقق من الإنترنت وحاول مجددًا.</div>';}finally{button.disabled=false;}
+  };
+  button.addEventListener("click",run);input.addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();run();}});
+  byId("driverSaveMapLandmark")?.addEventListener("click",async()=>{
+    if(!state.user)return toast("سجّل الدخول أولًا");const name=byId("driverMapLandmarkName")?.value.trim();if(!name||name.length<3)return toast("اكتب اسم المعلم بوضوح");initializeDriverMap();const center=state.map.getCenter(),point=state.mapSearchSelection||{latitude:center.lat,longitude:center.lng};
+    try{await addDoc(collection(db,"landmarks"),{name,category:byId("driverMapLandmarkCategory")?.value||"place",latitude:Number(point.latitude),longitude:Number(point.longitude),createdBy:state.user.uid,createdByName:state.driverData?.name||"كابتن كروة",createdByRole:"driver",status:"active",createdAt:serverTimestamp(),createdAtISO:new Date().toISOString()});byId("driverMapLandmarkName").value="";driverMapSearchCache.clear();selection.textContent=`تمت إضافة المعلم: ${name}`;toast("تمت إضافة المعلم إلى خريطة كروة");}catch(error){console.error(error);toast("تعذر إضافة المعلم — تحقق من الاتصال والصلاحيات");}
+  });
+}
+setupDriverMapPlaceTool();
