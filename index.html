@@ -1535,6 +1535,12 @@
 
     .map-search-button{margin:-4px 0 10px;border:0;border-radius:12px;padding:10px 16px;background:#102044;color:#fff;font-weight:800;box-shadow:0 6px 16px rgba(16,32,68,.12)}
     .maplibregl-canvas{outline:none}.maplibregl-ctrl-attrib{font-size:10px!important}.leaflet-maplibre-gl{border-radius:inherit}
+  
+    /* Phase 16: Arabic/RTL map and search fixes */
+    .place-result,.place-result *,.place-search-state{direction:rtl!important;text-align:right!important;unicode-bidi:plaintext}
+    .place-result>span:nth-child(2){min-width:0;flex:1}.place-result strong,.place-result small,.place-result .distance{direction:rtl!important;text-align:right!important}
+    #rideFrom,#rideTo{direction:rtl;text-align:right}.leaflet-tooltip,.leaflet-popup-content{direction:rtl;text-align:right}
+    .maplibregl-canvas{direction:ltr}
   </style>
   <link rel="manifest" href="./manifest.webmanifest">
   <meta name="theme-color" content="#111827">
@@ -2102,6 +2108,7 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
+  <script>try{if(window.maplibregl&&maplibregl.setRTLTextPlugin&&(!maplibregl.getRTLTextPluginStatus||maplibregl.getRTLTextPluginStatus()==="unavailable")){maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",true).catch(()=>{});}}catch(e){}</script>
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
   <script type="module" src="./app.js"></script>
   <script src="./pwa.js"></script>
