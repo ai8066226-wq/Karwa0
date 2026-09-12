@@ -1595,6 +1595,51 @@ body.customer-map-mode main{max-width:none;margin:0;padding:0}
 }
 @media(prefers-reduced-motion:reduce){#customerOptionsPanel,.map-options-toggle,.map-options-scrim{transition:none}}
 </style>
+<style id="phase21-navigation-ui">
+/* واجهة ملاحة مستوحاة من تطبيقات الخرائط الحديثة مع هوية كروة */
+body.customer-map-mode{--navy:#0a2540;--navy-light:#164b78;--orange:#d3401f;--orange-light:#c83c1d;--mint:#00746f;--mint-dark:#006b66;--line:#cbd6e2;--muted:#43536a;color:#0a2540}
+body.customer-map-mode .topbar{border-color:#d9e2eb;background:rgba(255,255,255,.97);box-shadow:0 5px 22px rgba(10,37,64,.1)}
+body.customer-map-mode .location-button small{color:#526278}body.customer-map-mode .location-button strong{color:#0a2540}
+#home{background:#dfe9ee}
+#home .welcome{right:16px;left:auto;width:min(390px,calc(100% - 32px))}
+#home .welcome>div{border-color:#fff;background:#fff;color:#0a2540;box-shadow:0 8px 28px rgba(10,37,64,.16)}
+#home .welcome .demo-badge{color:#064e48;background:#e2fbf6;border-color:#a9e8de;box-shadow:0 7px 22px rgba(10,37,64,.11)}
+#home .map-information{color:#0a2540;background:rgba(255,255,255,.96);border-color:#fff;border-radius:16px!important}
+#home .map-information small{color:#43536a}
+.map-options-toggle{min-width:116px;min-height:52px;border:2px solid #fff;border-radius:18px;color:#fff;background:#0a2540;box-shadow:0 10px 0 rgba(10,37,64,.12),0 18px 38px rgba(10,37,64,.28)}
+.map-options-toggle span{width:28px;height:28px;display:grid;place-items:center;border-radius:50%;color:#0a2540;background:#7de4e1;font-size:18px}
+.map-destination-quick{position:absolute;z-index:880;right:50%;bottom:20px;width:min(520px,calc(100% - 150px));min-height:64px;padding:9px 15px;display:flex;align-items:center;gap:12px;border:2px solid #fff;border-radius:22px;color:#0a2540;background:rgba(255,255,255,.97);box-shadow:0 13px 34px rgba(10,37,64,.24);text-align:right;transform:translateX(50%);transition:transform .2s,opacity .2s}
+.map-destination-quick:hover{transform:translateX(50%) translateY(-2px)}.map-destination-quick .quick-search-icon{width:42px;height:42px;display:grid;place-items:center;flex:0 0 auto;border-radius:15px;color:#fff;background:#0a2540;font-size:22px}.map-destination-quick span{display:grid}.map-destination-quick small{color:#516176;font-size:11px;font-weight:800}.map-destination-quick strong{font-size:17px}
+.map-recenter-button{position:absolute;z-index:880;left:18px;bottom:104px;width:52px;height:52px;display:grid;place-items:center;border:2px solid #fff;border-radius:50%;color:#0a2540;background:#fff;box-shadow:0 9px 25px rgba(10,37,64,.23);font-size:24px;font-weight:900}
+#home.customer-options-open .map-destination-quick,#home.customer-options-open .map-recenter-button{opacity:0;pointer-events:none}
+#home .tracking-card.show{top:auto;right:auto;left:50%;bottom:18px;width:min(620px,calc(100% - 36px));max-height:48%;color:#fff;background:linear-gradient(135deg,#0a2540,#135e72);border:1px solid rgba(255,255,255,.2);transform:translateX(-50%)}
+#home .tracking-card.show + .main-grid .map-destination-quick{display:none}
+#home .tracking-card .tracking-header p,#home .tracking-card .tracking-header small{color:#e6f0f6}
+#home .tracking-card .tracking-status{color:#063f3b;background:#8df0e6}
+#home .tracking-card .trip-live-strip>div{border-color:rgba(255,255,255,.2);background:rgba(255,255,255,.1)}#home .tracking-card .trip-live-strip small{color:#dce8f0}#home .tracking-card .trip-live-strip strong{color:#fff}
+#home .tracking-card .trip-stage-hint{color:#0a2540;background:#b9f3ec}
+#customerOptionsPanel{color:#0a2540;background:#f7fafc!important}
+.map-options-header{border-color:#d3dde7;background:rgba(255,255,255,.98)}.map-options-header small{color:#526278}
+#customerOptionsPanel label{color:#172f4b}#customerOptionsPanel input,#customerOptionsPanel select,#customerOptionsPanel textarea{min-height:48px;border:1.5px solid #b9c8d8;color:#0a2540;background:#fff}#customerOptionsPanel input::placeholder,#customerOptionsPanel textarea::placeholder{color:#66758a;opacity:1}
+#customerOptionsPanel input:focus,#customerOptionsPanel select:focus,#customerOptionsPanel textarea:focus{border-color:#008f88;outline:3px solid rgba(0,143,136,.16);outline-offset:1px}
+#customerOptionsPanel .service-button{min-height:74px;border-color:#c7d3df;color:#34465e;background:#fff}#customerOptionsPanel .service-button.active{border-color:#006f78;color:#fff;background:linear-gradient(135deg,#086b83,#00746f);box-shadow:0 8px 20px rgba(0,111,120,.22)}
+#customerOptionsPanel .text-button{color:#006b66}#customerOptionsPanel .primary-button{min-height:48px;background:linear-gradient(135deg,#c83c1d,#d3401f);box-shadow:0 8px 20px rgba(200,60,29,.25)}
+#customerOptionsPanel .map-pick-button.active{border-color:#e94420!important;color:#9e2d14;background:#fff0eb}
+#customerOptionsPanel .route-summary{color:#31445c;background:#eaf0f5}.map-options-close{color:#0a2540;border-color:#bfccd9;background:#fff}
+#home .leaflet-control-zoom a,#home .leaflet-control-layers-toggle{color:#0a2540!important;background-color:#fff!important}
+@media(max-width:950px){
+ #home .welcome{top:8px;right:8px;width:calc(100% - 76px)}
+ .map-destination-quick{bottom:96px;width:calc(100% - 32px);min-height:62px}
+ .map-recenter-button{left:12px;bottom:174px}
+ #home .map-information{bottom:172px;left:72px;max-width:205px}
+ #home .tracking-card.show{right:8px;left:8px;bottom:88px;width:auto;max-height:50dvh;transform:none}
+}
+@media(max-width:550px){
+ #home .welcome{left:auto;width:calc(100% - 76px)}
+ #home .welcome h1{font-size:17px}.map-destination-quick strong{font-size:15px}
+ #home .map-information{display:none}.map-options-toggle{min-width:104px;min-height:50px}
+}
+</style>
 </head>
 
 <body>
@@ -1691,6 +1736,8 @@ body.customer-map-mode main{max-width:none;margin:0;padding:0}
 
           <div class="main-grid">
             <button class="map-options-toggle" id="customerOptionsToggle" type="button" aria-controls="customerOptionsPanel" aria-expanded="false"><span aria-hidden="true">☰</span><strong>الخدمات</strong></button>
+            <button class="map-destination-quick" id="customerDestinationQuick" type="button" aria-controls="customerOptionsPanel"><span class="quick-search-icon" aria-hidden="true">⌕</span><span><small>ابحث عن وجهتك</small><strong>إلى أين تريد الذهاب؟</strong></span></button>
+            <button class="map-recenter-button" id="customerRecenterButton" type="button" aria-label="العودة إلى موقعي" title="موقعي">⌖</button>
             <div class="map-options-scrim" id="customerOptionsScrim" aria-hidden="true"></div>
             <div class="card" id="customerOptionsPanel" role="dialog" aria-modal="true" aria-label="خيارات الحجز والخدمات">
               <div class="map-options-header">
@@ -2178,6 +2225,8 @@ window.addEventListener("DOMContentLoaded",()=>{
   const close=document.getElementById("customerOptionsClose");
   const scrim=document.getElementById("customerOptionsScrim");
   const panel=document.getElementById("customerOptionsPanel");
+  const destination=document.getElementById("customerDestinationQuick");
+  const recenter=document.getElementById("customerRecenterButton");
   if(!home||!toggle||!close||!scrim||!panel)return;
   const refreshMap=()=>window.setTimeout(()=>window.dispatchEvent(new Event("resize")),330);
   const setOpen=open=>{
@@ -2191,6 +2240,8 @@ window.addEventListener("DOMContentLoaded",()=>{
   panel.setAttribute("aria-hidden","true");
   panel.inert=true;
   toggle.addEventListener("click",()=>setOpen(true));
+  destination?.addEventListener("click",()=>{setOpen(true);window.setTimeout(()=>document.getElementById("rideTo")?.focus(),150)});
+  recenter?.addEventListener("click",()=>document.getElementById("useRideLocation")?.click());
   close.addEventListener("click",()=>{setOpen(false);toggle.focus({preventScroll:true})});
   scrim.addEventListener("click",()=>setOpen(false));
   document.addEventListener("keydown",event=>{if(event.key==="Escape"&&home.classList.contains("customer-options-open"))setOpen(false)});

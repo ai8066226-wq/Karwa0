@@ -147,7 +147,7 @@ async function calculateBookingRoute(){
   try{const route=await valhallaRoute(a,b);state.routeDistanceKm=route.km;state.routeDurationMin=route.mins;state.routeSource="valhalla";coords=route.coords;}
   catch(primary){try{const url=`https://router.project-osrm.org/route/v1/driving/${a.longitude},${a.latitude};${b.longitude},${b.latitude}?overview=full&geometries=geojson`;const r=await fetch(url,{signal:AbortSignal.timeout(5500)});if(!r.ok)throw 0;const data=await r.json(),route=data.routes?.[0];if(!route)throw 0;state.routeDistanceKm=route.distance/1000;state.routeDurationMin=route.duration/60;state.routeSource="osrm";coords=route.geometry.coordinates.map(([lng,lat])=>[lat,lng]);}
   catch(e){const straight=haversineKm(a,b);state.routeDistanceKm=straight*1.28;state.routeDurationMin=(state.routeDistanceKm/28)*60;state.routeSource="fallback";coords=[[a.latitude,a.longitude],[b.latitude,b.longitude]];}}
-  if(state.bookingRouteLine)state.bookingRouteLine.setLatLngs(coords);else state.bookingRouteLine=window.L.polyline(coords,{color:"#2563eb",weight:6,opacity:.92,lineCap:"round"}).addTo(state.map);state.map.fitBounds(state.bookingRouteLine.getBounds(),{padding:[35,35]});calculateRidePrice();updateRouteSummary();
+  if(state.bookingRouteLine)state.bookingRouteLine.setLatLngs(coords);else state.bookingRouteLine=window.L.polyline(coords,{color:"#6657f5",weight:7,opacity:.94,lineCap:"round"}).addTo(state.map);state.map.fitBounds(state.bookingRouteLine.getBounds(),{padding:[35,35]});calculateRidePrice();updateRouteSummary();
 }
 async function setBookingPoint(type,lat,lng,label=""){
   initializeCustomerMap(); const p={latitude:Number(lat),longitude:Number(lng),label:label||""};
@@ -185,10 +185,10 @@ function initializeCustomerMap() {
   state.map.on("click", e => { if(!state.centerPickActive) setBookingPoint(state.mapPickMode, e.latlng.lat, e.latlng.lng); });
   state.map.on("move",()=>{if(!state.centerPickActive)return;clearTimeout(state.centerPickTimer);byId("mapCenterLabel").textContent="جارٍ تحديد العنوان…";state.centerPickTimer=setTimeout(async()=>{const c=state.map.getCenter();const name=await reverseGeocode(c.lat,c.lng);byId("mapCenterLabel").textContent=name||`الموقع: ${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`;},1250);});
   // Phase 15: vector map, no API key. OpenFreeMap uses OpenStreetMap data.
-  const liberty=window.L.maplibreGL({style:"https://tiles.openfreemap.org/styles/liberty"}).addTo(state.map);
+  const liberty=window.L.maplibreGL({style:"https://tiles.openfreemap.org/styles/liberty"});
   const bright=window.L.maplibreGL({style:"https://tiles.openfreemap.org/styles/bright"});
-  const positron=window.L.maplibreGL({style:"https://tiles.openfreemap.org/styles/positron"});
-  window.L.control.layers({"تفصيلية":liberty,"واضحة":bright,"هادئة":positron},null,{position:"bottomright",collapsed:true}).addTo(state.map);
+  const positron=window.L.maplibreGL({style:"https://tiles.openfreemap.org/styles/positron"}).addTo(state.map);
+  window.L.control.layers({"كروة الفاتحة":positron,"واضحة":bright,"تفصيلية":liberty},null,{position:"bottomright",collapsed:true}).addTo(state.map);
 }
 
 function setCustomerLocation(latitude, longitude) {
@@ -229,7 +229,7 @@ async function drawLiveRoute(force=false) {
   let coords=[[d.lat,d.lng],[target.latitude,target.longitude]],km=haversineKm({latitude:d.lat,longitude:d.lng},target),mins=0,source="تقديري";
   try{const vr=await valhallaRoute({latitude:d.lat,longitude:d.lng},target,5000);coords=vr.coords;km=vr.km;mins=vr.mins;source="Valhalla";}catch(e){try{const u=`https://router.project-osrm.org/route/v1/driving/${d.lng},${d.lat};${target.longitude},${target.latitude}?overview=full&geometries=geojson`;const r=await fetch(u,{signal:AbortSignal.timeout(4500)}),x=await r.json(),route=x.routes?.[0];if(!route)throw 0;coords=route.geometry.coordinates.map(([lng,lat])=>[lat,lng]);km=route.distance/1000;mins=route.duration/60;source="OSRM احتياطي";}catch(_){mins=(km*1.28/28)*60;km*=1.28;source="تقدير مباشر";}}
   if(!mins)mins=(km/28)*60;
-  if(state.routeLine)state.routeLine.setLatLngs(coords);else state.routeLine=window.L.polyline(coords,{color:"#ff6b35",weight:6,opacity:.9}).addTo(state.map);
+  if(state.routeLine)state.routeLine.setLatLngs(coords);else state.routeLine=window.L.polyline(coords,{color:"#6657f5",weight:7,opacity:.94,lineCap:"round"}).addTo(state.map);
   byId("liveEta").textContent=`${Math.max(1,Math.round(mins))} دقيقة`; byId("liveDistance").textContent=liveDistanceText(km); byId("liveRouteSource").textContent=source;
   if(force)state.map.fitBounds(state.routeLine.getBounds(),{padding:[55,55],maxZoom:16});
 }

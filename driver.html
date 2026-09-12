@@ -64,6 +64,47 @@ body.driver-map-mode{height:100dvh;overflow:hidden}
 @media(max-width:480px){.driver-options-body{padding:10px}.driver-options-body>section>.card,.driver-options-tools>.card{padding:14px!important}.driver-options-toggle{border-radius:15px}.driver-nav-strip{grid-template-columns:1fr 1fr!important}}
 @media(prefers-reduced-motion:reduce){.driver-options-drawer,.driver-options-toggle,.driver-options-scrim{transition:none}}
 </style>
+<style id="phase21-driver-navigation-ui">
+body.driver-map-mode{--navy:#0a2540;--navy-2:#164b78;--orange:#d3401f;--mint:#00746f;--line:#cbd6e2;--muted:#43536a;color:#0a2540}
+body.driver-map-mode .topbar{border-color:#d9e2eb;background:rgba(255,255,255,.97);box-shadow:0 5px 22px rgba(10,37,64,.1)}
+#driverView{background:#dfe9ee}
+#driverView>.hero{top:16px;right:auto;left:16px;width:min(290px,calc(100% - 32px));padding:11px 13px;color:#0a2540;border:2px solid #fff;border-radius:18px;background:rgba(255,255,255,.96);box-shadow:0 10px 30px rgba(10,37,64,.18)}
+#driverView>.hero p{color:#43536a}#driverView>.hero .role-badge{color:#064e48;border-color:#a9e8de;background:#e2fbf6}
+#driverView .layout>aside>.card:first-child>.card-heading{display:none}
+#driverView .nav-next-turn{top:14px;right:50%;left:auto;width:min(620px,calc(100% - 340px));max-width:none;padding:14px 18px;border:2px solid rgba(255,255,255,.85);border-radius:22px;color:#fff;background:linear-gradient(135deg,#086b83,#00746f);box-shadow:0 13px 34px rgba(8,107,131,.28);transform:translateX(50%)}
+#driverView .nav-next-turn .turn-icon{width:54px;min-width:54px;height:54px;display:grid;place-items:center;border-radius:17px;color:#0a2540;background:#fff;font-size:32px}
+#driverView .nav-next-turn small{color:#d9ffff;opacity:1;font-weight:800}#driverView .nav-next-turn strong{margin-top:2px;color:#fff;font-size:17px;line-height:1.45}
+#driverView .driver-nav-strip{top:auto;right:50%;bottom:16px;left:auto;width:min(610px,calc(100% - 150px));max-width:none;padding:8px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:4px;border:2px solid #fff;border-radius:22px;color:#0a2540;background:rgba(255,255,255,.97);box-shadow:0 13px 34px rgba(10,37,64,.23);transform:translateX(50%)}
+#driverView .driver-nav-strip>div{min-width:0;padding:7px 8px;text-align:center;border-left:1px solid #d6e0e9}#driverView .driver-nav-strip>div:last-child{border-left:0}
+#driverView .driver-nav-strip small{display:block;color:#526278;font-size:10px;font-weight:800}#driverView .driver-nav-strip strong{display:block;margin-top:2px;overflow:hidden;color:#0a2540;font-size:14px;text-overflow:ellipsis;white-space:nowrap}
+#driverView .route-alert{top:100px;right:50%;max-width:520px;color:#7c2d12;border:2px solid #fdba74;background:#fff7ed;box-shadow:0 9px 25px rgba(124,45,18,.15);transform:translateX(50%)}
+#driverView #locationHint{bottom:102px;color:#253b55;border:1px solid #fff;background:rgba(255,255,255,.95)}
+.driver-options-toggle{min-width:120px;min-height:52px;border:2px solid #fff;border-radius:18px;color:#fff;background:#0a2540;box-shadow:0 10px 0 rgba(10,37,64,.12),0 18px 38px rgba(10,37,64,.3)}
+.driver-options-toggle span{width:28px;height:28px;display:grid;place-items:center;border-radius:50%;color:#0a2540;background:#7de4e1;font-size:18px}
+.driver-report-quick{position:absolute;z-index:880;left:18px;bottom:104px;width:58px;height:58px;display:grid;place-items:center;border:3px solid #fff;border-radius:50%;color:#fff;background:#d3401f;box-shadow:0 11px 28px rgba(153,46,20,.3);font-size:25px;transition:transform .18s,opacity .2s}
+.driver-report-quick:hover{transform:translateY(-2px)}#driverView.driver-options-open .driver-report-quick{opacity:0;pointer-events:none}
+.driver-options-drawer{color:#0a2540;background:rgba(247,250,252,.985)}.driver-options-header{border-color:#d3dde7;background:#fff}.driver-options-header small{color:#526278}
+.driver-options-body>.stats .stat{border-color:#cbd6e2!important;color:#0a2540}.driver-options-body>.stats .stat small{color:#526278}
+.driver-options-body>section>.card,.driver-options-tools>.card{border-color:#cbd6e2!important;color:#0a2540!important;background:#fff!important}
+.driver-options-body .muted{color:#43536a}.driver-options-body input,.driver-options-body select,.driver-options-body textarea{border:1.5px solid #b9c8d8;color:#0a2540;background:#fff}.driver-options-body input::placeholder{color:#66758a;opacity:1}
+.driver-options-body .primary,.driver-options-body .primary-btn{min-height:46px;color:#fff;background:linear-gradient(135deg,#c83c1d,#d3401f)}
+.driver-options-body .secondary{color:#0a2540;border-color:#b9c8d8;background:#fff}.driver-options-body .danger{color:#a61b2b;border-color:#e4aab1;background:#fff5f6}
+.driver-options-body .report-grid button{min-height:48px;color:#0a2540;border-color:#bdcad7;background:#fff}.driver-options-body .report-grid button:hover{border-color:#f4512c;background:#fff0eb}
+.driver-options-body .switch{border:1px solid #aab8c7;background:#cbd6e2}.driver-options-body .switch.on{border-color:#006b66;background:#008f88}
+#driverView .leaflet-control-zoom a{color:#0a2540!important;background-color:#fff!important}
+@media(max-width:1100px){#driverView>.hero{display:none}#driverView .nav-next-turn{width:min(620px,calc(100% - 32px))}}
+@media(max-width:760px){
+ #driverView .nav-next-turn{top:8px;width:calc(100% - 16px);min-height:76px;padding:10px 12px;border-radius:19px}
+ #driverView .nav-next-turn .turn-icon{width:48px;min-width:48px;height:48px;border-radius:15px;font-size:28px}
+ #driverView .nav-next-turn strong{font-size:15px}
+ #driverView .route-alert{top:92px;width:calc(100% - 16px)}
+ #driverView .driver-nav-strip{right:8px;bottom:8px;width:calc(100% - 16px);transform:none;border-radius:19px}
+ #driverView .driver-nav-strip>div{padding:6px 3px}#driverView .driver-nav-strip strong{font-size:12px}
+ #driverView #locationHint{display:none}.driver-report-quick{left:12px;bottom:88px;width:54px;height:54px}
+ .driver-options-toggle{min-width:108px;min-height:50px}
+}
+@media(max-width:430px){#driverView .driver-nav-strip small{font-size:9px}#driverView .driver-nav-strip strong{font-size:11px}.driver-options-toggle{min-width:102px;padding:10px 12px}.driver-report-quick{width:50px;height:50px;font-size:22px}}
+</style>
 </head>
 <body>
   <header class="topbar">
@@ -267,6 +308,13 @@ window.addEventListener("DOMContentLoaded",()=>{
   scrim.className="driver-options-scrim";
   scrim.setAttribute("aria-hidden","true");
 
+  const reportQuick=document.createElement("button");
+  reportQuick.type="button";
+  reportQuick.className="driver-report-quick";
+  reportQuick.setAttribute("aria-label","فتح بلاغات الطريق");
+  reportQuick.title="بلاغ طريق";
+  reportQuick.textContent="⚠";
+
   const drawer=document.createElement("aside");
   drawer.className="driver-options-drawer";
   drawer.id="driverOptionsPanel";
@@ -286,7 +334,7 @@ window.addEventListener("DOMContentLoaded",()=>{
   tools.className="driver-options-tools";
   [...aside.querySelectorAll(":scope > .card")].filter(card=>card!==mapCard).forEach(card=>tools.appendChild(card));
   body.appendChild(tools);
-  layout.append(scrim,toggle,drawer);
+  layout.append(scrim,toggle,reportQuick,drawer);
 
   const close=drawer.querySelector(".driver-options-close");
   const refreshMap=()=>window.setTimeout(()=>window.dispatchEvent(new Event("resize")),330);
@@ -300,6 +348,7 @@ window.addEventListener("DOMContentLoaded",()=>{
   };
   drawer.inert=true;
   toggle.addEventListener("click",()=>setOpen(true));
+  reportQuick.addEventListener("click",()=>{setOpen(true);window.setTimeout(()=>drawer.querySelector(".road-report-card")?.scrollIntoView({behavior:"smooth",block:"start"}),180)});
   close.addEventListener("click",()=>{setOpen(false);toggle.focus({preventScroll:true})});
   scrim.addEventListener("click",()=>setOpen(false));
   document.addEventListener("keydown",event=>{if(event.key==="Escape"&&view.classList.contains("driver-options-open"))setOpen(false)});

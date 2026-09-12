@@ -122,7 +122,7 @@ function mapIcon(type) {
 function initializeDriverMap() {
   if (!window.L || state.map) return;
   state.map = window.L.map("driverMap").setView([33.3152, 44.3661], 12);
-  window.L.maplibreGL({style:"https://tiles.openfreemap.org/styles/liberty"}).addTo(state.map);
+  window.L.maplibreGL({style:"https://tiles.openfreemap.org/styles/positron"}).addTo(state.map);
 }
 
 function setLocationStatus(text, mode = "pending") {
@@ -142,7 +142,7 @@ async function drawPickupRoute(force=false) {
   if(!state.driverMarker)return;const pos=state.driverMarker.getLatLng(),now=Date.now(),current={latitude:pos.lat,longitude:pos.lng};const moved=state.lastRoutePoint?haversine(current,state.lastRoutePoint):Infinity;if(!force&&now-state.lastRouteAt<9000&&moved<.08)return;state.lastRouteAt=now;state.lastRoutePoint=current;
   let coords=[[pos.lat,pos.lng],targetPoint],km=haversine(current,target)*1.28,mins=km/28*60,provider="تقدير",maneuvers=[];
   try{const vr=await valhallaNavigate(current,target);coords=vr.coords;km=vr.km;mins=vr.mins;maneuvers=vr.maneuvers;provider="Valhalla";}catch(e){try{const u=`https://router.project-osrm.org/route/v1/driving/${pos.lng},${pos.lat};${target.longitude},${target.latitude}?overview=full&geometries=geojson`;const r=await fetch(u,{signal:AbortSignal.timeout(4500)}),x=await r.json(),route=x.routes?.[0];if(!route)throw 0;coords=route.geometry.coordinates.map(([lng,lat])=>[lat,lng]);km=route.distance/1000;mins=route.duration/60;provider="OSRM";}catch(_){}}
-  if(state.routeLine)state.routeLine.setLatLngs(coords);else state.routeLine=window.L.polyline(coords,{color:"#2563eb",weight:7,opacity:.92,lineCap:"round"}).addTo(state.map);
+  if(state.routeLine)state.routeLine.setLatLngs(coords);else state.routeLine=window.L.polyline(coords,{color:"#6657f5",weight:8,opacity:.95,lineCap:"round"}).addTo(state.map);
   byId("driverEta").textContent=`${Math.max(1,Math.round(mins))} دقيقة`;byId("driverRemaining").textContent=km<1?`${Math.max(1,Math.round(km*1000))} م`:`${km.toFixed(1)} كم`;byId("driverNavTarget").textContent=st>=3?"إلى الوجهة":"إلى الراكب";byId("driverRouteProvider").textContent=provider;
   const m=maneuvers.find(x=>Number(x.length||0)>.02)||maneuvers[0];byId("nextTurnText").textContent=m?.instruction||m?.verbal_transition_alert_instruction||"استمر على المسار المحدد";byId("nextTurnIcon").textContent=turnIcon(m);
   byId("offRouteAlert").classList.add("hidden");if(force)state.map.fitBounds(state.routeLine.getBounds(),{padding:[40,40],maxZoom:17});
