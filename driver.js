@@ -121,7 +121,7 @@ function mapIcon(type) {
 
 function initializeDriverMap() {
   if (!window.L || state.map) return;
-  state.map = window.L.map("driverMap").setView([33.3152, 44.3661], 12);
+  state.map = window.L.map("driverMap", { attributionControl: false }).setView([33.3152, 44.3661], 12);
   window.L.maplibreGL({style:"https://tiles.openfreemap.org/styles/positron"}).addTo(state.map);
 }
 
