@@ -1511,7 +1511,9 @@
         display: none;
       }
     }
-  </style>
+  
+    .map-pick-actions{display:flex;gap:8px;flex-wrap:wrap;margin:-4px 0 14px}.map-pick-button{border:1px solid #dce3ee!important;border-radius:10px;padding:8px 11px}.map-pick-button.active{background:#fff2ec;color:#d84f18;border-color:#ffb79a!important}.route-summary{display:flex;gap:10px;flex-wrap:wrap;padding:10px 12px;margin:0 0 14px;border-radius:12px;background:#f6f8fb;color:#526078;font-size:13px}.route-summary span{font-weight:700}.karwa-map-marker.pickup span,.karwa-map-marker.destination span{font-size:22px}.karwa-map-marker.destination{background:#102044!important}
+</style>
 </head>
 
 <body>
@@ -1617,12 +1619,14 @@
 
                 <div class="field">
                   <label for="rideFrom">نقطة الانطلاق</label>
-                  <input id="rideFrom" placeholder="مثال: المنصور، شارع 14 رمضان">
+                  <input id="rideFrom" placeholder="اختر نقطة الانطلاق من الخريطة أو استخدم موقعك" readonly>
                 </div>
 
                 <div class="field">
                   <label for="rideTo">الوجهة</label>
-                  <input id="rideTo" placeholder="إلى أين؟">
+                  <input id="rideTo" placeholder="اختر الوجهة من الخريطة" readonly>
+                  <div class="map-pick-actions"><button class="text-button map-pick-button active" id="pickRideFrom" type="button">📍 تحديد الانطلاق</button><button class="text-button map-pick-button" id="pickRideTo" type="button">🏁 تحديد الوجهة</button></div>
+                  <div class="route-summary" id="routeSummary"><span>المسافة: —</span><span>الوقت: —</span><span id="routeMode">اختر نقطتين من الخريطة</span></div>
                 </div>
 
                 <div class="vehicle-list" aria-label="اختيار المركبة">
@@ -1656,7 +1660,7 @@
 
                 <div class="total-row">
                   <div>
-                    <small>السعر التقريبي</small>
+                    <small>السعر المحسوب تلقائيًا</small>
                     <strong id="ridePrice">6,500 د.ع</strong>
                   </div>
                   <button class="primary-button" id="bookRide">تأكيد الحجز</button>
@@ -1774,7 +1778,7 @@
               <div id="customerMap"></div>
               <div class="map-information">
                 <strong id="mapInfoTitle">خريطة كروة المباشرة</strong>
-                <small id="mapInfoText">حدد موقعك، وسيظهر الكابتن هنا بعد قبول الطلب.</small>
+                <small id="mapInfoText">اضغط على الخريطة لتحديد نقطة الانطلاق، ثم الوجهة.</small>
               </div>
             </div>
           </div>

@@ -69,10 +69,40 @@ const state = {
   customerMarker: null,
   driverMarker: null,
   routeLine: null,
-  customerLocation: null
+  customerLocation: null,
+  pickupLocation: null,
+  destinationLocation: null,
+  pickupMarker: null,
+  destinationMarker: null,
+  bookingRouteLine: null,
+  mapPickMode: "pickup",
+  routeDistanceKm: 0,
+  routeDurationMin: 0,
+  routeSource: ""
 };
 
 const formatMoney = value => Number(value || 0).toLocaleString("ar-IQ") + " د.ع";
+const COMMISSION_RATE = 0.15;
+const vehiclePricing = {
+  "اقتصادي": { base: 2000, perKm: 700, perMin: 80, minimum: 3500 },
+  "تكسي": { base: 2500, perKm: 850, perMin: 95, minimum: 4500 },
+  "عائلي": { base: 3200, perKm: 1050, perMin: 110, minimum: 5500 }
+};
+function haversineKm(a,b){const R=6371,toRad=v=>v*Math.PI/180;const dLat=toRad(b.latitude-a.latitude),dLon=toRad(b.longitude-a.longitude);const x=Math.sin(dLat/2)**2+Math.cos(toRad(a.latitude))*Math.cos(toRad(b.latitude))*Math.sin(dLon/2)**2;return 2*R*Math.asin(Math.sqrt(x));}
+function calculateRidePrice(){const cfg=vehiclePricing[state.vehicle]||vehiclePricing["اقتصادي"];const raw=cfg.base+state.routeDistanceKm*cfg.perKm+state.routeDurationMin*cfg.perMin;state.ridePrice=Math.max(cfg.minimum,Math.ceil(raw/250)*250);byId("ridePrice").textContent=formatMoney(state.ridePrice);}
+function pointLabel(prefix,p){return `${prefix} (${p.latitude.toFixed(5)}, ${p.longitude.toFixed(5)})`;}
+function bookingIcon(type){if(!window.L)return null;return window.L.divIcon({className:"",html:`<div class="karwa-map-marker ${type}"><span>${type==="pickup"?"📍":"🏁"}</span></div>`,iconSize:[42,42],iconAnchor:[21,38]});}
+function updateRouteSummary(){byId("routeSummary").children[0].textContent=`المسافة: ${state.routeDistanceKm?state.routeDistanceKm.toFixed(1)+" كم":"—"}`;byId("routeSummary").children[1].textContent=`الوقت: ${state.routeDurationMin?Math.round(state.routeDurationMin)+" دقيقة":"—"}`;byId("routeMode").textContent=state.routeSource==="roads"?"مسار طرق فعلي":state.routeSource==="fallback"?"تقدير احتياطي مباشر":"اختر نقطتين من الخريطة";}
+async function calculateBookingRoute(){
+  if(!state.pickupLocation||!state.destinationLocation)return;
+  initializeCustomerMap(); const a=state.pickupLocation,b=state.destinationLocation;
+  let coords=null;
+  try{const url=`https://router.project-osrm.org/route/v1/driving/${a.longitude},${a.latitude};${b.longitude},${b.latitude}?overview=full&geometries=geojson`;const r=await fetch(url,{signal:AbortSignal.timeout(6500)});if(!r.ok)throw new Error("ROUTER");const data=await r.json();const route=data.routes?.[0];if(!route)throw new Error("NO_ROUTE");state.routeDistanceKm=route.distance/1000;state.routeDurationMin=route.duration/60;state.routeSource="roads";coords=route.geometry.coordinates.map(([lng,lat])=>[lat,lng]);}
+  catch(e){const straight=haversineKm(a,b);state.routeDistanceKm=straight*1.28;state.routeDurationMin=(state.routeDistanceKm/28)*60;state.routeSource="fallback";coords=[[a.latitude,a.longitude],[b.latitude,b.longitude]];}
+  if(state.bookingRouteLine)state.bookingRouteLine.setLatLngs(coords);else state.bookingRouteLine=window.L.polyline(coords,{color:"#ff6b35",weight:5,opacity:.9}).addTo(state.map);state.map.fitBounds(state.bookingRouteLine.getBounds(),{padding:[35,35]});calculateRidePrice();updateRouteSummary();
+}
+function setBookingPoint(type,lat,lng){const p={latitude:Number(lat),longitude:Number(lng)};if(type==="pickup"){state.pickupLocation=p;state.customerLocation=p;byId("rideFrom").value=pointLabel("نقطة الانطلاق",p);if(state.pickupMarker)state.pickupMarker.setLatLng([p.latitude,p.longitude]);else state.pickupMarker=window.L.marker([p.latitude,p.longitude],{icon:bookingIcon("pickup")}).addTo(state.map);state.mapPickMode="destination";}else{state.destinationLocation=p;byId("rideTo").value=pointLabel("الوجهة",p);if(state.destinationMarker)state.destinationMarker.setLatLng([p.latitude,p.longitude]);else state.destinationMarker=window.L.marker([p.latitude,p.longitude],{icon:bookingIcon("destination")}).addTo(state.map);}document.querySelectorAll(".map-pick-button").forEach(b=>b.classList.toggle("active",b.id===(state.mapPickMode==="pickup"?"pickRideFrom":"pickRideTo")));calculateBookingRoute();}
+
 
 function showToast(message) {
   const element = byId("toast");
@@ -96,6 +126,7 @@ function mapIcon(type) {
 function initializeCustomerMap() {
   if (!window.L || state.map) return;
   state.map = window.L.map("customerMap", { zoomControl: true }).setView([33.3152, 44.3661], 12);
+  state.map.on("click", e => setBookingPoint(state.mapPickMode, e.latlng.lat, e.latlng.lng));
   window.L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -411,8 +442,7 @@ document.querySelectorAll(".vehicle-button").forEach(button => {
     document.querySelectorAll(".vehicle-button").forEach(item => item.classList.remove("active"));
     button.classList.add("active");
     state.vehicle = button.dataset.vehicle;
-    state.ridePrice = Number(button.dataset.price);
-    byId("ridePrice").textContent = formatMoney(state.ridePrice);
+    if (state.routeDistanceKm) calculateRidePrice(); else { state.ridePrice = Number(button.dataset.price); byId("ridePrice").textContent = formatMoney(state.ridePrice); }
   });
 });
 
@@ -440,6 +470,7 @@ function locateUser(targetInput) {
     const longitude = position.coords.longitude;
     targetInput.value = `موقعي الحالي (${latitude.toFixed(3)}, ${longitude.toFixed(3)})`;
     setCustomerLocation(latitude, longitude);
+    if (targetInput.id === "rideFrom") setBookingPoint("pickup", latitude, longitude);
     byId("cityLabel").textContent = "الموقع محدد";
     showToast("تم تحديد موقعك");
   }, () => {
@@ -451,6 +482,8 @@ function locateUser(targetInput) {
 byId("useRideLocation").addEventListener("click", () => locateUser(byId("rideFrom")));
 byId("useParcelLocation").addEventListener("click", () => locateUser(byId("parcelFrom")));
 byId("headerLocation").addEventListener("click", () => locateUser(byId("rideFrom")));
+byId("pickRideFrom").addEventListener("click",()=>{state.mapPickMode="pickup";document.querySelectorAll(".map-pick-button").forEach(b=>b.classList.toggle("active",b.id==="pickRideFrom"));});
+byId("pickRideTo").addEventListener("click",()=>{state.mapPickMode="destination";document.querySelectorAll(".map-pick-button").forEach(b=>b.classList.toggle("active",b.id==="pickRideTo"));});
 
 function requireUser() {
   if (state.user) return true;
@@ -475,7 +508,14 @@ async function createOrder(type, title, route, price, options = {}) {
     driverName: "",
     driverPhone: "",
     assignmentStatus: "available",
-    pickupLocation: state.customerLocation ? { ...state.customerLocation } : null,
+    pickupLocation: options.pickupLocation || (state.customerLocation ? { ...state.customerLocation } : null),
+    destinationLocation: options.destinationLocation || null,
+    distanceKm: Number(options.distanceKm || 0),
+    durationMin: Number(options.durationMin || 0),
+    routeSource: options.routeSource || "",
+    commissionRate: COMMISSION_RATE,
+    commissionAmount: Math.round(Number(price) * COMMISSION_RATE),
+    driverEarnings: Math.round(Number(price) * (1 - COMMISSION_RATE)),
     statusIndex: 0,
     cancelled: false,
     createdAt: serverTimestamp(),
@@ -509,7 +549,7 @@ byId("bookRide").addEventListener("click", async event => {
   if (!requireUser()) return;
   const from = byId("rideFrom").value.trim();
   const to = byId("rideTo").value.trim();
-  if (!from || !to) {
+  if (!from || !to || !state.pickupLocation || !state.destinationLocation) {
     showToast("أدخل نقطة الانطلاق والوجهة");
     return;
   }
@@ -522,7 +562,9 @@ byId("bookRide").addEventListener("click", async event => {
   try {
     await createOrder("ride", `مشوار ${state.vehicle}`, `${from} ← ${to}`, state.ridePrice, {
       payment: state.payment,
-      walletCharge: state.payment === "المحفظة" ? state.ridePrice : 0
+      walletCharge: state.payment === "المحفظة" ? state.ridePrice : 0,
+      pickupLocation: state.pickupLocation, destinationLocation: state.destinationLocation,
+      distanceKm: state.routeDistanceKm, durationMin: state.routeDurationMin, routeSource: state.routeSource
     });
   } catch (error) {
     console.error(error);

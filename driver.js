@@ -183,6 +183,7 @@ function startLocationSharing() {
   state.locationWatchId = navigator.geolocation.watchPosition(position => {
     state.lastPosition = position;
     showOwnPosition(position);
+    renderOrders(); // يعيد ترتيب الطلبات فور تغير موقع الكابتن
     sharePosition(position).catch(error => console.error(error));
   }, error => {
     console.error(error);
@@ -355,6 +356,7 @@ byId("applicationForm").addEventListener("submit", async event => {
   }
 });
 
+function distanceToOrder(order){if(!state.lastPosition||!order.pickupLocation)return Infinity;const a={latitude:state.lastPosition.coords.latitude,longitude:state.lastPosition.coords.longitude},b=order.pickupLocation;const R=6371,toRad=v=>v*Math.PI/180,dLat=toRad(b.latitude-a.latitude),dLon=toRad(b.longitude-a.longitude);const x=Math.sin(dLat/2)**2+Math.cos(toRad(a.latitude))*Math.cos(toRad(b.latitude))*Math.sin(dLon/2)**2;return 2*R*Math.asin(Math.sqrt(x));}
 function orderCard(order, mode) {
   const statusIndex = Number(order.statusIndex || 0);
   const statusClass = order.cancelled ? "cancelled" : statusIndex >= 3 ? "complete" : "active";
@@ -371,7 +373,8 @@ function orderCard(order, mode) {
       </div>
       <p class="order-route">${escapeHtml(order.route)}</p>
       <div class="order-bottom">
-        <div class="order-meta"><span>${escapeHtml(order.id)}</span><span>${escapeHtml(order.payment || "نقدًا")}</span></div>
+        <div class="order-meta"><span>${escapeHtml(order.id)}</span><span>${escapeHtml(order.payment || "نقدًا")}</span>${mode === "available" && Number.isFinite(distanceToOrder(order)) ? `<span>يبعد ${distanceToOrder(order).toFixed(1)} كم</span>` : ""}</div>
+        ${order.distanceKm ? `<div class="order-meta"><span>المشوار ${Number(order.distanceKm).toFixed(1)} كم</span><span>≈ ${Math.round(Number(order.durationMin||0))} دقيقة</span><span>صافي الكابتن ${money(order.driverEarnings)}</span></div>` : ""}
         <span class="order-price">${money(order.price)}</span>
       </div>
       ${action ? `<div class="order-actions">${action}</div>` : ""}
@@ -381,7 +384,7 @@ function orderCard(order, mode) {
 function renderOrders() {
   const available = state.orders.filter(order =>
     !order.cancelled && Number(order.statusIndex || 0) < 3 && !order.driverId
-  );
+  ).sort((a,b) => distanceToOrder(a) - distanceToOrder(b));
   const mine = state.orders.filter(order =>
     order.driverId === state.user?.uid && !order.cancelled && Number(order.statusIndex || 0) < 3
   );
@@ -392,6 +395,7 @@ function renderOrders() {
   byId("availableCount").textContent = available.length;
   byId("activeCount").textContent = mine.length;
   byId("completedCount").textContent = completed.length;
+  byId("driverEarnings").textContent = money(completed.filter(o=>!o.cancelled).reduce((sum,o)=>sum+Number(o.driverEarnings||0),0));
   byId("availableOrders").innerHTML = available.length
     ? available.map(order => orderCard(order, "available")).join("")
     : `<div class="empty"><span>✓</span>لا توجد طلبات متاحة الآن.</div>`;

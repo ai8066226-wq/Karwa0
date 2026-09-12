@@ -121,6 +121,11 @@ function renderMetrics() {
   byId("blockedCount").textContent = state.drivers.filter(driver => driver.blocked === true).length;
   byId("pendingCount").textContent = state.applications.filter(item => item.status === "pending").length;
   byId("ordersCount").textContent = state.orders.length;
+  const completed=state.orders.filter(o=>!o.cancelled&&Number(o.statusIndex||0)>=3);
+  const gross=completed.reduce((n,o)=>n+Number(o.price||0),0), commission=completed.reduce((n,o)=>n+Number(o.commissionAmount||0),0), payout=completed.reduce((n,o)=>n+Number(o.driverEarnings||0),0);
+  byId("grossRevenue").textContent=money(gross);byId("commissionRevenue").textContent=money(commission);byId("driversPayout").textContent=money(payout);
+  const byDriver={};completed.forEach(o=>{const k=o.driverName||"غير معيّن";byDriver[k]=(byDriver[k]||0)+Number(o.driverEarnings||0)});
+  byId("financialReport").innerHTML=completed.length?`<div class="order-meta"><span>رحلات مكتملة: ${completed.length}</span><span>متوسط الطلب: ${money(gross/completed.length)}</span></div>${Object.entries(byDriver).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([name,value])=>`<div class="order-meta"><strong>${escapeHtml(name)}</strong><span>${money(value)}</span></div>`).join("")}`:`<p class="muted">لا توجد رحلات مكتملة بعد.</p>`;
 }
 
 function ratingSummary(driverId) {
@@ -238,6 +243,7 @@ function orderCard(order) {
           <span>${order.driverName ? `الكابتن: ${escapeHtml(order.driverName)}` : "بانتظار كابتن"}</span>
         </div>
         <span class="order-price">${money(order.price)}</span>
+        ${Number(order.statusIndex||0)>=3&&!order.cancelled?`<div class="order-meta"><span>عمولة كروة: ${money(order.commissionAmount)}</span><span>صافي الكابتن: ${money(order.driverEarnings)}</span></div>`:""}
       </div>
       ${cancel}
     </article>`;
