@@ -7,6 +7,9 @@
   <meta name="description" content="لوحة إدارة تطبيق كروة">
   <title>كروة | لوحة الإدارة</title>
   <link rel="stylesheet" href="./portal.css">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <meta name="theme-color" content="#111827">
+  <link rel="icon" href="./karwa-icon.svg" type="image/svg+xml">
 </head>
 <body>
   <header class="topbar">
@@ -59,9 +62,12 @@
       <div class="stat"><small>كباتن محظورون</small><strong id="blockedCount">0</strong></div>
       <div class="stat"><small>طلبات قيد المراجعة</small><strong id="pendingCount">0</strong></div>
       <div class="stat"><small>إجمالي الطلبات</small><strong id="ordersCount">0</strong></div>
-      <div class="stat"><small>تذاكر دعم مفتوحة</small><strong id="supportCount">0</strong></div>
-      <div class="stat"><small>إيراد الرحلات المكتملة</small><strong id="revenueTotal">0 د.ع</strong></div>
-      <div class="stat"><small>عمولة كروة</small><strong id="commissionTotal">0 د.ع</strong></div>
+      <div class="stat"><small>رحلات مباشرة</small><strong id="liveTripsCount">0</strong></div>
+      <div class="stat"><small>رحلات ملغاة</small><strong id="cancelledTripsCount">0</strong></div>
+      <div class="stat"><small>كباتن متصلون</small><strong id="onlineDriversCount">0</strong></div>
+      <div class="stat"><small>إجمالي المبيعات</small><strong id="grossRevenue">0 د.ع</strong></div>
+      <div class="stat"><small>عمولة كروة</small><strong id="commissionRevenue">0 د.ع</strong></div>
+      <div class="stat"><small>أرباح الكباتن</small><strong id="driversPayout">0 د.ع</strong></div>
     </section>
 
     <div class="layout">
@@ -77,17 +83,13 @@
         </div>
 
         <div class="card">
-          <div class="card-heading"><h2>الدعم والشكاوى</h2><span class="status-chip pending">رد مباشر</span></div>
-          <div class="orders" id="supportTicketsList"></div>
-        </div>
-
-        <div class="card">
           <div class="card-heading"><h2>جميع طلبات العملاء</h2><span class="muted">مراقبة مباشرة</span></div>
           <div class="orders" id="ordersList"></div>
         </div>
       </section>
 
       <aside>
+        <div class="card"><div class="card-heading"><h3>التقرير المالي</h3><span class="status-chip approved">مباشر</span></div><div id="financialReport" class="orders"></div></div>
         <div class="card">
           <h3>حالة النظام</h3>
           <p class="notice success">Firebase متصل والتحديثات مباشرة.</p>
@@ -95,17 +97,6 @@
         <div class="card">
           <div class="card-heading"><h3>أحدث التقييمات</h3><span class="status-chip pending">مباشر</span></div>
           <div class="reviews-list" id="ratingsList"></div>
-        </div>
-        <div class="card finance-card">
-          <div class="card-heading"><h3>التقرير المالي</h3><span class="status-chip approved">عمولة 15%</span></div>
-          <div class="finance-report">
-            <div><small>إجمالي التحصيل</small><strong id="financialGross">0 د.ع</strong></div>
-            <div><small>صافي الكباتن</small><strong id="driverPayoutTotal">0 د.ع</strong></div>
-            <div><small>رحلات مكتملة</small><strong id="completedOrdersFinancial">0</strong></div>
-            <div><small>طلبات ملغاة</small><strong id="cancelledOrdersFinancial">0</strong></div>
-            <div class="full"><small>متوسط قيمة الرحلة المكتملة</small><strong id="averageFare">0 د.ع</strong></div>
-          </div>
-          <p class="muted finance-note">تُحتسب الأرقام من الطلبات المكتملة فقط، ولا تدخل الطلبات الملغاة ضمن الإيرادات.</p>
         </div>
         <div class="card">
           <h3>مبدأ الصلاحيات</h3>
@@ -117,5 +108,6 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script type="module" src="./admin.js"></script>
+  <script src="./pwa.js"></script>
 </body>
 </html>

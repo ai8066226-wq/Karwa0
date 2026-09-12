@@ -1,0 +1,5 @@
+rules_version = '2';
+service firebase.storage { match /b/{bucket}/o {
+ function signed(){return request.auth!=null;} function admin(){return signed()&&firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role=='admin';}
+ match /driver-documents/{uid}/{file}{allow read:if signed()&&(request.auth.uid==uid||admin());allow write:if signed()&&request.auth.uid==uid&&request.resource.size<5*1024*1024&&request.resource.contentType.matches('image/.*|application/pdf');}
+}}

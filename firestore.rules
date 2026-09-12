@@ -1,278 +1,47 @@
 rules_version = '2';
+service cloud.firestore { match /databases/{database}/documents {
+ function signed(){return request.auth!=null;}
+ function own(id){return signed()&&request.auth.uid==id;}
+ function userDoc(){return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;}
+ function role(){return signed()?userDoc().role:null;}
+ function admin(){return signed()&&role()=='admin';}
+ function driver(){return signed()&&role()=='driver';}
+ function customer(){return signed()&&role()=='customer';}
+ match /users/{uid}{allow create:if own(uid)&&request.resource.data.role=='customer';allow read:if own(uid)||admin();allow update:if admin()||(own(uid)&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','email','notifications','savedAddresses','balance','updatedAt']));allow delete:if admin(); match /pushTokens/{id}{allow read:if own(uid)||admin();allow write:if own(uid);}}
+ match /driverApplications/{uid}{allow create:if own(uid)&&request.resource.data.userId==request.auth.uid;allow read:if own(uid)||admin();allow update,delete:if admin();}
+ match /drivers/{uid}{allow read:if signed();allow create,delete:if admin();allow update:if admin()||(own(uid)&&driver()&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['online','latitude','longitude','locationAccuracy','locationUpdatedAt','updatedAt']));}
+ match /orders/{id}{
+   allow read:if signed()&&(resource.data.userId==request.auth.uid||resource.data.driverId==request.auth.uid||driver()||admin());
+   allow create:if admin()||(customer()&&request.resource.data.userId==request.auth.uid&&request.resource.data.driverId==null&&request.resource.data.statusIndex==0&&request.resource.data.cancelled==false);
+   allow update:if admin()
+     || (customer()&&resource.data.userId==request.auth.uid&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cancelled','cancellationReason','cancelledBy','cancelledAt','updatedAt']))
+     || (driver() && (
+       (resource.data.driverId==null && request.resource.data.driverId==request.auth.uid && request.resource.data.statusIndex==resource.data.statusIndex && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['driverId','driverName','driverPhone','assignmentStatus','acceptedAt','updatedAt']))
+       || (resource.data.driverId==request.auth.uid && request.resource.data.driverId==request.auth.uid && request.resource.data.statusIndex==resource.data.statusIndex+1 && request.resource.data.statusIndex<=4 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['statusIndex','arrivedAt','startedAt','completedAt','paymentStatus','updatedAt']))
+     ));
+   allow delete:if admin();
+   match /tracking/{tid}{function o(){return get(/databases/$(database)/documents/orders/$(id)).data;}allow read:if signed()&&(o().userId==request.auth.uid||o().driverId==request.auth.uid||admin());allow create,update:if driver()&&o().driverId==request.auth.uid&&request.resource.data.driverId==request.auth.uid;allow delete:if admin();}
+ }
+ match /orderSecrets/{id}{allow read:if signed()&&resource.data.userId==request.auth.uid;allow write:if false;}
+ match /supportTickets/{id}{allow create:if signed()&&request.resource.data.userId==request.auth.uid;allow read:if signed()&&(resource.data.userId==request.auth.uid||admin());allow update:if admin();allow delete:if admin();}
+ match /coupons/{id}{allow read:if signed();allow write:if admin();}
+ match /walletTransactions/{id}{allow read:if signed()&&(resource.data.driverId==request.auth.uid||admin());allow write:if false;}
+ match /auditLogs/{id}{allow read:if admin();allow write:if false;}
+ match /notificationQueue/{id}{allow read:if admin();allow write:if false;}
+ match /safetyEvents/{id}{allow read:if admin()||(signed()&&(resource.data.reportedBy==request.auth.uid));allow write:if false;}
 
-service cloud.firestore {
-  match /databases/{database}/documents {
-    function signedIn() {
-      return request.auth != null;
-    }
-
-    function own(userId) {
-      return signedIn() && request.auth.uid == userId;
-    }
-
-    function userRole() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
-    }
-
-    function isAdmin() {
-      return signedIn() && userRole() == 'admin';
-    }
-
-    function isDriver() {
-      return signedIn() && userRole() == 'driver';
-    }
-
-    function isCustomer() {
-      return signedIn() && userRole() == 'customer';
-    }
-
-    function isActiveDriver() {
-      return isDriver()
-             && get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.get('blocked', false) == false;
-    }
-
-    match /users/{userId} {
-      allow create: if own(userId)
-                    && request.resource.data.role == 'customer';
-
-      allow read: if own(userId) || isAdmin();
-
-      allow update: if isAdmin()
-                    || (own(userId)
-                        && isCustomer()
-                        && request.resource.data.diff(resource.data).affectedKeys()
-                          .hasOnly(['name', 'email', 'notifications', 'balance', 'updatedAt']))
-                    || (own(userId)
-                        && !('role' in resource.data)
-                        && request.resource.data.role == 'customer'
-                        && request.resource.data.diff(resource.data).affectedKeys()
-                          .hasOnly(['name', 'email', 'notifications', 'balance', 'role', 'updatedAt']));
-
-      allow delete: if isAdmin();
-    }
-
-    match /users/{userId}/addresses/{addressId} {
-      allow read: if own(userId);
-
-      allow create: if own(userId)
-                    && isCustomer()
-                    && request.resource.data.keys().hasOnly([
-                      'userId', 'label', 'address', 'notes', 'location',
-                      'createdAt', 'updatedAt'
-                    ])
-                    && request.resource.data.userId == request.auth.uid
-                    && request.resource.data.label is string
-                    && request.resource.data.label.size() <= 40
-                    && request.resource.data.address is string
-                    && request.resource.data.address.size() >= 4
-                    && request.resource.data.address.size() <= 160
-                    && request.resource.data.notes is string
-                    && request.resource.data.notes.size() <= 160
-                    && (request.resource.data.location == null
-                        || (request.resource.data.location.latitude is number
-                            && request.resource.data.location.longitude is number
-                            && request.resource.data.location.latitude >= -90
-                            && request.resource.data.location.latitude <= 90
-                            && request.resource.data.location.longitude >= -180
-                            && request.resource.data.location.longitude <= 180));
-
-      allow update: if own(userId)
-                    && isCustomer()
-                    && request.resource.data.userId == resource.data.userId
-                    && request.resource.data.createdAt == resource.data.createdAt
-                    && request.resource.data.diff(resource.data).affectedKeys()
-                      .hasOnly(['label', 'address', 'notes', 'location', 'updatedAt']);
-
-      allow delete: if own(userId);
-    }
-
-    match /driverApplications/{userId} {
-      allow create: if own(userId)
-                    && request.resource.data.userId == request.auth.uid
-                    && isCustomer()
-                    && request.resource.data.status == 'pending';
-
-      allow read: if own(userId) || isAdmin();
-
-      allow update: if isAdmin()
-                    || (own(userId)
-                        && isCustomer()
-                        && request.resource.data.userId == resource.data.userId
-                        && request.resource.data.status == 'pending'
-                        && request.resource.data.diff(resource.data).affectedKeys()
-                          .hasOnly(['name', 'email', 'phone', 'vehicleType', 'plate', 'city', 'status', 'submittedAt', 'updatedAt']));
-
-      allow delete: if isAdmin();
-    }
-
-    match /drivers/{driverId} {
-      allow create, delete: if isAdmin();
-      allow read: if own(driverId) || isAdmin();
-      allow update: if isAdmin()
-                    || (own(driverId)
-                        && isActiveDriver()
-                        && request.resource.data.diff(resource.data).affectedKeys()
-                          .hasOnly(['online', 'updatedAt']));
-    }
-
-    match /orders/{orderId} {
-      allow create: if isCustomer()
-                    && request.resource.data.userId == request.auth.uid
-                    && request.resource.data.driverId == null
-                    && request.resource.data.statusIndex == 0
-                    && request.resource.data.cancelled == false
-                    && request.resource.data.price is number
-                    && request.resource.data.price >= 0
-                    && request.resource.data.distanceKm is number
-                    && request.resource.data.distanceKm >= 0
-                    && request.resource.data.durationMin is number
-                    && request.resource.data.durationMin >= 0
-                    && request.resource.data.commissionRate == 0.15
-                    && request.resource.data.commissionAmount is number
-                    && request.resource.data.driverEarning is number
-                    && request.resource.data.commissionAmount >= request.resource.data.price * 0.15 - 1
-                    && request.resource.data.commissionAmount <= request.resource.data.price * 0.15 + 1
-                    && request.resource.data.driverEarning == request.resource.data.price - request.resource.data.commissionAmount;
-
-      allow read: if signedIn()
-                  && (resource.data.userId == request.auth.uid
-                      || isDriver()
-                      || isAdmin());
-
-      allow update: if (isAdmin()
-                        && request.resource.data.cancelled == true
-                        && request.resource.data.diff(resource.data).affectedKeys()
-                          .hasOnly(['cancelled', 'cancelledBy', 'updatedAt']))
-                    || (isCustomer()
-                        && resource.data.userId == request.auth.uid
-                        && request.resource.data.userId == resource.data.userId
-                        && resource.data.cancelled == false
-                        && resource.data.statusIndex < 3
-                        && request.resource.data.cancelled == true
-                        && request.resource.data.diff(resource.data).affectedKeys()
-                          .hasOnly(['cancelled', 'updatedAt']))
-                    || (isActiveDriver()
-                        && (!('driverId' in resource.data) || resource.data.driverId == null)
-                        && request.resource.data.driverId == request.auth.uid
-                        && request.resource.data.userId == resource.data.userId
-                        && request.resource.data.statusIndex == resource.data.statusIndex
-                        && request.resource.data.driverName == get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.name
-                        && request.resource.data.driverPhone == get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.phone
-                        && request.resource.data.assignmentStatus == 'accepted'
-                        && request.resource.data.diff(resource.data).affectedKeys()
-                          .hasOnly(['driverId', 'driverName', 'driverPhone', 'assignmentStatus', 'updatedAt']))
-                    || (isActiveDriver()
-                        && resource.data.driverId == request.auth.uid
-                        && request.resource.data.driverId == request.auth.uid
-                        && request.resource.data.userId == resource.data.userId
-                        && request.resource.data.statusIndex == resource.data.statusIndex + 1
-                        && request.resource.data.statusIndex <= 3
-                        && ((request.resource.data.statusIndex < 3 && request.resource.data.assignmentStatus == 'active')
-                            || (request.resource.data.statusIndex == 3 && request.resource.data.assignmentStatus == 'completed'))
-                        && request.resource.data.diff(resource.data).affectedKeys()
-                          .hasOnly(['statusIndex', 'assignmentStatus', 'updatedAt']));
-
-      allow delete: if isAdmin();
-    }
-
-    match /orders/{orderId}/tracking/{trackingId} {
-      function parentOrder() {
-        return get(/databases/$(database)/documents/orders/$(orderId)).data;
-      }
-
-      allow read: if signedIn()
-                  && (parentOrder().userId == request.auth.uid
-                      || parentOrder().driverId == request.auth.uid
-                      || isAdmin());
-
-      allow create, update: if isActiveDriver()
-                            && parentOrder().driverId == request.auth.uid
-                            && request.resource.data.driverId == request.auth.uid
-                            && request.resource.data.latitude is number
-                            && request.resource.data.longitude is number
-                            && request.resource.data.latitude >= -90
-                            && request.resource.data.latitude <= 90
-                            && request.resource.data.longitude >= -180
-                            && request.resource.data.longitude <= 180
-                            && request.resource.data.keys().hasOnly([
-                              'driverId', 'latitude', 'longitude', 'accuracy',
-                              'heading', 'speed', 'updatedAt'
-                            ]);
-
-      allow delete: if isAdmin();
-    }
-
-    match /ratings/{orderId} {
-      function ratedOrder() {
-        return get(/databases/$(database)/documents/orders/$(orderId)).data;
-      }
-
-      allow create: if isCustomer()
-                    && request.resource.data.keys().hasOnly([
-                      'orderId', 'orderCode', 'customerId', 'driverId',
-                      'driverName', 'score', 'comment', 'createdAt'
-                    ])
-                    && request.resource.data.orderId == orderId
-                    && request.resource.data.customerId == request.auth.uid
-                    && request.resource.data.driverId == ratedOrder().driverId
-                    && ratedOrder().userId == request.auth.uid
-                    && ratedOrder().cancelled == false
-                    && ratedOrder().statusIndex >= 3
-                    && request.resource.data.score is int
-                    && request.resource.data.score >= 1
-                    && request.resource.data.score <= 5
-                    && request.resource.data.comment is string
-                    && request.resource.data.comment.size() <= 300;
-
-      allow read: if signedIn()
-                  && (resource.data.customerId == request.auth.uid
-                      || resource.data.driverId == request.auth.uid
-                      || isAdmin());
-
-      allow delete: if isAdmin();
-    }
-
-    match /supportTickets/{ticketId} {
-      allow create: if isCustomer()
-                    && request.resource.data.keys().hasOnly([
-                      'userId', 'userName', 'email', 'category', 'orderId',
-                      'orderCode', 'message', 'status', 'adminReply',
-                      'createdAt', 'updatedAt'
-                    ])
-                    && request.resource.data.userId == request.auth.uid
-                    && request.resource.data.userName is string
-                    && request.resource.data.userName.size() <= 100
-                    && request.resource.data.email is string
-                    && request.resource.data.email.size() <= 160
-                    && request.resource.data.category in ['رحلة', 'دفع', 'حساب', 'شكوى', 'أخرى']
-                    && request.resource.data.orderId is string
-                    && request.resource.data.orderCode is string
-                    && ((request.resource.data.orderId == ''
-                         && request.resource.data.orderCode == '')
-                        || (request.resource.data.orderId != ''
-                            && exists(/databases/$(database)/documents/orders/$(request.resource.data.orderId))
-                            && get(/databases/$(database)/documents/orders/$(request.resource.data.orderId)).data.userId == request.auth.uid
-                            && get(/databases/$(database)/documents/orders/$(request.resource.data.orderId)).data.id == request.resource.data.orderCode))
-                    && request.resource.data.message is string
-                    && request.resource.data.message.size() >= 10
-                    && request.resource.data.message.size() <= 600
-                    && request.resource.data.status == 'open'
-                    && request.resource.data.adminReply == '';
-
-      allow read: if signedIn()
-                  && (resource.data.userId == request.auth.uid || isAdmin());
-
-      allow update: if isAdmin()
-                    && request.resource.data.userId == resource.data.userId
-                    && request.resource.data.status in ['open', 'answered', 'closed']
-                    && request.resource.data.adminReply is string
-                    && request.resource.data.adminReply.size() <= 600
-                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-                      'status', 'adminReply', 'repliedBy', 'repliedAt',
-                      'closedBy', 'closedAt', 'reopenedBy', 'reopenedAt', 'updatedAt'
-                    ]);
-
-      allow delete: if isAdmin();
-    }
-  }
-}
+ match /roadReports/{id}{
+   allow read:if signed();
+   allow create:if driver()&&request.resource.data.reportedBy==request.auth.uid;
+   allow update:if driver();
+   allow delete:if admin();
+ }
+ match /landmarks/{id}{
+   allow read:if signed();
+   allow create:if signed()&&request.resource.data.createdBy==request.auth.uid;
+   allow update,delete:if admin()||(signed()&&resource.data.createdBy==request.auth.uid);
+ }
+ match /tripShares/{id}{allow read,write:if false;}
+ match /customerRatings/{id}{allow read:if admin()||(signed()&&(resource.data.customerId==request.auth.uid||resource.data.driverId==request.auth.uid));allow write:if false;}
+ match /ratings/{id}{function o(){return get(/databases/$(database)/documents/orders/$(id)).data;}allow create:if signed()&&o().userId==request.auth.uid&&o().statusIndex>=4&&request.resource.data.customerId==request.auth.uid;allow read:if signed()&&(resource.data.customerId==request.auth.uid||resource.data.driverId==request.auth.uid||admin());allow update:if false;allow delete:if admin();}
+}}

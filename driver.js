@@ -1,4 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
+import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-functions.js";
 import {
   browserLocalPersistence,
   getAuth,
@@ -8,6 +9,7 @@ import {
   signOut
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
 import {
+  addDoc,
   collection,
   doc,
   getFirestore,
@@ -17,6 +19,8 @@ import {
   serverTimestamp,
   setDoc,
   updateDoc,
+  increment,
+  arrayUnion,
   where
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 
@@ -32,6 +36,35 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig, "karwa-driver-portal");
 const auth = getAuth(app);
 const db = getFirestore(app);
+const functions = getFunctions(app);
+const acceptOrderSecure = httpsCallable(functions, "acceptOrder");
+const advanceTripSecure = httpsCallable(functions, "advanceTrip");
+
+function callableErrorKey(error) {
+  const code = String(error?.code || "").replace(/^functions\//, "").toLowerCase();
+  const message = String(error?.message || "").toUpperCase();
+  const details = typeof error?.details === "string" ? error.details.toUpperCase() : String(error?.details?.message || error?.details?.code || "").toUpperCase();
+  const haystack = `${message} ${details}`;
+  const known = ["ORDER_TAKEN","DRIVER_NOT_AVAILABLE","DRIVER_ONLY","NOT_IN_DISPATCH_ROUND","ORDER_NOT_FOUND","NOT_ASSIGNED","INVALID_TRANSITION","OTP_INVALID"];
+  return { code, named: known.find(key => haystack.includes(key)), raw: haystack };
+}
+
+function driverCallableMessage(error, action = "تنفيذ العملية") {
+  const e = callableErrorKey(error);
+  if (e.named === "ORDER_TAKEN" || e.code === "already-exists") return "سبق أن قبل كابتن آخر هذا الطلب.";
+  if (e.named === "NOT_IN_DISPATCH_ROUND") return "هذا الطلب مخصص مؤقتًا لكباتن أقرب. انتظر انتهاء جولة التوزيع ثم حاول مجددًا.";
+  if (e.named === "DRIVER_NOT_AVAILABLE") return "الخادم يعتبر حسابك غير متاح. فعّل الاتصال وتأكد أن حساب الكابتن مفعل وغير محظور.";
+  if (e.named === "DRIVER_ONLY" || e.code === "permission-denied" && !e.named) return "صلاحية الحساب ليست كابتن أو لا تسمح بهذه العملية. راجع تفعيل الحساب من الإدارة.";
+  if (e.named === "ORDER_NOT_FOUND" || e.code === "not-found" && !e.raw.includes("404")) return "الطلب لم يعد موجودًا أو تم حذفه.";
+  if (e.named === "NOT_ASSIGNED") return "هذه الرحلة غير مسندة إلى حساب الكابتن الحالي.";
+  if (e.named === "INVALID_TRANSITION") return "لا يمكن نقل الرحلة إلى الحالة التالية من حالتها الحالية.";
+  if (e.named === "OTP_INVALID") return "رمز بدء الرحلة غير صحيح.";
+  if (e.code === "unauthenticated") return "انتهت جلسة تسجيل الدخول. سجّل الدخول من جديد.";
+  if (e.code === "not-found" || e.raw.includes("NOT FOUND") || e.raw.includes("404")) return "خدمة الكابتن الخلفية غير منشورة. انشر Firebase Functions ثم أعد المحاولة.";
+  if (e.code === "unavailable" || e.code === "deadline-exceeded" || e.raw.includes("NETWORK") || !navigator.onLine) return "تعذر الاتصال بخادم كروة. تحقق من الإنترنت ثم أعد المحاولة.";
+  if (e.code === "internal" || e.code === "unknown") return `حدث خطأ في Cloud Functions أثناء ${action}. راجع سجل الوظائف في Firebase.`;
+  return `تعذر ${action}. ${error?.message ? String(error.message).replace(/^FirebaseError:\s*/i, "") : "تحقق من إعدادات Firebase."}`;
+}
 
 try {
   await setPersistence(auth, browserLocalPersistence);
@@ -40,7 +73,7 @@ try {
 }
 
 const byId = id => document.getElementById(id);
-const statuses = ["تم استلام الطلب", "الكابتن في الطريق", "بدأت الرحلة", "تم الوصول"];
+const statuses = ["بانتظار كابتن", "الكابتن في الطريق", "وصلت إلى العميل", "بدأت الرحلة", "تم الوصول"];
 const icons = { ride: "🚕", parcel: "📦", food: "🍽️" };
 
 const state = {
@@ -57,7 +90,10 @@ const state = {
   map: null,
   driverMarker: null,
   pickupMarker: null,
-  routeLine: null
+  destinationMarker: null,
+  routeLine: null,
+  lastRouteAt: 0,
+  lastRoutePoint: null
 };
 
 const money = value => Number(value || 0).toLocaleString("ar-IQ") + " د.ع";
@@ -75,10 +111,9 @@ function toast(message) {
 
 function mapIcon(type) {
   if (!window.L) return null;
-  const markerContent = type === "pickup" ? "●" : type === "destination" ? "◆" : "🚗";
   return window.L.divIcon({
     className: "",
-    html: `<div class="portal-map-marker ${type}"><span>${markerContent}</span></div>`,
+    html: `<div class="portal-map-marker ${type}"><span>${type === "pickup" ? "●" : "🚗"}</span></div>`,
     iconSize: [40, 40],
     iconAnchor: [20, 36]
   });
@@ -87,10 +122,7 @@ function mapIcon(type) {
 function initializeDriverMap() {
   if (!window.L || state.map) return;
   state.map = window.L.map("driverMap").setView([33.3152, 44.3661], 12);
-  window.L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-  }).addTo(state.map);
+  window.L.maplibreGL({style:"https://tiles.openfreemap.org/styles/liberty"}).addTo(state.map);
 }
 
 function setLocationStatus(text, mode = "pending") {
@@ -98,42 +130,22 @@ function setLocationStatus(text, mode = "pending") {
   byId("locationStatus").className = `status-chip ${mode}`;
 }
 
-function drawPickupRoute() {
+function decodeValhallaShape(encoded){let index=0,lat=0,lng=0,out=[];while(index<encoded.length){let b,shift=0,result=0;do{b=encoded.charCodeAt(index++)-63;result|=(b&31)<<shift;shift+=5;}while(b>=32);lat+=(result&1)?~(result>>1):(result>>1);shift=0;result=0;do{b=encoded.charCodeAt(index++)-63;result|=(b&31)<<shift;shift+=5;}while(b>=32);lng+=(result&1)?~(result>>1):(result>>1);out.push([lat/1e6,lng/1e6]);}return out;}
+function turnIcon(m){const t=String(m?.type??"");if([9,10,11,12,13].includes(Number(t)))return "↪️";if([14,15,16,17,18].includes(Number(t)))return "↩️";if([26,27].includes(Number(t)))return "🔄";if([4,5,6].includes(Number(t)))return "➡️";if([7,8].includes(Number(t)))return "⬅️";return "⬆️";}
+async function valhallaNavigate(a,b){const body={locations:[{lat:a.latitude,lon:a.longitude},{lat:Number(b.latitude),lon:Number(b.longitude)}],costing:"auto",units:"kilometers",language:"ar-IQ",directions_options:{units:"kilometers",language:"ar-IQ"},alternates:1};const r=await fetch("https://valhalla1.openstreetmap.de/route",{method:"POST",headers:{"Content-Type":"application/json","X-Client-Id":"karwa0.app"},body:JSON.stringify(body),signal:AbortSignal.timeout(5500)});if(!r.ok)throw new Error("VALHALLA");const x=await r.json(),leg=x.trip?.legs?.[0],sum=x.trip?.summary;if(!leg||!sum)throw 0;return{coords:decodeValhallaShape(leg.shape),km:Number(sum.length||0),mins:Number(sum.time||0)/60,maneuvers:leg.maneuvers||[]};}
+function haversine(a,b){const R=6371,r=v=>v*Math.PI/180,dl=r(b.latitude-a.latitude),dn=r(b.longitude-a.longitude);const x=Math.sin(dl/2)**2+Math.cos(r(a.latitude))*Math.cos(r(b.latitude))*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(x));}
+async function drawPickupRoute(force=false) {
   if (!state.map) return;
-  const activeOrder = state.orders.find(order =>
-    order.driverId === state.user?.uid && !order.cancelled && Number(order.statusIndex || 0) < 3
-  );
-  const headingToDestination = Number(activeOrder?.statusIndex || 0) >= 2 && activeOrder?.destinationLocation;
-  const target = headingToDestination ? activeOrder.destinationLocation : activeOrder?.pickupLocation;
-  if (!target || !Number.isFinite(Number(target.latitude)) || !Number.isFinite(Number(target.longitude))) {
-    if (state.pickupMarker) state.map.removeLayer(state.pickupMarker);
-    if (state.routeLine) state.map.removeLayer(state.routeLine);
-    state.pickupMarker = null;
-    state.routeLine = null;
-    return;
-  }
-
-  const targetPoint = [Number(target.latitude), Number(target.longitude)];
-  const markerType = headingToDestination ? "destination" : "pickup";
-  const popupLabel = headingToDestination ? "وجهة الرحلة" : "موقع العميل";
-  if (state.pickupMarker) {
-    state.pickupMarker.setLatLng(targetPoint);
-    state.pickupMarker.setIcon(mapIcon(markerType));
-    state.pickupMarker.bindPopup(popupLabel);
-  } else state.pickupMarker = window.L.marker(targetPoint, { icon: mapIcon(markerType) })
-    .addTo(state.map)
-    .bindPopup(popupLabel);
-
-  if (!state.driverMarker) return;
-  const points = [state.driverMarker.getLatLng(), state.pickupMarker.getLatLng()];
-  if (state.routeLine) state.routeLine.setLatLngs(points);
-  else state.routeLine = window.L.polyline(points, {
-    color: "#ff6b35",
-    weight: 5,
-    opacity: .85,
-    dashArray: "9 9"
-  }).addTo(state.map);
-  state.map.fitBounds(window.L.latLngBounds(points), { padding: [40, 40], maxZoom: 16 });
+  const activeOrder=state.orders.find(order=>order.driverId===state.user?.uid&&!order.cancelled&&Number(order.statusIndex||0)<4);
+  const st=Number(activeOrder?.statusIndex||0),target=st>=3?activeOrder?.destinationLocation:activeOrder?.pickupLocation;if(!target)return;
+  const targetPoint=[Number(target.latitude),Number(target.longitude)];if(state.pickupMarker)state.pickupMarker.setLatLng(targetPoint);else state.pickupMarker=window.L.marker(targetPoint,{icon:mapIcon("pickup")}).addTo(state.map);state.pickupMarker.bindPopup(st>=3?"الوجهة":"موقع العميل");
+  if(!state.driverMarker)return;const pos=state.driverMarker.getLatLng(),now=Date.now(),current={latitude:pos.lat,longitude:pos.lng};const moved=state.lastRoutePoint?haversine(current,state.lastRoutePoint):Infinity;if(!force&&now-state.lastRouteAt<9000&&moved<.08)return;state.lastRouteAt=now;state.lastRoutePoint=current;
+  let coords=[[pos.lat,pos.lng],targetPoint],km=haversine(current,target)*1.28,mins=km/28*60,provider="تقدير",maneuvers=[];
+  try{const vr=await valhallaNavigate(current,target);coords=vr.coords;km=vr.km;mins=vr.mins;maneuvers=vr.maneuvers;provider="Valhalla";}catch(e){try{const u=`https://router.project-osrm.org/route/v1/driving/${pos.lng},${pos.lat};${target.longitude},${target.latitude}?overview=full&geometries=geojson`;const r=await fetch(u,{signal:AbortSignal.timeout(4500)}),x=await r.json(),route=x.routes?.[0];if(!route)throw 0;coords=route.geometry.coordinates.map(([lng,lat])=>[lat,lng]);km=route.distance/1000;mins=route.duration/60;provider="OSRM";}catch(_){}}
+  if(state.routeLine)state.routeLine.setLatLngs(coords);else state.routeLine=window.L.polyline(coords,{color:"#2563eb",weight:7,opacity:.92,lineCap:"round"}).addTo(state.map);
+  byId("driverEta").textContent=`${Math.max(1,Math.round(mins))} دقيقة`;byId("driverRemaining").textContent=km<1?`${Math.max(1,Math.round(km*1000))} م`:`${km.toFixed(1)} كم`;byId("driverNavTarget").textContent=st>=3?"إلى الوجهة":"إلى الراكب";byId("driverRouteProvider").textContent=provider;
+  const m=maneuvers.find(x=>Number(x.length||0)>.02)||maneuvers[0];byId("nextTurnText").textContent=m?.instruction||m?.verbal_transition_alert_instruction||"استمر على المسار المحدد";byId("nextTurnIcon").textContent=turnIcon(m);
+  byId("offRouteAlert").classList.add("hidden");if(force)state.map.fitBounds(state.routeLine.getBounds(),{padding:[40,40],maxZoom:17});
 }
 
 function showOwnPosition(position) {
@@ -146,28 +158,11 @@ function showOwnPosition(position) {
     .addTo(state.map)
     .bindPopup("موقعك الحالي");
   state.map.setView(point, 15);
-  setLocationStatus("الموقع مباشر", "approved");
-  byId("locationHint").textContent = `دقة الموقع نحو ${Math.round(position.coords.accuracy || 0)} متر.`;
+  const acc=Math.round(position.coords.accuracy||0);
+  setLocationStatus(acc>100?"GPS ضعيف":"الموقع مباشر", acc>100?"pending":"approved");
+  byId("locationHint").textContent = acc>100?`دقة الموقع منخفضة (${acc} م). انتقل لمكان مفتوح لتحسين التتبع.`:`دقة الموقع نحو ${acc} متر.`;
+  if(Number.isFinite(position.coords.heading)){const el=state.driverMarker?.getElement()?.querySelector(".portal-map-marker");if(el)el.style.transform=`rotate(${position.coords.heading}deg)`;}
   drawPickupRoute();
-  renderOrders();
-}
-
-function distanceKm(first, second) {
-  if (!first || !second) return Number.POSITIVE_INFINITY;
-  const firstLatitude = Number(first.latitude ?? first.coords?.latitude);
-  const firstLongitude = Number(first.longitude ?? first.coords?.longitude);
-  const secondLatitude = Number(second.latitude);
-  const secondLongitude = Number(second.longitude);
-  if (![firstLatitude, firstLongitude, secondLatitude, secondLongitude].every(Number.isFinite)) {
-    return Number.POSITIVE_INFINITY;
-  }
-  const toRadians = value => value * Math.PI / 180;
-  const latitudeDelta = toRadians(secondLatitude - firstLatitude);
-  const longitudeDelta = toRadians(secondLongitude - firstLongitude);
-  const a = Math.sin(latitudeDelta / 2) ** 2
-    + Math.cos(toRadians(firstLatitude)) * Math.cos(toRadians(secondLatitude))
-    * Math.sin(longitudeDelta / 2) ** 2;
-  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 async function sharePosition(position, force = false) {
@@ -175,9 +170,8 @@ async function sharePosition(position, force = false) {
   const now = Date.now();
   if (!force && now - state.lastLocationWrite < 5000) return;
   const activeOrders = state.orders.filter(order =>
-    order.driverId === state.user.uid && !order.cancelled && Number(order.statusIndex || 0) < 3
+    order.driverId === state.user.uid && !order.cancelled && Number(order.statusIndex || 0) < 4
   );
-  if (!activeOrders.length) return;
   state.lastLocationWrite = now;
   const location = {
     driverId: state.user.uid,
@@ -188,6 +182,7 @@ async function sharePosition(position, force = false) {
     speed: Number.isFinite(position.coords.speed) ? position.coords.speed : null,
     updatedAt: serverTimestamp()
   };
+  await updateDoc(doc(db, "drivers", state.user.uid), { latitude: location.latitude, longitude: location.longitude, locationAccuracy: location.accuracy, locationUpdatedAt: serverTimestamp(), updatedAt: serverTimestamp() }).catch(()=>{});
   const results = await Promise.allSettled(activeOrders.map(order =>
     setDoc(doc(db, "orders", order.firestoreId, "tracking", "current"), location, { merge: true })
   ));
@@ -209,6 +204,7 @@ function startLocationSharing() {
   state.locationWatchId = navigator.geolocation.watchPosition(position => {
     state.lastPosition = position;
     showOwnPosition(position);
+    renderOrders(); // يعيد ترتيب الطلبات فور تغير موقع الكابتن
     sharePosition(position).catch(error => console.error(error));
   }, error => {
     console.error(error);
@@ -381,20 +377,13 @@ byId("applicationForm").addEventListener("submit", async event => {
   }
 });
 
+function distanceToOrder(order){if(!state.lastPosition||!order.pickupLocation)return Infinity;const a={latitude:state.lastPosition.coords.latitude,longitude:state.lastPosition.coords.longitude},b=order.pickupLocation;const R=6371,toRad=v=>v*Math.PI/180,dLat=toRad(b.latitude-a.latitude),dLon=toRad(b.longitude-a.longitude);const x=Math.sin(dLat/2)**2+Math.cos(toRad(a.latitude))*Math.cos(toRad(b.latitude))*Math.sin(dLon/2)**2;return 2*R*Math.asin(Math.sqrt(x));}
 function orderCard(order, mode) {
   const statusIndex = Number(order.statusIndex || 0);
-  const statusClass = order.cancelled ? "cancelled" : statusIndex >= 3 ? "complete" : "active";
-  const headingToDestination = mode !== "available" && statusIndex >= 2 && order.destinationLocation;
-  const targetLocation = headingToDestination ? order.destinationLocation : order.pickupLocation;
-  const targetDistance = distanceKm(state.lastPosition, targetLocation);
-  const targetName = headingToDestination ? "الوجهة" : "نقطة الانطلاق";
-  const proximity = Number.isFinite(targetDistance)
-    ? `${targetName} تبعد ${targetDistance.toFixed(1)} كم`
-    : "شغّل الموقع لحساب القرب";
-  const earning = Number(order.driverEarning ?? Math.round(Number(order.price || 0) * .85));
+  const statusClass = order.cancelled ? "cancelled" : statusIndex >= 4 ? "complete" : "active";
   const action = mode === "available"
     ? `<button class="primary" data-action="accept" data-id="${order.firestoreId}" ${state.driverData?.online ? "" : "disabled"}>قبول الطلب</button>`
-    : statusIndex < 3 && !order.cancelled
+    : statusIndex < 4 && !order.cancelled
       ? `<button class="primary" data-action="advance" data-id="${order.firestoreId}">${escapeHtml(statuses[statusIndex + 1])}</button>`
       : "";
   return `
@@ -404,41 +393,33 @@ function orderCard(order, mode) {
         <span class="status-chip ${statusClass}">${escapeHtml(order.cancelled ? "ملغي" : statuses[statusIndex])}</span>
       </div>
       <p class="order-route">${escapeHtml(order.route)}</p>
-      <div class="proximity-chip">⌖ ${escapeHtml(proximity)}${order.durationMin ? ` • الرحلة ${Math.ceil(Number(order.durationMin))} دقيقة` : ""}</div>
       <div class="order-bottom">
-        <div class="order-meta"><span>${escapeHtml(order.id)}</span><span>${escapeHtml(order.payment || "نقدًا")}</span></div>
-        <span class="order-price">صافي ${money(earning)}</span>
+        <div class="order-meta"><span>${escapeHtml(order.id)}</span><span>${escapeHtml(order.payment || "نقدًا")}</span>${mode === "available" && Number.isFinite(distanceToOrder(order)) ? `<span>يبعد ${distanceToOrder(order).toFixed(1)} كم</span>` : ""}</div>
+        ${order.distanceKm ? `<div class="order-meta"><span>المشوار ${Number(order.distanceKm).toFixed(1)} كم</span><span>≈ ${Math.round(Number(order.durationMin||0))} دقيقة</span><span>صافي الكابتن ${money(order.driverEarnings)}</span></div>` : ""}
+        <span class="order-price">${money(order.price)}</span>
       </div>
       ${action ? `<div class="order-actions">${action}</div>` : ""}
     </article>`;
 }
 
 function renderOrders() {
-  const available = state.orders.filter(order =>
-    !order.cancelled && Number(order.statusIndex || 0) < 3 && !order.driverId
-  ).sort((a, b) => {
-    const firstDistance = distanceKm(state.lastPosition, a.pickupLocation);
-    const secondDistance = distanceKm(state.lastPosition, b.pickupLocation);
-    if (Number.isFinite(firstDistance) || Number.isFinite(secondDistance)) {
-      return firstDistance - secondDistance;
-    }
-    return String(b.createdAtISO || "").localeCompare(String(a.createdAtISO || ""));
-  });
+  const now=Date.now();
+  const available = state.orders.filter(order => {
+    if(order.cancelled || Number(order.statusIndex || 0) >= 4 || order.driverId) return false;
+    const exp=order.dispatchExpiresAt?.seconds ? order.dispatchExpiresAt.seconds*1000 : new Date(order.dispatchExpiresAt||0).getTime();
+    return !exp || exp<=now || !Array.isArray(order.dispatchCandidateIds) || !order.dispatchCandidateIds.length || order.dispatchCandidateIds.includes(state.user?.uid);
+  }).sort((a,b) => distanceToOrder(a) - distanceToOrder(b));
   const mine = state.orders.filter(order =>
-    order.driverId === state.user?.uid && !order.cancelled && Number(order.statusIndex || 0) < 3
+    order.driverId === state.user?.uid && !order.cancelled && Number(order.statusIndex || 0) < 4
   );
   const completed = state.orders.filter(order =>
-    order.driverId === state.user?.uid && !order.cancelled && Number(order.statusIndex || 0) >= 3
-  );
-  const earnings = completed.reduce((total, order) =>
-    total + Number(order.driverEarning ?? Math.round(Number(order.price || 0) * .85)), 0
+    order.driverId === state.user?.uid && Number(order.statusIndex || 0) >= 4
   );
 
   byId("availableCount").textContent = available.length;
   byId("activeCount").textContent = mine.length;
   byId("completedCount").textContent = completed.length;
-  byId("earningsTotal").textContent = money(earnings);
-  byId("earningsTrips").textContent = `${completed.length} رحلة مكتملة`;
+  byId("driverEarnings").textContent = money(completed.filter(o=>!o.cancelled).reduce((sum,o)=>sum+Number(o.driverEarnings||0),0));
   byId("availableOrders").innerHTML = available.length
     ? available.map(order => orderCard(order, "available")).join("")
     : `<div class="empty"><span>✓</span>لا توجد طلبات متاحة الآن.</div>`;
@@ -471,6 +452,7 @@ function openDriverDashboard() {
   clearViewListeners();
   showView("driver");
   initializeDriverMap();
+  startDriverCommunityLayers();
   window.setTimeout(() => state.map?.invalidateSize(), 120);
   byId("captainName").textContent = state.userData?.name || state.user?.displayName || "كروة";
 
@@ -550,34 +532,42 @@ document.addEventListener("click", async event => {
     if (button.dataset.action === "accept") {
       if (!state.driverData?.online) throw new Error("OFFLINE");
       await runTransaction(db, async transaction => {
-        const snapshot = await transaction.get(orderRef);
-        if (!snapshot.exists()) throw new Error("ORDER_NOT_FOUND");
-        const order = snapshot.data();
-        if (order.driverId || order.cancelled || Number(order.statusIndex || 0) >= 3) throw new Error("ORDER_TAKEN");
+        const snap = await transaction.get(orderRef);
+        if (!snap.exists()) throw new Error("ORDER_NOT_FOUND");
+        const order = snap.data();
+        if (order.cancelled || Number(order.statusIndex || 0) >= 4) throw new Error("ORDER_NOT_AVAILABLE");
+        if (order.driverId && order.driverId !== state.user.uid) throw new Error("ORDER_TAKEN");
         transaction.update(orderRef, {
           driverId: state.user.uid,
-          driverName: state.driverData.name || state.userData?.name || "كابتن كروة",
-          driverPhone: state.driverData.phone || "",
+          driverName: state.driverData?.name || state.userData?.name || state.user.email || "كابتن كروة",
+          driverPhone: state.driverData?.phone || "",
           assignmentStatus: "accepted",
+          acceptedAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
       });
       if (state.lastPosition) await sharePosition(state.lastPosition, true);
-      toast("تم قبول الطلب");
+      setTimeout(()=>drawPickupRoute(true),400); toast("تم قبول الطلب بنجاح");
     } else if (button.dataset.action === "advance") {
       const order = state.orders.find(item => item.firestoreId === button.dataset.id);
       if (!order) throw new Error("ORDER_NOT_FOUND");
       const next = Number(order.statusIndex || 0) + 1;
-      await updateDoc(orderRef, {
-        statusIndex: next,
-        assignmentStatus: next >= 3 ? "completed" : "active",
-        updatedAt: serverTimestamp()
-      });
-      toast(statuses[next]);
+      let otp = "";
+      if (next === 3) {
+        otp = prompt("أدخل رمز بدء الرحلة المكوّن من 4 أرقام:", "") || "";
+        if (!otp) throw new Error("OTP_REQUIRED");
+      }
+      if (next === 3 && String(otp).trim() !== String(order.tripOtp || "").trim()) throw new Error("OTP_INVALID");
+      const fields = { statusIndex: next, updatedAt: serverTimestamp() };
+      if (next === 2) fields.arrivedAt = serverTimestamp();
+      if (next === 3) fields.startedAt = serverTimestamp();
+      if (next === 4) { fields.completedAt = serverTimestamp(); fields.paymentStatus = "paid"; }
+      await updateDoc(orderRef, fields);
+      setTimeout(()=>drawPickupRoute(true),400); toast(statuses[next]);
     }
   } catch (error) {
     console.error(error);
-    toast(error.message === "ORDER_TAKEN" ? "سبق أن أخذ كابتن آخر هذا الطلب" : error.message === "OFFLINE" ? "فعّل حالة الاتصال أولًا" : "تعذر تنفيذ العملية");
+    toast(error.message === "OFFLINE" ? "فعّل حالة الاتصال أولًا" : error.message === "OTP_REQUIRED" ? "يجب إدخال رمز بدء الرحلة" : error.message === "OTP_INVALID" ? "رمز بدء الرحلة غير صحيح" : error.message === "ORDER_TAKEN" ? "سبق أن قبل كابتن آخر هذا الطلب" : error.message === "ORDER_NOT_FOUND" ? "الطلب غير موجود" : error.message === "ORDER_NOT_AVAILABLE" ? "الطلب لم يعد متاحًا" : driverCallableMessage(error, button.dataset.action === "accept" ? "قبول الطلب" : "تحديث حالة الرحلة"));
   } finally {
     busy(button, false);
   }
@@ -618,3 +608,27 @@ onAuthStateChanged(auth, user => {
 window.addEventListener("beforeunload", () => {
   if (state.locationWatchId !== null) navigator.geolocation.clearWatch(state.locationWatchId);
 });
+
+// Phase 11 — mutual reputation and safety
+const driverRateCustomerSecure=httpsCallable(functions,"driverRateCustomer");
+const createDriverSafetyEvent=httpsCallable(functions,"createSafetyEvent");
+window.karwaRateCustomer=async(orderId)=>{const score=Number(prompt("قيّم الراكب من 1 إلى 5:","5"));if(!score||score<1||score>5)return;try{await driverRateCustomerSecure({orderId,score});toast("تم تقييم الراكب");}catch(e){console.error(e);toast("تعذر حفظ التقييم أو تم تقييم الرحلة سابقًا");}};
+window.karwaDriverSOS=async(orderId)=>{if(!confirm("إرسال تنبيه سلامة عاجل للإدارة؟"))return;try{await createDriverSafetyEvent({orderId,kind:"driver_sos",latitude:state.lastPosition?.latitude||null,longitude:state.lastPosition?.longitude||null,note:"SOS من الكابتن"});toast("تم إرسال تنبيه السلامة");}catch(e){console.error(e);toast("تعذر إرسال التنبيه");}};
+
+// Phase 19 — verified community traffic + landmarks for customer and driver
+const communityLayers={reports:new Map(),landmarks:new Map(),started:false,nearbyAlerted:new Set()};
+const reportMeta={traffic:["🚦","ازدحام"],accident:["💥","حادث"],closure:["⛔","شارع مغلق"],roadwork:["🚧","حفريات / أعمال طريق"],hazard:["⚠️","عائق على الطريق"]};
+function communityIcon(kind,type="report",confirmations=0){const meta=reportMeta[kind]||["📌","بلاغ"],badge=type==='report'&&confirmations?`<b class="confirm-badge">${confirmations}</b>`:"";return window.L.divIcon({className:"",html:`<div class="${type==='landmark'?'landmark-marker':'road-report-marker'}">${type==='landmark'?'📍':meta[0]}${badge}</div>`,iconSize:[38,38],iconAnchor:[19,19]});}
+function reportLifetimeMs(x){const c=Number(x.confirmations||0);if(x.type==='closure')return c>=2?6*3600000:2*3600000;if(c>=3)return 4*3600000;if(c>=1)return 2*3600000;return 60*60000;}
+function reportIsLive(x){const ts=x.createdAt?.toMillis?.()||Date.parse(x.createdAtISO||0);return x.active!==false&&ts&&Date.now()-ts<reportLifetimeMs(x);}
+window.karwaConfirmRoadReport=async(id)=>{if(!state.user)return toast("سجّل الدخول أولًا");try{await runTransaction(db,async tx=>{const ref=doc(db,"roadReports",id),snap=await tx.get(ref);if(!snap.exists())throw new Error("missing");const x=snap.data(),arr=Array.isArray(x.confirmedBy)?x.confirmedBy:[];if(arr.includes(state.user.uid))return;tx.update(ref,{confirmedBy:[...arr,state.user.uid],confirmations:Number(x.confirmations||0)+1,lastConfirmedAt:serverTimestamp()});});toast("تم تأكيد البلاغ — شكرًا لك");}catch(e){console.error(e);toast("تعذر تأكيد البلاغ");}};
+function startDriverCommunityLayers(){if(communityLayers.started||!state.map||!state.user)return;communityLayers.started=true;
+  onSnapshot(collection(db,"roadReports"),snap=>{const live=new Set();snap.forEach(d=>{const x=d.data();if(!reportIsLive(x))return;live.add(d.id);const ll=[Number(x.latitude),Number(x.longitude)];if(!Number.isFinite(ll[0])||!Number.isFinite(ll[1]))return;const label=reportMeta[x.type]?.[1]||"بلاغ طريق",c=Number(x.confirmations||0),mine=(x.confirmedBy||[]).includes(state.user.uid)||x.reportedBy===state.user.uid;let m=communityLayers.reports.get(d.id);if(!m){m=window.L.marker(ll,{icon:communityIcon(x.type,"report",c)}).addTo(state.map);communityLayers.reports.set(d.id,m)}else{m.setLatLng(ll);m.setIcon(communityIcon(x.type,"report",c));}m.bindPopup(`<div dir="rtl"><b>${label}</b>${x.note?`<br>${x.note}`:""}<br><small>${c?`أكده ${c} من الكباتن`:'بانتظار تأكيد كابتن آخر'}</small>${mine?'':`<br><button class="report-confirm" onclick="karwaConfirmRoadReport('${d.id}')">✓ ما زال موجودًا</button>`}</div>`);
+    const p=state.lastPosition?.coords;if(p){const dist=haversine({latitude:p.latitude,longitude:p.longitude},{latitude:ll[0],longitude:ll[1]});if(dist<0.7&&!communityLayers.nearbyAlerted.has(d.id)&&x.reportedBy!==state.user.uid){communityLayers.nearbyAlerted.add(d.id);toast(`تنبيه أمامك: ${label} على بعد ${Math.max(50,Math.round(dist*1000))} م`);}}
+  });for(const [id,m] of communityLayers.reports)if(!live.has(id)){state.map.removeLayer(m);communityLayers.reports.delete(id)}});
+  onSnapshot(collection(db,"landmarks"),snap=>{const live=new Set();snap.forEach(d=>{const x=d.data();if(x.status==="hidden")return;live.add(d.id);const ll=[Number(x.latitude),Number(x.longitude)];if(!Number.isFinite(ll[0])||!Number.isFinite(ll[1]))return;let m=communityLayers.landmarks.get(d.id);if(!m){m=window.L.marker(ll,{icon:communityIcon(null,"landmark")}).addTo(state.map);communityLayers.landmarks.set(d.id,m)}else m.setLatLng(ll);m.bindPopup(`<div dir="rtl"><b>${x.name||"معلم كروة"}</b><br><small>${x.category||"معلم محلي"} · أضيف بواسطة ${x.createdByRole==='driver'?'كابتن':'عميل'}</small></div>`)});for(const [id,m] of communityLayers.landmarks)if(!live.has(id)){state.map.removeLayer(m);communityLayers.landmarks.delete(id)}});
+}
+async function submitRoadReport(type){if(!state.user)return toast("سجّل الدخول أولًا");const p=state.lastPosition?.coords;if(!p||!Number.isFinite(Number(p.latitude)))return toast("فعّل GPS وانتظر تحديد موقعك");const meta=reportMeta[type];if(!meta)return;try{await addDoc(collection(db,"roadReports"),{type,note:byId("roadReportNote")?.value.trim()||"",latitude:Number(p.latitude),longitude:Number(p.longitude),reportedBy:state.user.uid,reporterName:state.driverData?.name||"كابتن كروة",confirmedBy:[state.user.uid],confirmations:1,active:true,createdAt:serverTimestamp(),createdAtISO:new Date().toISOString()});if(byId("roadReportNote"))byId("roadReportNote").value="";toast(`تم إرسال بلاغ: ${meta[1]}`)}catch(e){console.error(e);toast("تعذر حفظ البلاغ — انشر قواعد Firestore الجديدة")}}
+document.querySelectorAll("[data-road-report]").forEach(b=>b.addEventListener("click",()=>submitRoadReport(b.dataset.roadReport)));
+byId("saveDriverLandmark")?.addEventListener("click",async()=>{if(!state.user)return toast("سجّل الدخول أولًا");const name=byId("driverLandmarkName")?.value.trim(),p=state.lastPosition?.coords;if(!name||name.length<3)return toast("اكتب اسم المعلم بوضوح");if(!p)return toast("فعّل GPS وانتظر تحديد موقعك");try{await addDoc(collection(db,"landmarks"),{name,category:byId("driverLandmarkCategory")?.value||"place",latitude:Number(p.latitude),longitude:Number(p.longitude),createdBy:state.user.uid,createdByName:state.driverData?.name||"كابتن كروة",createdByRole:"driver",status:"active",createdAt:serverTimestamp(),createdAtISO:new Date().toISOString()});byId("driverLandmarkName").value="";toast("تمت إضافة المعلم إلى خريطة كروة");}catch(e){console.error(e);toast("تعذر إضافة المعلم — انشر قواعد Firestore الجديدة");}});
+
