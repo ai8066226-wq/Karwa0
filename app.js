@@ -38,8 +38,9 @@ const db = getFirestore(firebaseApp);
 
 const byId = id => document.getElementById(id);
 const orderStatuses = [
-  "تم استلام الطلب",
+  "بانتظار كابتن",
   "الكابتن في الطريق",
+  "وصل الكابتن",
   "بدأت الرحلة",
   "تم الوصول"
 ];
@@ -516,6 +517,10 @@ async function createOrder(type, title, route, price, options = {}) {
     commissionRate: COMMISSION_RATE,
     commissionAmount: Math.round(Number(price) * COMMISSION_RATE),
     driverEarnings: Math.round(Number(price) * (1 - COMMISSION_RATE)),
+    tripOtp: String(Math.floor(1000 + Math.random() * 9000)),
+    paymentStatus: options.payment === "المحفظة" ? "paid" : "pending",
+    acceptedAt: null, arrivedAt: null, startedAt: null, completedAt: null,
+    cancellationReason: "",
     statusIndex: 0,
     cancelled: false,
     createdAt: serverTimestamp(),
@@ -650,7 +655,10 @@ function renderTracking() {
   byId("trackingDriver").textContent = order.driverName
     ? ` • الكابتن: ${order.driverName}${order.driverPhone ? ` — ${order.driverPhone}` : ""}`
     : " • بانتظار قبول كابتن";
-  byId("trackingStatus").textContent = orderStatuses[statusIndex];
+  byId("trackingStatus").textContent = orderStatuses[statusIndex] || "قيد المتابعة";
+  byId("tripOtpBox").classList.toggle("hidden", !(order.driverId && statusIndex < 3));
+  byId("tripOtp").textContent = order.tripOtp || "—";
+  byId("paymentTripStatus").textContent = order.paymentStatus === "paid" ? "مدفوع" : "الدفع عند الإكمال";
   byId("progressBar").style.width = `${((statusIndex + 1) / orderStatuses.length) * 100}%`;
   const completed = statusIndex >= orderStatuses.length - 1;
   byId("advanceOrder").disabled = true;
@@ -665,6 +673,8 @@ byId("cancelOrder").addEventListener("click", async event => {
   try {
     await updateDoc(doc(db, "orders", state.activeOrder.firestoreId), {
       cancelled: true,
+      cancelledBy: "customer",
+      cancellationReason: prompt("سبب الإلغاء (اختياري):", "") || "",
       updatedAt: serverTimestamp()
     });
     showToast("تم إلغاء الطلب");
@@ -750,7 +760,7 @@ function renderRatingPicker() {
 
 function openRatingModal(orderId) {
   const order = state.orders.find(item => item.firestoreId === orderId);
-  if (!order || order.cancelled || Number(order.statusIndex || 0) < 3 || !order.driverId) {
+  if (!order || order.cancelled || Number(order.statusIndex || 0) < 4 || !order.driverId) {
     showToast("يمكن التقييم بعد اكتمال الرحلة فقط");
     return;
   }

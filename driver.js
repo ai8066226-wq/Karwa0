@@ -40,7 +40,7 @@ try {
 }
 
 const byId = id => document.getElementById(id);
-const statuses = ["تم استلام الطلب", "الكابتن في الطريق", "بدأت الرحلة", "تم الوصول"];
+const statuses = ["بانتظار كابتن", "الكابتن في الطريق", "وصلت إلى العميل", "بدأت الرحلة", "تم الوصول"];
 const icons = { ride: "🚕", parcel: "📦", food: "🍽️" };
 
 const state = {
@@ -100,7 +100,7 @@ function setLocationStatus(text, mode = "pending") {
 function drawPickupRoute() {
   if (!state.map) return;
   const activeOrder = state.orders.find(order =>
-    order.driverId === state.user?.uid && !order.cancelled && Number(order.statusIndex || 0) < 3
+    order.driverId === state.user?.uid && !order.cancelled && Number(order.statusIndex || 0) < 4
   );
   const pickup = activeOrder?.pickupLocation;
   if (!pickup || !Number.isFinite(Number(pickup.latitude)) || !Number.isFinite(Number(pickup.longitude))) {
@@ -149,7 +149,7 @@ async function sharePosition(position, force = false) {
   const now = Date.now();
   if (!force && now - state.lastLocationWrite < 5000) return;
   const activeOrders = state.orders.filter(order =>
-    order.driverId === state.user.uid && !order.cancelled && Number(order.statusIndex || 0) < 3
+    order.driverId === state.user.uid && !order.cancelled && Number(order.statusIndex || 0) < 4
   );
   if (!activeOrders.length) return;
   state.lastLocationWrite = now;
@@ -359,10 +359,10 @@ byId("applicationForm").addEventListener("submit", async event => {
 function distanceToOrder(order){if(!state.lastPosition||!order.pickupLocation)return Infinity;const a={latitude:state.lastPosition.coords.latitude,longitude:state.lastPosition.coords.longitude},b=order.pickupLocation;const R=6371,toRad=v=>v*Math.PI/180,dLat=toRad(b.latitude-a.latitude),dLon=toRad(b.longitude-a.longitude);const x=Math.sin(dLat/2)**2+Math.cos(toRad(a.latitude))*Math.cos(toRad(b.latitude))*Math.sin(dLon/2)**2;return 2*R*Math.asin(Math.sqrt(x));}
 function orderCard(order, mode) {
   const statusIndex = Number(order.statusIndex || 0);
-  const statusClass = order.cancelled ? "cancelled" : statusIndex >= 3 ? "complete" : "active";
+  const statusClass = order.cancelled ? "cancelled" : statusIndex >= 4 ? "complete" : "active";
   const action = mode === "available"
     ? `<button class="primary" data-action="accept" data-id="${order.firestoreId}" ${state.driverData?.online ? "" : "disabled"}>قبول الطلب</button>`
-    : statusIndex < 3 && !order.cancelled
+    : statusIndex < 4 && !order.cancelled
       ? `<button class="primary" data-action="advance" data-id="${order.firestoreId}">${escapeHtml(statuses[statusIndex + 1])}</button>`
       : "";
   return `
@@ -383,13 +383,13 @@ function orderCard(order, mode) {
 
 function renderOrders() {
   const available = state.orders.filter(order =>
-    !order.cancelled && Number(order.statusIndex || 0) < 3 && !order.driverId
+    !order.cancelled && Number(order.statusIndex || 0) < 4 && !order.driverId
   ).sort((a,b) => distanceToOrder(a) - distanceToOrder(b));
   const mine = state.orders.filter(order =>
-    order.driverId === state.user?.uid && !order.cancelled && Number(order.statusIndex || 0) < 3
+    order.driverId === state.user?.uid && !order.cancelled && Number(order.statusIndex || 0) < 4
   );
   const completed = state.orders.filter(order =>
-    order.driverId === state.user?.uid && Number(order.statusIndex || 0) >= 3
+    order.driverId === state.user?.uid && Number(order.statusIndex || 0) >= 4
   );
 
   byId("availableCount").textContent = available.length;
@@ -510,12 +510,14 @@ document.addEventListener("click", async event => {
         const snapshot = await transaction.get(orderRef);
         if (!snapshot.exists()) throw new Error("ORDER_NOT_FOUND");
         const order = snapshot.data();
-        if (order.driverId || order.cancelled || Number(order.statusIndex || 0) >= 3) throw new Error("ORDER_TAKEN");
+        if (order.driverId || order.cancelled || Number(order.statusIndex || 0) >= 4) throw new Error("ORDER_TAKEN");
         transaction.update(orderRef, {
           driverId: state.user.uid,
           driverName: state.driverData.name || state.userData?.name || "كابتن كروة",
           driverPhone: state.driverData.phone || "",
           assignmentStatus: "accepted",
+          statusIndex: 1,
+          acceptedAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
       });
@@ -524,17 +526,27 @@ document.addEventListener("click", async event => {
     } else if (button.dataset.action === "advance") {
       const order = state.orders.find(item => item.firestoreId === button.dataset.id);
       if (!order) throw new Error("ORDER_NOT_FOUND");
-      const next = Number(order.statusIndex || 0) + 1;
-      await updateDoc(orderRef, {
+      const current = Number(order.statusIndex || 0);
+      const next = current + 1;
+      if (next === 3) {
+        const entered = prompt("أدخل رمز بدء الرحلة المكوّن من 4 أرقام:", "");
+        if (!entered) throw new Error("OTP_REQUIRED");
+        if (String(entered).trim() !== String(order.tripOtp || "")) throw new Error("OTP_INVALID");
+      }
+      const patch = {
         statusIndex: next,
-        assignmentStatus: next >= 3 ? "completed" : "active",
+        assignmentStatus: next >= 4 ? "completed" : "active",
         updatedAt: serverTimestamp()
-      });
+      };
+      if (next === 2) patch.arrivedAt = serverTimestamp();
+      if (next === 3) patch.startedAt = serverTimestamp();
+      if (next === 4) { patch.completedAt = serverTimestamp(); patch.paymentStatus = "paid"; }
+      await updateDoc(orderRef, patch);
       toast(statuses[next]);
     }
   } catch (error) {
     console.error(error);
-    toast(error.message === "ORDER_TAKEN" ? "سبق أن أخذ كابتن آخر هذا الطلب" : error.message === "OFFLINE" ? "فعّل حالة الاتصال أولًا" : "تعذر تنفيذ العملية");
+    toast(error.message === "ORDER_TAKEN" ? "سبق أن أخذ كابتن آخر هذا الطلب" : error.message === "OFFLINE" ? "فعّل حالة الاتصال أولًا" : error.message === "OTP_REQUIRED" ? "يجب إدخال رمز بدء الرحلة" : error.message === "OTP_INVALID" ? "رمز بدء الرحلة غير صحيح" : "تعذر تنفيذ العملية");
   } finally {
     busy(button, false);
   }

@@ -88,42 +88,32 @@ service cloud.firestore {
                     && request.resource.data.cancelled == false;
 
       allow read: if signedIn()
-                  && (resource.data.userId == request.auth.uid
-                      || isDriver()
-                      || isAdmin());
+                  && (resource.data.userId == request.auth.uid || isDriver() || isAdmin());
 
-      allow update: if (isAdmin()
-                        && request.resource.data.cancelled == true
-                        && request.resource.data.diff(resource.data).affectedKeys()
-                          .hasOnly(['cancelled', 'cancelledBy', 'updatedAt']))
+      allow update: if (isAdmin())
                     || (isCustomer()
                         && resource.data.userId == request.auth.uid
-                        && request.resource.data.userId == resource.data.userId
                         && resource.data.cancelled == false
                         && resource.data.statusIndex < 3
                         && request.resource.data.cancelled == true
                         && request.resource.data.diff(resource.data).affectedKeys()
-                          .hasOnly(['cancelled', 'updatedAt']))
+                          .hasOnly(['cancelled','cancelledBy','cancellationReason','updatedAt']))
                     || (isActiveDriver()
                         && (!('driverId' in resource.data) || resource.data.driverId == null)
                         && request.resource.data.driverId == request.auth.uid
                         && request.resource.data.userId == resource.data.userId
-                        && request.resource.data.statusIndex == resource.data.statusIndex
-                        && request.resource.data.driverName == get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.name
-                        && request.resource.data.driverPhone == get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.phone
+                        && request.resource.data.statusIndex == 1
                         && request.resource.data.assignmentStatus == 'accepted'
                         && request.resource.data.diff(resource.data).affectedKeys()
-                          .hasOnly(['driverId', 'driverName', 'driverPhone', 'assignmentStatus', 'updatedAt']))
+                          .hasOnly(['driverId','driverName','driverPhone','assignmentStatus','statusIndex','acceptedAt','updatedAt']))
                     || (isActiveDriver()
                         && resource.data.driverId == request.auth.uid
                         && request.resource.data.driverId == request.auth.uid
                         && request.resource.data.userId == resource.data.userId
                         && request.resource.data.statusIndex == resource.data.statusIndex + 1
-                        && request.resource.data.statusIndex <= 3
-                        && ((request.resource.data.statusIndex < 3 && request.resource.data.assignmentStatus == 'active')
-                            || (request.resource.data.statusIndex == 3 && request.resource.data.assignmentStatus == 'completed'))
+                        && request.resource.data.statusIndex <= 4
                         && request.resource.data.diff(resource.data).affectedKeys()
-                          .hasOnly(['statusIndex', 'assignmentStatus', 'updatedAt']));
+                          .hasOnly(['statusIndex','assignmentStatus','arrivedAt','startedAt','completedAt','paymentStatus','updatedAt']));
 
       allow delete: if isAdmin();
     }
@@ -170,7 +160,7 @@ service cloud.firestore {
                     && request.resource.data.driverId == ratedOrder().driverId
                     && ratedOrder().userId == request.auth.uid
                     && ratedOrder().cancelled == false
-                    && ratedOrder().statusIndex >= 3
+                    && ratedOrder().statusIndex >= 4
                     && request.resource.data.score is int
                     && request.resource.data.score >= 1
                     && request.resource.data.score <= 5

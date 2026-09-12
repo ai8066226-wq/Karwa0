@@ -38,7 +38,7 @@ try {
 }
 
 const byId = id => document.getElementById(id);
-const statuses = ["تم استلام الطلب", "الكابتن في الطريق", "بدأت الرحلة", "تم الوصول"];
+const statuses = ["بانتظار كابتن", "الكابتن في الطريق", "وصل الكابتن", "بدأت الرحلة", "تم الوصول"];
 const icons = { ride: "🚕", parcel: "📦", food: "🍽️" };
 
 const state = {
@@ -121,7 +121,10 @@ function renderMetrics() {
   byId("blockedCount").textContent = state.drivers.filter(driver => driver.blocked === true).length;
   byId("pendingCount").textContent = state.applications.filter(item => item.status === "pending").length;
   byId("ordersCount").textContent = state.orders.length;
-  const completed=state.orders.filter(o=>!o.cancelled&&Number(o.statusIndex||0)>=3);
+  byId("liveTripsCount").textContent = state.orders.filter(o => !o.cancelled && Number(o.statusIndex||0) > 0 && Number(o.statusIndex||0) < 4).length;
+  byId("cancelledTripsCount").textContent = state.orders.filter(o => o.cancelled).length;
+  byId("onlineDriversCount").textContent = state.drivers.filter(d => d.online === true && d.blocked !== true).length;
+  const completed=state.orders.filter(o=>!o.cancelled&&Number(o.statusIndex||0)>=4);
   const gross=completed.reduce((n,o)=>n+Number(o.price||0),0), commission=completed.reduce((n,o)=>n+Number(o.commissionAmount||0),0), payout=completed.reduce((n,o)=>n+Number(o.driverEarnings||0),0);
   byId("grossRevenue").textContent=money(gross);byId("commissionRevenue").textContent=money(commission);byId("driversPayout").textContent=money(payout);
   const byDriver={};completed.forEach(o=>{const k=o.driverName||"غير معيّن";byDriver[k]=(byDriver[k]||0)+Number(o.driverEarnings||0)});
@@ -226,8 +229,8 @@ function renderApplications() {
 function orderCard(order) {
   const statusIndex = Number(order.statusIndex || 0);
   const status = order.cancelled ? "ملغي" : statuses[statusIndex] || "غير معروف";
-  const statusClass = order.cancelled ? "cancelled" : statusIndex >= 3 ? "complete" : "active";
-  const cancel = !order.cancelled && statusIndex < 3
+  const statusClass = order.cancelled ? "cancelled" : statusIndex >= 4 ? "complete" : "active";
+  const cancel = !order.cancelled && statusIndex < 4
     ? `<div class="order-actions"><button class="danger" data-action="cancel-order" data-id="${order.firestoreId}">إلغاء إداري</button></div>`
     : "";
   return `
@@ -243,8 +246,10 @@ function orderCard(order) {
           <span>${order.driverName ? `الكابتن: ${escapeHtml(order.driverName)}` : "بانتظار كابتن"}</span>
         </div>
         <span class="order-price">${money(order.price)}</span>
-        ${Number(order.statusIndex||0)>=3&&!order.cancelled?`<div class="order-meta"><span>عمولة كروة: ${money(order.commissionAmount)}</span><span>صافي الكابتن: ${money(order.driverEarnings)}</span></div>`:""}
+        ${Number(order.statusIndex||0)>=4&&!order.cancelled?`<div class="order-meta"><span>عمولة كروة: ${money(order.commissionAmount)}</span><span>صافي الكابتن: ${money(order.driverEarnings)}</span></div>`:""}
       </div>
+      ${order.cancelled && order.cancellationReason ? `<p class="admin-note danger-note">سبب الإلغاء: ${escapeHtml(order.cancellationReason)}</p>` : ""}
+      ${order.acceptedAt ? `<div class="order-meta"><span>قبول: ${new Date(order.acceptedAt.seconds*1000).toLocaleString("ar-IQ")}</span>${order.completedAt ? `<span>إكمال: ${new Date(order.completedAt.seconds*1000).toLocaleString("ar-IQ")}</span>` : ""}</div>` : ""}
       ${cancel}
     </article>`;
 }
