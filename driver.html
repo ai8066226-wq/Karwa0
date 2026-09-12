@@ -75,8 +75,14 @@ body.driver-map-mode .topbar{border-color:#d9e2eb;background:rgba(255,255,255,.9
 #driverView .nav-next-turn .turn-icon{width:54px;min-width:54px;height:54px;display:grid;place-items:center;border-radius:17px;color:#0a2540;background:#fff;font-size:32px}
 #driverView .nav-next-turn small{color:#d9ffff;opacity:1;font-weight:800}#driverView .nav-next-turn strong{margin-top:2px;color:#fff;font-size:17px;line-height:1.45}
 #driverView .driver-nav-strip{top:auto;right:50%;bottom:16px;left:auto;width:min(610px,calc(100% - 150px));max-width:none;padding:8px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:4px;border:2px solid #fff;border-radius:22px;color:#0a2540;background:rgba(255,255,255,.97);box-shadow:0 13px 34px rgba(10,37,64,.23);transform:translateX(50%)}
+#driverView .driver-nav-strip{z-index:1200!important;isolation:isolate;overflow:hidden;background:#fff;backdrop-filter:none;-webkit-backdrop-filter:none}
 #driverView .driver-nav-strip>div{min-width:0;padding:7px 8px;text-align:center;border-left:1px solid #d6e0e9}#driverView .driver-nav-strip>div:last-child{border-left:0}
 #driverView .driver-nav-strip small{display:block;color:#526278;font-size:10px;font-weight:800}#driverView .driver-nav-strip strong{display:block;margin-top:2px;overflow:hidden;color:#0a2540;font-size:14px;text-overflow:ellipsis;white-space:nowrap}
+#driverView .leaflet-bottom.leaflet-right{right:8px;bottom:102px;z-index:690!important}
+#driverView .leaflet-control-attribution{max-width:min(82vw,520px);padding:3px 7px!important;overflow:hidden;border:1px solid rgba(255,255,255,.9);border-radius:9px;color:#334155!important;background:rgba(255,255,255,.9)!important;box-shadow:0 4px 14px rgba(10,37,64,.12);font-size:8px!important;line-height:1.25!important;text-overflow:ellipsis;white-space:nowrap}
+#driverView .leaflet-control-attribution a{color:#075985!important;text-decoration:none}
+#driverView .maplibregl-ctrl-bottom-right{right:8px!important;bottom:102px!important;z-index:680!important}
+#driverView .maplibregl-ctrl-attrib{max-width:min(82vw,520px);border-radius:9px!important;background:rgba(255,255,255,.9)!important;font-size:8px!important}
 #driverView .route-alert{top:100px;right:50%;max-width:520px;color:#7c2d12;border:2px solid #fdba74;background:#fff7ed;box-shadow:0 9px 25px rgba(124,45,18,.15);transform:translateX(50%)}
 #driverView #locationHint{bottom:102px;color:#253b55;border:1px solid #fff;background:rgba(255,255,255,.95)}
 .driver-options-toggle{min-width:120px;min-height:52px;border:2px solid #fff;border-radius:18px;color:#fff;background:#0a2540;box-shadow:0 10px 0 rgba(10,37,64,.12),0 18px 38px rgba(10,37,64,.3)}
@@ -98,8 +104,9 @@ body.driver-map-mode .topbar{border-color:#d9e2eb;background:rgba(255,255,255,.9
  #driverView .nav-next-turn .turn-icon{width:48px;min-width:48px;height:48px;border-radius:15px;font-size:28px}
  #driverView .nav-next-turn strong{font-size:15px}
  #driverView .route-alert{top:92px;width:calc(100% - 16px)}
- #driverView .driver-nav-strip{right:8px;bottom:8px;width:calc(100% - 16px);transform:none;border-radius:19px}
+ #driverView .driver-nav-strip{right:8px;bottom:max(10px,env(safe-area-inset-bottom));width:calc(100% - 16px);min-height:76px;transform:none;border-radius:19px}
  #driverView .driver-nav-strip>div{padding:6px 3px}#driverView .driver-nav-strip strong{font-size:12px}
+ #driverView .leaflet-bottom.leaflet-right,#driverView .maplibregl-ctrl-bottom-right{bottom:98px!important}
  #driverView #locationHint{display:none}.driver-report-quick{left:12px;bottom:88px;width:54px;height:54px}
  .driver-options-toggle{min-width:108px;min-height:50px}
 }
@@ -285,8 +292,8 @@ body.driver-map-mode .topbar{border-color:#d9e2eb;background:rgba(255,255,255,.9
   <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
   <script>try{if(window.maplibregl&&maplibregl.setRTLTextPlugin&&(!maplibregl.getRTLTextPluginStatus||maplibregl.getRTLTextPluginStatus()==="unavailable")){maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",true).catch(()=>{});}}catch(e){}</script>
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
-  <script type="module" src="./driver.js"></script>
-  <script src="./pwa.js"></script>
+  <script type="module" src="./driver.js?v=26"></script>
+  <script src="./pwa.js?v=26"></script>
 <script id="phase20-driver-map-first-js">
 window.addEventListener("DOMContentLoaded",()=>{
   const view=document.getElementById("driverView");
