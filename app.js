@@ -108,7 +108,9 @@ const state = {
   routeDistanceKm: 0,
   routeDurationMin: 0,
   routeSource: "",
-  savedAddresses: []
+  savedAddresses: [],
+  centerPickActive: false,
+  centerPickTimer: null
 };
 
 const formatMoney = value => Number(value || 0).toLocaleString("ar-IQ") + " د.ع";
@@ -171,7 +173,8 @@ function initializeCustomerMap() {
   if (!window.L || state.map) return;
   state.map = window.L.map("customerMap", { zoomControl: false, attributionControl: true }).setView([36.34, 43.13], 13);
   window.L.control.zoom({position:"bottomleft"}).addTo(state.map);
-  state.map.on("click", e => setBookingPoint(state.mapPickMode, e.latlng.lat, e.latlng.lng));
+  state.map.on("click", e => { if(!state.centerPickActive) setBookingPoint(state.mapPickMode, e.latlng.lat, e.latlng.lng); });
+  state.map.on("move",()=>{if(!state.centerPickActive)return;clearTimeout(state.centerPickTimer);byId("mapCenterLabel").textContent="جارٍ تحديد العنوان…";state.centerPickTimer=setTimeout(async()=>{const c=state.map.getCenter();const name=await reverseGeocode(c.lat,c.lng);byId("mapCenterLabel").textContent=name||`الموقع: ${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`;},450);});
   const streets=window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(state.map);
   const light=window.L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",{maxZoom:20,attribution:'&copy; OpenStreetMap &copy; CARTO'});
   window.L.control.layers({"الخريطة":streets,"خريطة هادئة":light},null,{position:"bottomright",collapsed:true}).addTo(state.map);
@@ -510,6 +513,16 @@ byId("parcelSize").addEventListener("change", event => {
   byId("parcelPrice").textContent = formatMoney(event.target.value);
 });
 
+function setCenterPick(active=true){
+  initializeCustomerMap(); state.centerPickActive=active;
+  document.querySelector(".map-card")?.classList.toggle("center-pick",active);
+  byId("mapConfirmBar")?.classList.toggle("show",active);
+  byId("mapCenterPick")?.classList.toggle("active",active);
+  if(active){const c=state.map.getCenter();state.map.fire("move");showToast(state.mapPickMode==="pickup"?"حرّك الخريطة لتحديد نقطة الانطلاق":"حرّك الخريطة لتحديد الوجهة");}
+}
+async function confirmCenterPick(){if(!state.centerPickActive)return;const c=state.map.getCenter();const label=await reverseGeocode(c.lat,c.lng);await setBookingPoint(state.mapPickMode,c.lat,c.lng,label||"");setCenterPick(false);}
+function distanceFromMapCenter(x){const c=state.map?.getCenter();if(!c)return null;return haversineKm({latitude:c.lat,longitude:c.lng},{latitude:Number(x.lat),longitude:Number(x.lon)});}
+
 function locateUser(targetInput) {
   if (!navigator.geolocation) {
     targetInput.value = "موقعي الحالي — بغداد";
@@ -535,6 +548,8 @@ byId("useRideLocation").addEventListener("click", () => locateUser(byId("rideFro
 byId("useParcelLocation").addEventListener("click", () => locateUser(byId("parcelFrom")));
 byId("headerLocation").addEventListener("click", () => locateUser(byId("rideFrom")));
 byId("pickRideFrom").addEventListener("click",()=>{state.mapPickMode="pickup";document.querySelectorAll(".map-pick-button").forEach(b=>b.classList.toggle("active",b.id==="pickRideFrom"));});
+byId("mapCenterPick")?.addEventListener("click",()=>setCenterPick(!state.centerPickActive));
+byId("confirmMapCenter")?.addEventListener("click",confirmCenterPick);
 byId("pickRideTo").addEventListener("click",()=>{state.mapPickMode="destination";document.querySelectorAll(".map-pick-button").forEach(b=>b.classList.toggle("active",b.id==="pickRideTo"));});
 
 function requireUser() {
@@ -994,13 +1009,13 @@ let geoTimer;
 async function searchPlaces(q){
   const center=state.map?.getCenter(); const view=center?`&viewbox=${center.lng-1.8},${center.lat+1.2},${center.lng+1.8},${center.lat-1.2}`:"";
   const queries=[q,`${q} العراق`]; let out=[];
-  for(const term of queries){try{const r=await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=8&countrycodes=iq&accept-language=ar${view}&q=${encodeURIComponent(term)}`,{headers:{Accept:"application/json"},signal:AbortSignal.timeout(6000)});if(r.ok){const data=await r.json();out.push(...data)}}catch(e){} if(out.length>=5)break;}
+  for(const term of queries){try{const r=await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&namedetails=1&extratags=1&dedupe=1&limit=10&countrycodes=iq&accept-language=ar${view}&q=${encodeURIComponent(term)}`,{headers:{Accept:"application/json"},signal:AbortSignal.timeout(6000)});if(r.ok){const data=await r.json();out.push(...data)}}catch(e){} if(out.length>=5)break;}
   const seen=new Set(); return out.filter(x=>{const k=`${Number(x.lat).toFixed(4)},${Number(x.lon).toFixed(4)}`;if(seen.has(k))return false;seen.add(k);return true}).slice(0,7);
 }
 function setupPlaceSearch(inputId,resultsId,type){
   const input=byId(inputId),box=byId(resultsId); let seq=0;
   input.addEventListener("input",()=>{clearTimeout(geoTimer);const q=input.value.trim();const my=++seq;if(q.length<2){box.innerHTML="";return}box.innerHTML='<div class="place-search-state">جاري البحث…</div>';
-    geoTimer=setTimeout(async()=>{const data=await searchPlaces(q);if(my!==seq)return;box.innerHTML="";if(!data.length){box.innerHTML='<div class="place-search-state">لم نجد المكان. جرّب اسم الحي أو أقرب معلم، أو حدده من الخريطة.</div>';return}data.forEach(x=>{const b=document.createElement("button");b.type="button";b.className="place-result";const title=cleanPlaceLabel(x),full=x.display_name||title;b.innerHTML=`<span class="place-pin">⌖</span><span><strong>${title}</strong><small>${full}</small></span>`;b.onclick=()=>{box.innerHTML="";setBookingPoint(type,Number(x.lat),Number(x.lon),title);state.map?.setView([Number(x.lat),Number(x.lon)],16)};box.appendChild(b)});},350);
+    geoTimer=setTimeout(async()=>{const data=await searchPlaces(q);if(my!==seq)return;box.innerHTML="";if(!data.length){box.innerHTML='<div class="place-search-state">لم نجد المكان. جرّب اسم الحي أو أقرب معلم، أو حدده من الخريطة.</div>';return}data.forEach(x=>{const b=document.createElement("button");b.type="button";b.className="place-result";const title=cleanPlaceLabel(x),full=x.display_name||title,dist=distanceFromMapCenter(x);b.innerHTML=`<span class="place-pin">⌖</span><span><strong>${title}</strong><small>${full}</small>${dist!=null?`<span class="distance">يبعد تقريبًا ${dist<1?Math.round(dist*1000)+" م":dist.toFixed(1)+" كم"} عن مركز الخريطة</span>`:""}</span>`;b.onclick=()=>{box.innerHTML="";setBookingPoint(type,Number(x.lat),Number(x.lon),title);state.map?.setView([Number(x.lat),Number(x.lon)],16)};box.appendChild(b)});},350);
   });
   input.addEventListener("focus",()=>{if(input.value.trim().length>=2)input.dispatchEvent(new Event("input"))});
 }

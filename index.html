@@ -1524,6 +1524,7 @@
     #customerMap{min-height:590px!important}.leaflet-control-zoom a,.leaflet-control-layers{border:0!important;box-shadow:0 7px 22px rgba(16,32,68,.16)!important}.leaflet-control-zoom a{width:38px!important;height:38px!important;line-height:38px!important}.leaflet-control-layers{border-radius:12px!important}.leaflet-popup-content-wrapper{border-radius:14px}
     .map-pick-actions{margin-top:9px!important}.map-pick-button{min-height:40px;background:#fff!important}.route-summary{margin-top:12px!important;border:1px solid #e5eaf1;background:#f8fafc!important}.route-summary span{display:inline-flex;align-items:center;min-height:28px}
     .service-panel .panel-heading{margin-bottom:16px}.service-panel .panel-heading h2{font-size:22px}.main-grid{gap:22px!important}.card{border-radius:22px!important}
+    .map-confirm-bar{display:none;align-items:center;justify-content:space-between;gap:12px;margin:10px 0 14px;padding:10px 12px;border:1px solid #dfe6ef;border-radius:14px;background:#fff}.map-confirm-bar.show{display:flex}.map-confirm-bar span{font-size:12px;color:#526078;line-height:1.5}.map-confirm-bar button{border:0;border-radius:10px;padding:9px 12px;background:#102044;color:#fff;font-weight:800;white-space:nowrap}.center-pin{position:absolute;z-index:650;left:50%;top:50%;transform:translate(-50%,-100%);display:none;pointer-events:none;font-size:38px;filter:drop-shadow(0 5px 4px rgba(0,0,0,.25))}.map-card.center-pick .center-pin{display:block}.map-card.center-pick #customerMap{cursor:grab}.map-search-hint{font-size:11px;color:#748197;margin-top:5px}.place-result .distance{font-size:10px;color:#d65b2b;font-weight:800;margin-top:4px;display:block}.map-pick-actions{grid-template-columns:repeat(3,minmax(0,1fr))!important}
     @media(max-width:760px){.map-card,#customerMap{min-height:430px!important}.place-result small{max-width:250px}.service-panel .panel-heading{align-items:center}.map-pick-actions{display:grid!important;grid-template-columns:1fr 1fr}.map-pick-button{padding:9px 6px!important}.route-summary{display:grid!important;grid-template-columns:1fr 1fr}.route-summary #routeMode{grid-column:1/-1}.card{border-radius:18px!important}}
 
   </style>
@@ -1647,7 +1648,7 @@
                 <div class="field">
                   <label for="rideTo">الوجهة</label>
                   <input id="rideTo" placeholder="ابحث عن الوجهة أو اخترها من الخريطة"><div class="place-results" id="rideToResults"></div>
-                  <div class="map-pick-actions"><button class="text-button map-pick-button active" id="pickRideFrom" type="button">📍 تحديد الانطلاق</button><button class="text-button map-pick-button" id="pickRideTo" type="button">🏁 تحديد الوجهة</button></div>
+                  <div class="map-pick-actions"><button class="text-button map-pick-button active" id="pickRideFrom" type="button">📍 الانطلاق</button><button class="text-button map-pick-button" id="pickRideTo" type="button">🏁 الوجهة</button><button class="text-button map-pick-button" id="mapCenterPick" type="button">🎯 حرّك الخريطة وحدد</button></div><div class="map-confirm-bar" id="mapConfirmBar"><span id="mapCenterLabel">حرّك الخريطة حتى يصبح الدبوس فوق المكان المطلوب</span><button type="button" id="confirmMapCenter">تأكيد هذا الموقع</button></div>
                   <div class="route-summary" id="routeSummary"><span>المسافة: —</span><span>الوقت: —</span><span id="routeMode">اختر نقطتين من الخريطة</span></div>
                 </div>
 
@@ -1809,7 +1810,7 @@
             </div>
 
             <div class="card map-card" aria-label="خريطة تتبع الرحلة">
-              <div id="customerMap"></div>
+              <div class="center-pin" id="centerPin">📍</div><div id="customerMap"></div>
               <div class="map-information">
                 <strong id="mapInfoTitle">خريطة كروة المباشرة</strong>
                 <small id="mapInfoText">اضغط على الخريطة لتحديد نقطة الانطلاق، ثم الوجهة.</small>
