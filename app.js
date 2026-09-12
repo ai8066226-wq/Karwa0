@@ -116,7 +116,8 @@ const state = {
   liveRouteTimer: null,
   lastLiveRouteAt: 0,
   lastLiveRoutePoint: null,
-  driverAnimationFrame: null
+  driverAnimationFrame: null,
+  profileRetryTimer: null
 };
 
 const formatMoney = value => Number(value || 0).toLocaleString("ar-IQ") + " د.ع";
@@ -367,15 +368,17 @@ async function loadUserProfile(user) {
   let profileNeedsMigration = false;
   if (snapshot.exists()) {
     const data = snapshot.data();
-    state.role = data.role || "customer";
-    state.name = data.name || user.displayName || user.email?.split("@")[0] || "مستخدم كروة";
-    state.balance = Number(data.balance ?? 25000);
+    const storedName = typeof data.name === "string" ? data.name.trim() : "";
+    const storedBalance = Number(data.balance ?? 25000);
+    state.role = typeof data.role === "string" && data.role ? data.role : "customer";
+    state.name = storedName || user.displayName || user.email?.split("@")[0] || "مستخدم كروة";
+    state.balance = Number.isFinite(storedBalance) ? storedBalance : 25000;
     state.notifications = data.notifications !== false;
     if (!data.role) {
       try {
         await setDoc(userRef, {
           role: "customer",
-          email: data.email || user.email || "",
+          email: typeof data.email === "string" ? data.email : (user.email || ""),
           updatedAt: serverTimestamp()
         }, { merge: true });
       } catch (error) {
@@ -1121,9 +1124,56 @@ try {
   console.warn("تعذر تفعيل حفظ جلسة الدخول", error);
 }
 
+async function startVerifiedCustomerSession(user) {
+  const profileStatus = await loadUserProfile(user);
+  if (auth.currentUser?.uid !== user.uid) return false;
+  if (state.role !== "customer") {
+    const roleName = state.role === "driver" ? "كابتن" : "مدير";
+    const destination = state.role === "driver" ? "بوابة الكابتن" : "لوحة الإدارة";
+    await signOut(auth);
+    openAuthModal();
+    byId("authMessage").textContent = `هذا حساب ${roleName} ومخصص لـ${destination} فقط. استخدم حساب عميل مستقلًا.`;
+    return false;
+  }
+  subscribeToOrders(user);
+  subscribeToRatings(user);
+  try {
+    startCustomerCommunityLayers();
+  } catch (communityError) {
+    console.warn("تعذر تشغيل طبقة مجتمع كروة دون التأثير على مزامنة الحساب", communityError);
+  }
+  byId("connectionBadge").textContent = profileStatus?.profileNeedsMigration
+    ? "متصل • مزامنة الحساب قيد التحديث"
+    : "متصل ومحفوظ سحابيًا";
+  return true;
+}
+
+function scheduleProfileRetry(user, attempt = 1) {
+  if (state.profileRetryTimer) clearTimeout(state.profileRetryTimer);
+  if (attempt > 4) {
+    state.profileRetryTimer = null;
+    byId("connectionBadge").textContent = "متصل • تعذر التحقق من الحساب";
+    return;
+  }
+  const delay = Math.min(12000, 1500 * (2 ** (attempt - 1)));
+  state.profileRetryTimer = setTimeout(async () => {
+    state.profileRetryTimer = null;
+    if (auth.currentUser?.uid !== user.uid) return;
+    try {
+      const started = await startVerifiedCustomerSession(user);
+      if (started) showToast("تمت استعادة مزامنة الحساب");
+    } catch (retryError) {
+      console.warn(`تعذرت محاولة مزامنة الحساب رقم ${attempt}`, retryError);
+      scheduleProfileRetry(user, attempt + 1);
+    }
+  }, delay);
+}
+
 onAuthStateChanged(auth, async user => {
   state.user = user;
   if (!user) {
+    if (state.profileRetryTimer) clearTimeout(state.profileRetryTimer);
+    state.profileRetryTimer = null;
     if (state.unsubscribeOrders) {
       state.unsubscribeOrders();
       state.unsubscribeOrders = null;
@@ -1152,34 +1202,21 @@ onAuthStateChanged(auth, async user => {
   }
 
   closeAuthModal();
+  if (state.profileRetryTimer) clearTimeout(state.profileRetryTimer);
+  state.profileRetryTimer = null;
   byId("connectionBadge").textContent = "متصل ومحفوظ سحابيًا";
   try {
-    const profileStatus = await loadUserProfile(user);
-    if (state.role !== "customer") {
-      const roleName = state.role === "driver" ? "كابتن" : "مدير";
-      const destination = state.role === "driver" ? "بوابة الكابتن" : "لوحة الإدارة";
-      await signOut(auth);
-      openAuthModal();
-      byId("authMessage").textContent = `هذا حساب ${roleName} ومخصص لـ${destination} فقط. استخدم حساب عميل مستقلًا.`;
-      return;
-    }
-    subscribeToOrders(user);
-    subscribeToRatings(user);
-    try {
-      startCustomerCommunityLayers();
-    } catch (communityError) {
-      console.warn("تعذر تشغيل طبقة مجتمع كروة دون التأثير على مزامنة الحساب", communityError);
-    }
-    if (profileStatus?.profileNeedsMigration) {
-      byId("connectionBadge").textContent = "متصل • مزامنة الحساب قيد التحديث";
-    }
+    await startVerifiedCustomerSession(user);
   } catch (error) {
     console.error(error);
     const errorCode = String(error?.code || "");
-    showToast(errorCode.includes("permission-denied")
-      ? "تعذر الوصول إلى ملف الحساب. انشر قواعد Firestore المرفقة ثم أعد فتح التطبيق."
-      : "تعذر مزامنة بيانات الحساب مؤقتًا. تحقق من الاتصال ثم حاول مجددًا.");
-    byId("connectionBadge").textContent = "متصل • المزامنة متوقفة";
+    if (errorCode.includes("permission-denied")) {
+      showToast("تعذر الوصول إلى ملف الحساب. انشر قواعد Firestore المرفقة ثم أعد فتح التطبيق.");
+      byId("connectionBadge").textContent = "متصل • صلاحيات الحساب غير مكتملة";
+    } else {
+      byId("connectionBadge").textContent = "متصل • إعادة المزامنة تلقائيًا";
+      scheduleProfileRetry(user);
+    }
     state.name = user.displayName || user.email?.split("@")[0] || "مستخدم كروة";
     renderProfile();
   }
