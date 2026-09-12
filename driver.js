@@ -127,22 +127,22 @@ function setLocationStatus(text, mode = "pending") {
   byId("locationStatus").className = `status-chip ${mode}`;
 }
 
+function decodeValhallaShape(encoded){let index=0,lat=0,lng=0,out=[];while(index<encoded.length){let b,shift=0,result=0;do{b=encoded.charCodeAt(index++)-63;result|=(b&31)<<shift;shift+=5;}while(b>=32);lat+=(result&1)?~(result>>1):(result>>1);shift=0;result=0;do{b=encoded.charCodeAt(index++)-63;result|=(b&31)<<shift;shift+=5;}while(b>=32);lng+=(result&1)?~(result>>1):(result>>1);out.push([lat/1e6,lng/1e6]);}return out;}
+function turnIcon(m){const t=String(m?.type??"");if([9,10,11,12,13].includes(Number(t)))return "↪️";if([14,15,16,17,18].includes(Number(t)))return "↩️";if([26,27].includes(Number(t)))return "🔄";if([4,5,6].includes(Number(t)))return "➡️";if([7,8].includes(Number(t)))return "⬅️";return "⬆️";}
+async function valhallaNavigate(a,b){const body={locations:[{lat:a.latitude,lon:a.longitude},{lat:Number(b.latitude),lon:Number(b.longitude)}],costing:"auto",units:"kilometers",language:"ar-IQ",directions_options:{units:"kilometers",language:"ar-IQ"},alternates:1};const r=await fetch("https://valhalla1.openstreetmap.de/route",{method:"POST",headers:{"Content-Type":"application/json","X-Client-Id":"karwa0.app"},body:JSON.stringify(body),signal:AbortSignal.timeout(5500)});if(!r.ok)throw new Error("VALHALLA");const x=await r.json(),leg=x.trip?.legs?.[0],sum=x.trip?.summary;if(!leg||!sum)throw 0;return{coords:decodeValhallaShape(leg.shape),km:Number(sum.length||0),mins:Number(sum.time||0)/60,maneuvers:leg.maneuvers||[]};}
 function haversine(a,b){const R=6371,r=v=>v*Math.PI/180,dl=r(b.latitude-a.latitude),dn=r(b.longitude-a.longitude);const x=Math.sin(dl/2)**2+Math.cos(r(a.latitude))*Math.cos(r(b.latitude))*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(x));}
 async function drawPickupRoute(force=false) {
   if (!state.map) return;
-  const activeOrder = state.orders.find(order => order.driverId === state.user?.uid && !order.cancelled && Number(order.statusIndex || 0) < 4);
-  const s=Number(activeOrder?.statusIndex||0), target=s>=3?activeOrder?.destinationLocation:activeOrder?.pickupLocation;
-  if (!target || !Number.isFinite(Number(target.latitude)) || !Number.isFinite(Number(target.longitude))) return;
-  const targetPoint=[Number(target.latitude),Number(target.longitude)];
-  if(state.pickupMarker)state.pickupMarker.setLatLng(targetPoint);else state.pickupMarker=window.L.marker(targetPoint,{icon:mapIcon("pickup")}).addTo(state.map);
-  state.pickupMarker.bindPopup(s>=3?"الوجهة":"موقع العميل");
-  if(!state.driverMarker)return; const pos=state.driverMarker.getLatLng(), now=Date.now();
-  const moved=state.lastRoutePoint?haversine({latitude:pos.lat,longitude:pos.lng},state.lastRoutePoint):Infinity;if(!force&&now-state.lastRouteAt<12000&&moved<.12)return;state.lastRouteAt=now;state.lastRoutePoint={latitude:pos.lat,longitude:pos.lng};
-  let coords=[[pos.lat,pos.lng],targetPoint],km=haversine(state.lastRoutePoint,target),mins=0;
-  try{const u=`https://router.project-osrm.org/route/v1/driving/${pos.lng},${pos.lat};${target.longitude},${target.latitude}?overview=full&geometries=geojson`;const r=await fetch(u,{signal:AbortSignal.timeout(5000)}),x=await r.json(),route=x.routes?.[0];if(route){coords=route.geometry.coordinates.map(([lng,lat])=>[lat,lng]);km=route.distance/1000;mins=route.duration/60;}}catch(e){km*=1.28;}if(!mins)mins=km/28*60;
-  if(state.routeLine)state.routeLine.setLatLngs(coords);else state.routeLine=window.L.polyline(coords,{color:"#ff6b35",weight:6,opacity:.9}).addTo(state.map);
-  byId("driverEta").textContent=`${Math.max(1,Math.round(mins))} دقيقة`;byId("driverRemaining").textContent=km<1?`${Math.round(km*1000)} م`:`${km.toFixed(1)} كم`;byId("driverNavTarget").textContent=s>=3?"إلى الوجهة":"إلى الراكب";
-  if(force)state.map.fitBounds(state.routeLine.getBounds(),{padding:[40,40],maxZoom:16});
+  const activeOrder=state.orders.find(order=>order.driverId===state.user?.uid&&!order.cancelled&&Number(order.statusIndex||0)<4);
+  const st=Number(activeOrder?.statusIndex||0),target=st>=3?activeOrder?.destinationLocation:activeOrder?.pickupLocation;if(!target)return;
+  const targetPoint=[Number(target.latitude),Number(target.longitude)];if(state.pickupMarker)state.pickupMarker.setLatLng(targetPoint);else state.pickupMarker=window.L.marker(targetPoint,{icon:mapIcon("pickup")}).addTo(state.map);state.pickupMarker.bindPopup(st>=3?"الوجهة":"موقع العميل");
+  if(!state.driverMarker)return;const pos=state.driverMarker.getLatLng(),now=Date.now(),current={latitude:pos.lat,longitude:pos.lng};const moved=state.lastRoutePoint?haversine(current,state.lastRoutePoint):Infinity;if(!force&&now-state.lastRouteAt<9000&&moved<.08)return;state.lastRouteAt=now;state.lastRoutePoint=current;
+  let coords=[[pos.lat,pos.lng],targetPoint],km=haversine(current,target)*1.28,mins=km/28*60,provider="تقدير",maneuvers=[];
+  try{const vr=await valhallaNavigate(current,target);coords=vr.coords;km=vr.km;mins=vr.mins;maneuvers=vr.maneuvers;provider="Valhalla";}catch(e){try{const u=`https://router.project-osrm.org/route/v1/driving/${pos.lng},${pos.lat};${target.longitude},${target.latitude}?overview=full&geometries=geojson`;const r=await fetch(u,{signal:AbortSignal.timeout(4500)}),x=await r.json(),route=x.routes?.[0];if(!route)throw 0;coords=route.geometry.coordinates.map(([lng,lat])=>[lat,lng]);km=route.distance/1000;mins=route.duration/60;provider="OSRM";}catch(_){}}
+  if(state.routeLine)state.routeLine.setLatLngs(coords);else state.routeLine=window.L.polyline(coords,{color:"#2563eb",weight:7,opacity:.92,lineCap:"round"}).addTo(state.map);
+  byId("driverEta").textContent=`${Math.max(1,Math.round(mins))} دقيقة`;byId("driverRemaining").textContent=km<1?`${Math.max(1,Math.round(km*1000))} م`:`${km.toFixed(1)} كم`;byId("driverNavTarget").textContent=st>=3?"إلى الوجهة":"إلى الراكب";byId("driverRouteProvider").textContent=provider;
+  const m=maneuvers.find(x=>Number(x.length||0)>.02)||maneuvers[0];byId("nextTurnText").textContent=m?.instruction||m?.verbal_transition_alert_instruction||"استمر على المسار المحدد";byId("nextTurnIcon").textContent=turnIcon(m);
+  byId("offRouteAlert").classList.add("hidden");if(force)state.map.fitBounds(state.routeLine.getBounds(),{padding:[40,40],maxZoom:17});
 }
 
 function showOwnPosition(position) {
@@ -158,6 +158,7 @@ function showOwnPosition(position) {
   const acc=Math.round(position.coords.accuracy||0);
   setLocationStatus(acc>100?"GPS ضعيف":"الموقع مباشر", acc>100?"pending":"approved");
   byId("locationHint").textContent = acc>100?`دقة الموقع منخفضة (${acc} م). انتقل لمكان مفتوح لتحسين التتبع.`:`دقة الموقع نحو ${acc} متر.`;
+  if(Number.isFinite(position.coords.heading)){const el=state.driverMarker?.getElement()?.querySelector(".portal-map-marker");if(el)el.style.transform=`rotate(${position.coords.heading}deg)`;}
   drawPickupRoute();
 }
 
