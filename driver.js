@@ -539,9 +539,23 @@ document.addEventListener("click", async event => {
   try {
     if (button.dataset.action === "accept") {
       if (!state.driverData?.online) throw new Error("OFFLINE");
-      await acceptOrderSecure({ orderId: button.dataset.id });
+      await runTransaction(db, async transaction => {
+        const snap = await transaction.get(orderRef);
+        if (!snap.exists()) throw new Error("ORDER_NOT_FOUND");
+        const order = snap.data();
+        if (order.cancelled || Number(order.statusIndex || 0) >= 4) throw new Error("ORDER_NOT_AVAILABLE");
+        if (order.driverId && order.driverId !== state.user.uid) throw new Error("ORDER_TAKEN");
+        transaction.update(orderRef, {
+          driverId: state.user.uid,
+          driverName: state.driverData?.name || state.userData?.name || state.user.email || "كابتن كروة",
+          driverPhone: state.driverData?.phone || "",
+          assignmentStatus: "accepted",
+          acceptedAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+      });
       if (state.lastPosition) await sharePosition(state.lastPosition, true);
-      toast("تم قبول الطلب بأمان عبر الخادم");
+      toast("تم قبول الطلب بنجاح");
     } else if (button.dataset.action === "advance") {
       const order = state.orders.find(item => item.firestoreId === button.dataset.id);
       if (!order) throw new Error("ORDER_NOT_FOUND");
@@ -551,12 +565,17 @@ document.addEventListener("click", async event => {
         otp = prompt("أدخل رمز بدء الرحلة المكوّن من 4 أرقام:", "") || "";
         if (!otp) throw new Error("OTP_REQUIRED");
       }
-      await advanceTripSecure({ orderId: button.dataset.id, otp });
+      if (next === 3 && String(otp).trim() !== String(order.tripOtp || "").trim()) throw new Error("OTP_INVALID");
+      const fields = { statusIndex: next, updatedAt: serverTimestamp() };
+      if (next === 2) fields.arrivedAt = serverTimestamp();
+      if (next === 3) fields.startedAt = serverTimestamp();
+      if (next === 4) { fields.completedAt = serverTimestamp(); fields.paymentStatus = "paid"; }
+      await updateDoc(orderRef, fields);
       toast(statuses[next]);
     }
   } catch (error) {
     console.error(error);
-    toast(error.message === "OFFLINE" ? "فعّل حالة الاتصال أولًا" : error.message === "OTP_REQUIRED" ? "يجب إدخال رمز بدء الرحلة" : driverCallableMessage(error, button.dataset.action === "accept" ? "قبول الطلب" : "تحديث حالة الرحلة"));
+    toast(error.message === "OFFLINE" ? "فعّل حالة الاتصال أولًا" : error.message === "OTP_REQUIRED" ? "يجب إدخال رمز بدء الرحلة" : error.message === "OTP_INVALID" ? "رمز بدء الرحلة غير صحيح" : error.message === "ORDER_TAKEN" ? "سبق أن قبل كابتن آخر هذا الطلب" : error.message === "ORDER_NOT_FOUND" ? "الطلب غير موجود" : error.message === "ORDER_NOT_AVAILABLE" ? "الطلب لم يعد متاحًا" : driverCallableMessage(error, button.dataset.action === "accept" ? "قبول الطلب" : "تحديث حالة الرحلة"));
   } finally {
     busy(button, false);
   }

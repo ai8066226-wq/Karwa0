@@ -532,18 +532,6 @@ function requireUser() {
 
 async function createOrder(type, title, route, price, options = {}) {
   if (!requireUser()) return false;
-  if (type === "ride") {
-    const result = await createRideOrderSecure({
-      title, route, vehicle: state.vehicle, payment: options.payment || "نقدًا",
-      pickupLocation: options.pickupLocation || null,
-      destinationLocation: options.destinationLocation || null,
-      distanceKm: Number(options.distanceKm || 0), durationMin: Number(options.durationMin || 0),
-      routeSource: options.routeSource || "", scheduledAt: options.scheduledAt || null, couponCode: byId("couponCode")?.value?.trim() || ""
-    });
-    state.ridePrice = Number(result.data.price || state.ridePrice);
-    showToast(`تم الحجز • السعر النهائي ${formatMoney(result.data.price)}${Number(result.data.discount||0)>0?` • خصم ${formatMoney(result.data.discount)}`:""}${Number(result.data.surgeMultiplier||1)>1?` • طلب مرتفع ×${result.data.surgeMultiplier}`:""}`);
-    return true;
-  }
   const createdAtISO = new Date().toISOString();
   const orderRef = doc(collection(db, "orders"));
   const order = {
@@ -599,9 +587,11 @@ async function createOrder(type, title, route, price, options = {}) {
   return true;
 }
 
-byId("applyCoupon")?.addEventListener("click", async () => {
+byId("applyCoupon")?.addEventListener("click", () => {
   if (!requireUser() || !state.routeDistanceKm) return showToast("حدد المسار أولًا");
-  try { const q=await quoteRideSecure({vehicle:state.vehicle,distanceKm:state.routeDistanceKm,durationMin:state.routeDurationMin,couponCode:byId("couponCode").value.trim()}); state.ridePrice=Number(q.data.price); byId("ridePrice").textContent=formatMoney(state.ridePrice); byId("couponStatus").textContent=q.data.couponValid ? `تم تطبيق خصم ${formatMoney(q.data.discount)}${Number(q.data.surgeMultiplier)>1?` • معامل الطلب ×${q.data.surgeMultiplier}`:""}` : "الكود غير صالح أو لا ينطبق على هذه الرحلة"; } catch(e){ console.error(e); showToast(customerCallableMessage(e, "حساب السعر والكوبون")); }
+  const code = byId("couponCode").value.trim();
+  byId("couponStatus").textContent = code ? "الكوبونات المتقدمة تحتاج الخادم؛ تم اعتماد السعر المحلي للمشوار." : "أدخل رمز الكوبون";
+  calculateRidePrice();
 });
 
 byId("bookRide").addEventListener("click", async event => {
@@ -726,9 +716,12 @@ byId("cancelOrder").addEventListener("click", async event => {
   const button = event.currentTarget;
   setButtonBusy(button, true, "جاري الإلغاء…");
   try {
-    await cancelOrderSecure({
-      orderId: state.activeOrder.firestoreId,
-      reason: prompt("سبب الإلغاء (اختياري):", "") || ""
+    await updateDoc(doc(db, "orders", state.activeOrder.firestoreId), {
+      cancelled: true,
+      cancellationReason: prompt("سبب الإلغاء (اختياري):", "") || "",
+      cancelledBy: "customer",
+      cancelledAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
     });
     showToast("تم إلغاء الطلب");
   } catch (error) {
