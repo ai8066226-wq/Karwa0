@@ -2154,7 +2154,7 @@ body.customer-map-mode .mobile-navigation{display:none!important}
                 <button type="button" class="customer-settings-action" id="customerSettingsAddresses">العناوين المحفوظة</button>
                 <button type="button" class="customer-settings-action" id="customerSettingsSupport">المساعدة والدعم</button>
                 <button type="button" class="customer-settings-action" data-customer-settings-view="profile">الملف الشخصي</button>
-                <a class="customer-settings-action" href="./driver.html">بوابة الكابتن</a>
+                
                 <button type="button" class="customer-settings-action danger" id="customerSettingsLogout">تسجيل الخروج</button>
               </div>
             </div>
@@ -2298,7 +2298,7 @@ body.customer-map-mode .mobile-navigation{display:none!important}
                   <strong>بوابة الكابتن</strong>
                   <small>قدّم طلب الانضمام أو استلم الرحلات</small>
                 </div>
-                <a class="secondary-button" href="./driver.html">فتح</a>
+                <span class="muted">حساب العميل مستقل عن حساب الكابتن</span>
               </div>
 
               <div class="setting" id="adminPortalSetting" hidden>
@@ -2416,6 +2416,12 @@ body.customer-map-mode .mobile-navigation{display:none!important}
         <div class="field" id="nameField" hidden>
           <label for="authName">الاسم الكامل</label>
           <input id="authName" autocomplete="name" placeholder="مثال: محمد علي">
+        </div>
+
+        <div class="field" id="roleField" hidden>
+          <label for="authRole">نوع الحساب</label>
+          <select id="authRole"><option value="customer">👤 عميل</option><option value="driverApplicant">🚕 كابتن</option><option value="serviceApplicant">🧰 خدمات أخرى</option></select>
+          <small style="display:block;margin-top:7px;color:#64748b">نوع الحساب ثابت بعد الإنشاء: عميل، كابتن، أو خدمات أخرى. كل نوع له بوابته وصلاحياته المستقلة.</small>
         </div>
 
         <div class="field">

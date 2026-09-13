@@ -833,8 +833,15 @@ onAuthStateChanged(auth, user => {
     state.userData = snapshot.data();
     if (state.userData.role === "driver") {
       openDriverDashboard();
-    } else if (state.userData.role === "customer") {
+    } else if (state.userData.role === "driverApplicant" || state.userData.role === "serviceApplicant" || state.userData.role === "serviceProvider") {
       openApplication();
+      if (state.userData.role === "serviceApplicant" || state.userData.role === "serviceProvider") {
+        const service = byId("serviceType");
+        if (service) { service.value = "other"; service.disabled = true; updateVehicleApplicationFields(); }
+      }
+    } else if (state.userData.role === "customer") {
+      byId("deniedMessage").textContent = "هذا حساب عميل ولا يمكن استخدامه في بوابة الكابتن. أنشئ حساب كابتن مستقلًا من شاشة التسجيل الرئيسية.";
+      showView("denied");
     } else {
       byId("deniedMessage").textContent = "هذا حساب مدير ومخصص للوحة الإدارة فقط. استخدم حساب كابتن مستقلًا.";
       showView("denied");

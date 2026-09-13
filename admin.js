@@ -377,31 +377,23 @@ document.addEventListener("click", async event => {
         reviewedAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
+      const isOtherService = application.serviceType === "other";
       batch.set(doc(db, "users", id), {
-        role: "driver",
+        role: isOtherService ? "serviceProvider" : "driver",
         updatedAt: serverTimestamp()
       }, { merge: true });
-      batch.set(doc(db, "drivers", id), {
-        userId: id,
-        name: application.name,
-        email: application.email,
-        phone: application.phone,
-        serviceType: application.serviceType || "taxi",
-        vehicleType: application.vehicleType,
-        vehicleMake: application.vehicleMake || "",
-        vehicleModel: application.vehicleModel || "",
-        vehicleCondition: application.vehicleCondition || "",
-        plate: application.plate,
-        city: application.city,
-        online: false,
-        blocked: false,
-        warningCount: 0,
-        warningMessage: "",
-        approvedAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      }, { merge: true });
+      if (!isOtherService) {
+        batch.set(doc(db, "drivers", id), {
+          userId: id, name: application.name, email: application.email, phone: application.phone,
+          serviceType: application.serviceType || "taxi", vehicleType: application.vehicleType,
+          vehicleMake: application.vehicleMake || "", vehicleModel: application.vehicleModel || "",
+          vehicleCondition: application.vehicleCondition || "", plate: application.plate, city: application.city,
+          online: false, blocked: false, warningCount: 0, warningMessage: "",
+          approvedAt: serverTimestamp(), updatedAt: serverTimestamp()
+        }, { merge: true });
+      }
       await batch.commit();
-      toast("تم قبول الكابتن وتفعيل حسابه");
+      toast(application.serviceType === "other" ? "تم قبول مزود الخدمة وتفعيل حسابه" : "تم قبول الكابتن وتفعيل حسابه");
     } else if (button.dataset.action === "reject") {
       const note = prompt("سبب الرفض أو المطلوب تعديله:", "يرجى مراجعة بيانات المركبة")?.trim();
       if (!note) return;

@@ -434,6 +434,7 @@ function setAuthMode(mode) {
   byId("loginTab").classList.toggle("active", !registering);
   byId("registerTab").classList.toggle("active", registering);
   byId("nameField").hidden = !registering;
+  byId("roleField").hidden = !registering;
   byId("authName").required = registering;
   byId("authPassword").autocomplete = registering ? "new-password" : "current-password";
   byId("authSubmit").textContent = registering ? "إنشاء الحساب" : "تسجيل الدخول";
@@ -568,6 +569,7 @@ byId("authForm").addEventListener("submit", async event => {
   const email = byId("authEmail").value.trim();
   const password = byId("authPassword").value;
   const name = byId("authName").value.trim();
+  const selectedRole = byId("authRole")?.value || "customer";
   const submit = byId("authSubmit");
   byId("authMessage").textContent = "";
 
@@ -584,20 +586,21 @@ byId("authForm").addEventListener("submit", async event => {
       await setDoc(doc(db, "users", credential.user.uid), {
         name,
         email,
-        role: "customer",
-        balance: 25000,
+        role: selectedRole,
+        balance: selectedRole === "customer" ? 25000 : 0,
         notifications: true,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
       state.name = name;
-      state.role = "customer";
-      state.balance = 25000;
+      state.role = selectedRole;
+      state.balance = selectedRole === "customer" ? 25000 : 0;
       state.notifications = true;
       renderProfile();
       renderBalance();
       renderNotificationSwitch();
-      showToast("تم إنشاء حسابك بنجاح");
+      if (selectedRole === "driverApplicant" || selectedRole === "serviceApplicant") { window.location.replace("./driver.html"); return; }
+      showToast("تم إنشاء حساب العميل بنجاح");
     } else {
       await signInWithEmailAndPassword(auth, email, password);
       showToast("مرحبًا بعودتك");
@@ -1600,6 +1603,18 @@ onAuthStateChanged(auth, async user => {
   state.profileRetryTimer = null;
   byId("connectionBadge").textContent = "متصل ومحفوظ سحابيًا";
   try {
+    const roleSnap = await getDoc(doc(db, "users", user.uid));
+    const accountRole = roleSnap.exists() ? roleSnap.data().role : null;
+    if (["driver","driverApplicant","serviceApplicant","serviceProvider"].includes(accountRole)) {
+      window.location.replace("./driver.html");
+      return;
+    }
+    if (accountRole && accountRole !== "customer") {
+      await signOut(auth);
+      openAuthModal();
+      byId("authMessage").textContent = "هذا الحساب غير مخصص لتطبيق العميل.";
+      return;
+    }
     await startVerifiedCustomerSession(user);
   } catch (error) {
     console.error(error);
