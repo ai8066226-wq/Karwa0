@@ -96,6 +96,11 @@ const state = {
   ridePrice: 6500,
   payment: "نقدًا",
   cart: [],
+  restaurants: [],
+  restaurantDraftMeals: [],
+  restaurantGps: null,
+  selectedMeal: null,
+  unsubscribeRestaurants: null,
   orders: [],
   activeOrder: null,
   balance: 0,
@@ -734,7 +739,8 @@ async function createOrder(type, title, route, price, options = {}) {
     statusIndex: 0,
     cancelled: false,
     createdAt: serverTimestamp(),
-    createdAtISO
+    createdAtISO,
+    ...(options.foodDetails ? { foodDetails: options.foodDetails } : {})
   };
 
   const batch = writeBatch(db);
@@ -824,6 +830,84 @@ byId("bookParcel").addEventListener("click", async event => {
   }
 });
 
+
+function restaurantSafeText(value) {
+  return String(value ?? "").replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[char]));
+}
+
+function renderRestaurantDraftMeals() {
+  const host = byId("draftMeals"); if (!host) return;
+  host.innerHTML = state.restaurantDraftMeals.map((meal, index) => `<span class="draft-meal"><strong>${restaurantSafeText(meal.name)}</strong><span>${formatMoney(meal.price)}</span><button type="button" data-remove-draft-meal="${index}" aria-label="حذف">×</button></span>`).join("");
+  host.querySelectorAll("[data-remove-draft-meal]").forEach(button => button.addEventListener("click", () => {
+    state.restaurantDraftMeals.splice(Number(button.dataset.removeDraftMeal), 1); renderRestaurantDraftMeals();
+  }));
+}
+
+function renderRestaurants() {
+  const host = byId("restaurantMarketplace"); if (!host) return;
+  if (!state.restaurants.length) { host.innerHTML = '<div class="restaurant-empty">لا توجد إعلانات مطاعم حتى الآن. يمكنك إضافة أول مطعم.</div>'; return; }
+  host.innerHTML = state.restaurants.map(restaurant => {
+    const meals = Array.isArray(restaurant.meals) ? restaurant.meals : [];
+    const gps = restaurant.location && Number.isFinite(Number(restaurant.location.latitude)) ? `${Number(restaurant.location.latitude).toFixed(5)}, ${Number(restaurant.location.longitude).toFixed(5)}` : "غير محدد";
+    return `<article class="restaurant-card"><header class="restaurant-card-head"><h3>🍴 ${restaurantSafeText(restaurant.name)}</h3><div class="restaurant-card-meta"><span>📍 ${restaurantSafeText(restaurant.address)}</span><span>• ${meals.length} وجبة</span></div></header><div class="restaurant-card-contact"><span>☎️ ${restaurantSafeText(restaurant.phone)}</span><span>GPS: ${restaurantSafeText(gps)}</span></div><div class="restaurant-meals">${meals.map((meal, index) => `<button type="button" class="restaurant-meal-card" data-restaurant-id="${restaurantSafeText(restaurant.firestoreId)}" data-meal-index="${index}"><span class="restaurant-meal-icon">🍽️</span><span><strong>${restaurantSafeText(meal.name)}</strong><small>${restaurantSafeText(meal.description || "اضغط لعرض تفاصيل الوجبة")}</small></span><span class="restaurant-meal-price">${formatMoney(meal.price)}</span></button>`).join("") || '<small>لا توجد وجبات متاحة حاليًا</small>'}</div></article>`;
+  }).join("");
+  host.querySelectorAll(".restaurant-meal-card").forEach(button => button.addEventListener("click", () => {
+    const restaurant = state.restaurants.find(item => item.firestoreId === button.dataset.restaurantId);
+    const meal = restaurant?.meals?.[Number(button.dataset.mealIndex)]; if (!restaurant || !meal) return;
+    state.selectedMeal = { ...meal, restaurantId: restaurant.firestoreId, restaurantName: restaurant.name, restaurantAddress: restaurant.address, restaurantPhone: restaurant.phone, restaurantLocation: restaurant.location || null };
+    byId("mealDetailRestaurant").textContent = restaurant.name;
+    byId("mealDetailTitle").textContent = meal.name;
+    byId("mealDetailDescription").textContent = meal.description || "لا توجد تفاصيل إضافية لهذه الوجبة.";
+    byId("mealDetailPrice").textContent = formatMoney(meal.price);
+    byId("mealDetailBackdrop").hidden = false;
+  }));
+}
+
+function subscribeRestaurants() {
+  state.unsubscribeRestaurants?.();
+  state.unsubscribeRestaurants = onSnapshot(collection(db, "restaurants"), snapshot => {
+    state.restaurants = snapshot.docs.map(item => ({ firestoreId: item.id, ...item.data() })).filter(item => item.active !== false).sort((a,b) => String(a.name||"").localeCompare(String(b.name||""), "ar"));
+    renderRestaurants();
+  }, error => { console.error(error); const host=byId("restaurantMarketplace"); if(host) host.innerHTML='<div class="restaurant-empty">تعذر تحميل المطاعم. تأكد من نشر قواعد Firestore الجديدة.</div>'; });
+}
+
+byId("openRestaurantCreator")?.addEventListener("click", () => { if (!requireUser()) return; byId("restaurantCreator").hidden = false; byId("restaurantCreator").scrollIntoView({behavior:"smooth",block:"nearest"}); });
+byId("closeRestaurantCreator")?.addEventListener("click", () => byId("restaurantCreator").hidden = true);
+byId("captureRestaurantGps")?.addEventListener("click", () => {
+  if (!navigator.geolocation) { showToast("GPS غير مدعوم في هذا الجهاز"); return; }
+  const button=byId("captureRestaurantGps"); button.disabled=true; button.textContent="جارٍ تحديد الموقع…";
+  navigator.geolocation.getCurrentPosition(position => {
+    state.restaurantGps={latitude:position.coords.latitude,longitude:position.coords.longitude,accuracy:position.coords.accuracy};
+    byId("restaurantGpsStatus").textContent=`تم تحديد الموقع ✓ (${position.coords.latitude.toFixed(5)}, ${position.coords.longitude.toFixed(5)})`;
+    button.disabled=false; button.textContent="📍 تحديث موقع GPS";
+  }, () => { button.disabled=false; button.textContent="📍 تحديد موقعي الحالي"; showToast("تعذر الوصول إلى GPS. اسمح للموقع باستخدام الموقع الجغرافي."); }, {enableHighAccuracy:true,timeout:12000,maximumAge:30000});
+});
+byId("addRestaurantMeal")?.addEventListener("click", () => {
+  const name=byId("mealName").value.trim(), description=byId("mealDescription").value.trim(), price=Number(byId("mealPrice").value);
+  if (!name || !Number.isFinite(price) || price <= 0) { showToast("أدخل اسم الوجبة وسعرًا صحيحًا"); return; }
+  if (state.restaurantDraftMeals.length >= 30) { showToast("الحد الأقصى 30 وجبة لكل إعلان"); return; }
+  state.restaurantDraftMeals.push({name,description,price:Math.round(price)}); byId("mealName").value=""; byId("mealDescription").value=""; byId("mealPrice").value=""; renderRestaurantDraftMeals();
+});
+byId("publishRestaurant")?.addEventListener("click", async event => {
+  if (!requireUser()) return;
+  const name=byId("restaurantName").value.trim(), address=byId("restaurantAddress").value.trim(), phone=byId("restaurantPhone").value.trim();
+  if (name.length<2 || address.length<3 || phone.replace(/\D/g,"").length<8) { showToast("أكمل اسم المطعم والعنوان ورقم الهاتف بشكل صحيح"); return; }
+  if (!state.restaurantGps) { showToast("حدد موقع المطعم GPS قبل النشر"); return; }
+  if (!state.restaurantDraftMeals.length) { showToast("أضف وجبة واحدة على الأقل"); return; }
+  const button=event.currentTarget; setButtonBusy(button,true,"جاري النشر…");
+  try {
+    await addDoc(collection(db,"restaurants"), {ownerId:state.user.uid,name,address,phone,location:{...state.restaurantGps},meals:state.restaurantDraftMeals.map(m=>({...m})),active:true,createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
+    state.restaurantDraftMeals=[]; state.restaurantGps=null; renderRestaurantDraftMeals(); ["restaurantName","restaurantAddress","restaurantPhone"].forEach(id=>byId(id).value=""); byId("restaurantGpsStatus").textContent="لم يتم تحديد الموقع بعد"; byId("restaurantCreator").hidden=true; showToast("تم نشر إعلان المطعم بنجاح");
+  } catch(error) { console.error(error); showToast("تعذر نشر المطعم. تأكد من نشر قواعد Firestore الجديدة."); }
+  finally { setButtonBusy(button,false); }
+});
+byId("closeMealDetail")?.addEventListener("click",()=>byId("mealDetailBackdrop").hidden=true);
+byId("mealDetailBackdrop")?.addEventListener("click",event=>{if(event.target===event.currentTarget) event.currentTarget.hidden=true;});
+byId("addDetailedMeal")?.addEventListener("click",()=>{
+  const meal=state.selectedMeal; if(!meal)return; state.cart.push({name:meal.name,price:Number(meal.price),restaurantId:meal.restaurantId,restaurantName:meal.restaurantName,restaurantAddress:meal.restaurantAddress,restaurantPhone:meal.restaurantPhone,restaurantLocation:meal.restaurantLocation}); renderCart(); byId("mealDetailBackdrop").hidden=true; showToast("تمت إضافة الوجبة إلى الطلب");
+});
+subscribeRestaurants();
+
 document.querySelectorAll(".add-food-button").forEach(button => {
   button.addEventListener("click", () => {
     state.cart.push({ name: button.dataset.food, price: Number(button.dataset.price) });
@@ -846,7 +930,9 @@ byId("orderFood").addEventListener("click", async event => {
   const button = event.currentTarget;
   setButtonBusy(button, true, "جاري الطلب…");
   try {
-    const saved = await createOrder("food", title, "المطعم ← موقعك الحالي", total, { payment: "نقدًا" });
+    const restaurantNames = [...new Set(state.cart.map(item => item.restaurantName).filter(Boolean))];
+    const firstRestaurant = state.cart.find(item => item.restaurantName);
+    const saved = await createOrder("food", title, restaurantNames.length === 1 ? `${restaurantNames[0]} ← موقعك الحالي` : "المطعم ← موقعك الحالي", total, { payment: "نقدًا", foodDetails: { items: state.cart.map(item => ({ name:item.name, price:item.price, restaurantId:item.restaurantId || null, restaurantName:item.restaurantName || "" })), restaurantName:firstRestaurant?.restaurantName || "", restaurantAddress:firstRestaurant?.restaurantAddress || "", restaurantPhone:firstRestaurant?.restaurantPhone || "", restaurantLocation:firstRestaurant?.restaurantLocation || null } });
     if (saved) {
       state.cart = [];
       renderCart();
