@@ -544,6 +544,17 @@ byId("applicationForm").addEventListener("submit", async event => {
   }
 });
 
+function formatOrderCreatedAt(order) {
+  let date = null;
+  if (order?.createdAt?.toDate) date = order.createdAt.toDate();
+  else if (order?.createdAt?.seconds) date = new Date(Number(order.createdAt.seconds) * 1000);
+  else if (order?.createdAtISO) date = new Date(order.createdAtISO);
+  if (!date || Number.isNaN(date.getTime())) return "—";
+  const datePart = new Intl.DateTimeFormat("ar-IQ", { year:"numeric", month:"2-digit", day:"2-digit" }).format(date);
+  const timePart = new Intl.DateTimeFormat("ar-IQ", { hour:"2-digit", minute:"2-digit", hour12:true }).format(date);
+  return `${datePart} • ${timePart}`;
+}
+
 function distanceToOrder(order){if(!state.lastPosition||!order.pickupLocation)return Infinity;const a={latitude:state.lastPosition.coords.latitude,longitude:state.lastPosition.coords.longitude},b=order.pickupLocation;const R=6371,toRad=v=>v*Math.PI/180,dLat=toRad(b.latitude-a.latitude),dLon=toRad(b.longitude-a.longitude);const x=Math.sin(dLat/2)**2+Math.cos(toRad(a.latitude))*Math.cos(toRad(b.latitude))*Math.sin(dLon/2)**2;return 2*R*Math.asin(Math.sqrt(x));}
 function orderCard(order, mode) {
   const statusIndex = Number(order.statusIndex || 0);
@@ -561,7 +572,7 @@ function orderCard(order, mode) {
       </div>
       <p class="order-route">${escapeHtml(order.route)}</p>
       <div class="order-bottom">
-        <div class="order-meta"><span>${escapeHtml(order.id)}</span><span>${escapeHtml(order.payment || "نقدًا")}</span>${mode === "available" && Number.isFinite(distanceToOrder(order)) ? `<span>يبعد ${distanceToOrder(order).toFixed(1)} كم</span>` : ""}</div>
+        <div class="order-meta"><span>${escapeHtml(order.id)}</span><span>${escapeHtml(order.payment || "نقدًا")}</span>${mode === "available" ? `<span>🗓️ ${escapeHtml(formatOrderCreatedAt(order))}</span>` : ""}${mode === "available" && Number.isFinite(distanceToOrder(order)) ? `<span>يبعد ${distanceToOrder(order).toFixed(1)} كم</span>` : ""}</div>
         ${order.distanceKm ? `<div class="order-meta"><span>المشوار ${Number(order.distanceKm).toFixed(1)} كم</span><span>≈ ${Math.round(Number(order.durationMin||0))} دقيقة</span><span>صافي الكابتن ${money(order.driverEarnings)}</span></div>` : ""}
         <span class="order-price">${money(order.price)}</span>
       </div>
