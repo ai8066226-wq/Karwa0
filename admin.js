@@ -139,8 +139,19 @@ function ratingSummary(driverId) {
   return { count: ratings.length, average };
 }
 
+function driverTripSummary(driverId) {
+  const trips = state.orders.filter(order => order.driverId === driverId);
+  return {
+    total: trips.length,
+    completed: trips.filter(order => !order.cancelled && Number(order.statusIndex || 0) >= 4).length,
+    cancelled: trips.filter(order => order.cancelled === true).length,
+    active: trips.filter(order => !order.cancelled && Number(order.statusIndex || 0) < 4).length
+  };
+}
+
 function driverCard(driver) {
   const rating = ratingSummary(driver.firestoreId);
+  const trips = driverTripSummary(driver.firestoreId);
   const blocked = driver.blocked === true;
   const status = blocked ? "محظور" : driver.online ? "متصل" : "غير متصل";
   const statusClass = blocked ? "rejected" : driver.online ? "approved" : "pending";
@@ -155,7 +166,13 @@ function driverCard(driver) {
         <span class="status-chip ${statusClass}">${status}</span>
       </div>
       <p class="order-route">${escapeHtml(driver.city || "-")} • ${escapeHtml(driver.vehicleType || "-")} • ${escapeHtml(driver.plate || "-")}</p>
-      <div class="order-meta"><span>${escapeHtml(driver.phone || "بدون هاتف")}</span><span>${escapeHtml(driver.email || "")}</span></div>
+      <div class="order-meta"><span>الهاتف: ${escapeHtml(driver.phone || "بدون هاتف")}</span><span>البريد: ${escapeHtml(driver.email || "-")}</span></div>
+      <div class="order-meta driver-trip-stats">
+        <span><strong>${trips.completed}</strong> مكتملة</span>
+        <span><strong>${trips.cancelled}</strong> ملغاة</span>
+        <span><strong>${trips.active}</strong> جارية</span>
+        <span><strong>${trips.total}</strong> إجمالي الرحلات</span>
+      </div>
       <div class="reputation-row">
         <span class="stars">★ ${rating.count ? rating.average.toFixed(1) : "جديد"}</span>
         <span>${rating.count} تقييم</span>
@@ -174,6 +191,8 @@ function renderDrivers() {
   const sorted = [...state.drivers].sort((a, b) => {
     if (a.blocked === true && b.blocked !== true) return -1;
     if (b.blocked === true && a.blocked !== true) return 1;
+    const completedDiff = driverTripSummary(b.firestoreId).completed - driverTripSummary(a.firestoreId).completed;
+    if (completedDiff) return completedDiff;
     return String(a.name || "").localeCompare(String(b.name || ""), "ar");
   });
   byId("driversList").innerHTML = sorted.length
@@ -281,6 +300,7 @@ function openDashboard() {
   const ordersUnsubscribe = onSnapshot(collection(db, "orders"), snapshot => {
     state.orders = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
     renderOrders();
+    renderDrivers();
     renderMetrics();
   });
   const driversUnsubscribe = onSnapshot(collection(db, "drivers"), snapshot => {

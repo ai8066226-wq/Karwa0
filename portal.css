@@ -417,3 +417,21 @@ body{letter-spacing:.01em}.topbar{box-shadow:0 5px 22px rgba(16,32,68,.04)}.shel
 /* Phase 17 — Waze-style navigation */
 .driver-nav-strip{grid-template-columns:repeat(4,1fr)!important}.nav-next-turn{margin-top:10px;padding:12px 14px;border-radius:16px;background:#102044;color:#fff;display:flex;gap:12px;align-items:center}.nav-next-turn .turn-icon{font-size:28px;min-width:38px;text-align:center}.nav-next-turn small{display:block;opacity:.72}.nav-next-turn strong{display:block;margin-top:3px;font-size:14px}.portal-map-marker.driver{will-change:transform}.nav-provider{font-size:11px;color:#64748b;margin-top:7px}.route-alert{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:12px;padding:8px 10px;margin-top:8px;font-size:12px;font-weight:700}
 @media(max-width:600px){.driver-nav-strip{grid-template-columns:1fr 1fr!important}.nav-next-turn{position:relative;z-index:3}}
+
+/* Captain trip summary in admin dashboard */
+.driver-trip-stats {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.driver-trip-stats span {
+  padding: 9px 8px;
+  border: 1px solid rgba(148, 163, 184, .22);
+  border-radius: 12px;
+  text-align: center;
+}
+.driver-trip-stats strong { display: block; font-size: 1.08rem; }
+@media (max-width: 640px) {
+  .driver-trip-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
