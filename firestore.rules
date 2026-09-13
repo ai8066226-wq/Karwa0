@@ -105,8 +105,10 @@ service cloud.firestore { match /databases/{database}/documents {
 
  match /restaurants/{id}{
    allow read:if signed();
-   allow create:if customer()
+   allow create:if signed()
      && request.resource.data.ownerId==request.auth.uid
+     && exists(/databases/$(database)/documents/driverApplications/$(request.auth.uid))
+     && get(/databases/$(database)/documents/driverApplications/$(request.auth.uid)).data.get('serviceType','')=='other' 
      && request.resource.data.active==true
      && request.resource.data.name is string && request.resource.data.name.size()>=2 && request.resource.data.name.size()<=80
      && request.resource.data.address is string && request.resource.data.address.size()>=3 && request.resource.data.address.size()<=160
@@ -115,7 +117,7 @@ service cloud.firestore { match /databases/{database}/documents {
      && request.resource.data.location.latitude is number && request.resource.data.location.latitude>=-90 && request.resource.data.location.latitude<=90
      && request.resource.data.location.longitude is number && request.resource.data.location.longitude>=-180 && request.resource.data.location.longitude<=180
      && request.resource.data.meals is list && request.resource.data.meals.size()>0 && request.resource.data.meals.size()<=30;
-   allow update,delete:if admin()||(customer()&&resource.data.ownerId==request.auth.uid&&request.resource.data.ownerId==request.auth.uid);
+   allow update,delete:if admin()||(signed()&&resource.data.ownerId==request.auth.uid&&request.resource.data.ownerId==request.auth.uid&&get(/databases/$(database)/documents/driverApplications/$(request.auth.uid)).data.get('serviceType','')=='other');
  }
  match /roadReports/{id}{
    allow read:if signed();

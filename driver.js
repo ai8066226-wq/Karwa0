@@ -111,7 +111,9 @@ const state = {
   destinationMarker: null,
   routeLine: null,
   lastRouteAt: 0,
-  lastRoutePoint: null
+  lastRoutePoint: null,
+  restaurantGps: null,
+  restaurantMeals: []
 };
 
 const money = value => Number(value || 0).toLocaleString("ar-IQ") + " د.ع";
@@ -438,12 +440,34 @@ byId("blockedLogout").addEventListener("click", async () => {
   toast("تم تسجيل الخروج");
 });
 
+function renderCaptainRestaurantMeals() {
+  const host = byId("captainMealList"); if (!host) return;
+  byId("captainMealCount").textContent = `${state.restaurantMeals.length} وجبة`;
+  host.innerHTML = state.restaurantMeals.map((meal,index)=>`<div class="captain-meal-item"><span><strong>${String(meal.name).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}</strong><small>${String(meal.description||"بدون تفاصيل").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}</small></span><b>${Number(meal.price).toLocaleString("ar-IQ")} د.ع</b><button type="button" data-remove-captain-meal="${index}">حذف</button></div>`).join("");
+  host.querySelectorAll("[data-remove-captain-meal]").forEach(btn=>btn.addEventListener("click",()=>{state.restaurantMeals.splice(Number(btn.dataset.removeCaptainMeal),1);renderCaptainRestaurantMeals();}));
+}
 function updateVehicleApplicationFields() {
+  const other = byId("serviceType")?.value === "other";
   const isBike = byId("vehicleType")?.value === "دراجة";
-  document.querySelectorAll(".car-only-field").forEach(el => el.classList.toggle("hidden", isBike));
-  ["vehicleMake", "vehicleModel", "vehicleCondition"].forEach(id => { const el=byId(id); if(el) el.required=!isBike; });
+  document.querySelectorAll(".vehicle-service-field").forEach(el => el.classList.toggle("hidden", other));
+  document.querySelectorAll(".car-only-field").forEach(el => el.classList.toggle("hidden", other || isBike));
+  byId("restaurantApplicationFields")?.classList.toggle("hidden", !other);
+  ["vehicleMake", "vehicleModel", "vehicleCondition"].forEach(id => { const el=byId(id); if(el) el.required=!other&&!isBike; });
+  ["vehicleType","plate"].forEach(id=>{const el=byId(id);if(el)el.required=!other;});
 }
 byId("vehicleType")?.addEventListener("change", updateVehicleApplicationFields);
+byId("serviceType")?.addEventListener("change", updateVehicleApplicationFields);
+byId("captainRestaurantGps")?.addEventListener("click",()=>{
+  if(!navigator.geolocation){toast("GPS غير مدعوم في هذا الجهاز");return;}
+  const btn=byId("captainRestaurantGps"); busy(btn,true,"جارٍ تحديد الموقع…");
+  navigator.geolocation.getCurrentPosition(pos=>{state.restaurantGps={latitude:pos.coords.latitude,longitude:pos.coords.longitude,accuracy:pos.coords.accuracy};byId("captainRestaurantGpsStatus").textContent=`تم تحديد الموقع ✓ (${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)})`;busy(btn,false);btn.textContent="📍 تحديث موقع المطعم";},()=>{busy(btn,false);toast("تعذر الوصول إلى GPS. اسمح للموقع باستخدام موقعك الجغرافي.");},{enableHighAccuracy:true,timeout:12000,maximumAge:30000});
+});
+byId("captainAddMeal")?.addEventListener("click",()=>{
+  const name=byId("captainMealName").value.trim(), description=byId("captainMealDescription").value.trim(), price=Number(byId("captainMealPrice").value);
+  if(!name||!Number.isFinite(price)||price<=0){toast("أدخل اسم الوجبة وسعرًا صحيحًا");return;}
+  if(state.restaurantMeals.length>=30){toast("الحد الأقصى 30 وجبة");return;}
+  state.restaurantMeals.push({name,description,price:Math.round(price)});["captainMealName","captainMealDescription","captainMealPrice"].forEach(id=>byId(id).value="");renderCaptainRestaurantMeals();
+});
 
 function fillApplication(data = {}) {
   byId("driverName").value = data.name || state.userData?.name || state.user?.displayName || "";
@@ -511,10 +535,14 @@ byId("applicationForm").addEventListener("submit", async event => {
     toast("أدخل رقم هاتف صحيحًا");
     return;
   }
+  const isRestaurant = byId("serviceType").value === "other";
   const isBike = byId("vehicleType").value === "دراجة";
-  if (!isBike && (!byId("vehicleMake").value.trim() || !byId("vehicleModel").value.trim())) {
-    toast("أدخل نوع/ماركة السيارة وموديلها");
-    return;
+  if (!isRestaurant && !isBike && (!byId("vehicleMake").value.trim() || !byId("vehicleModel").value.trim())) { toast("أدخل نوع/ماركة السيارة وموديلها"); return; }
+  if (isRestaurant) {
+    const rName=byId("captainRestaurantName").value.trim(), rPhone=byId("captainRestaurantPhone").value.trim(), rAddress=byId("captainRestaurantAddress").value.trim();
+    if(rName.length<2||rAddress.length<3||rPhone.replace(/\D/g,"").length<8){toast("أكمل اسم المطعم والعنوان ورقم الهاتف");return;}
+    if(!state.restaurantGps){toast("حدد موقع المطعم GPS");return;}
+    if(!state.restaurantMeals.length){toast("أضف وجبة واحدة على الأقل");return;}
   }
   const button = byId("submitApplication");
   busy(button, true, "جاري الإرسال…");
@@ -525,17 +553,29 @@ byId("applicationForm").addEventListener("submit", async event => {
       email: state.user.email || "",
       phone,
       serviceType: byId("serviceType").value,
-      vehicleType: byId("vehicleType").value,
-      vehicleMake: byId("vehicleType").value === "دراجة" ? "" : byId("vehicleMake").value.trim(),
-      vehicleModel: byId("vehicleType").value === "دراجة" ? "" : byId("vehicleModel").value.trim(),
-      vehicleCondition: byId("vehicleType").value === "دراجة" ? "" : byId("vehicleCondition").value,
-      plate: byId("plate").value.trim(),
+      vehicleType: isRestaurant ? "" : byId("vehicleType").value,
+      vehicleMake: (isRestaurant || byId("vehicleType").value === "دراجة") ? "" : byId("vehicleMake").value.trim(),
+      vehicleModel: (isRestaurant || byId("vehicleType").value === "دراجة") ? "" : byId("vehicleModel").value.trim(),
+      vehicleCondition: (isRestaurant || byId("vehicleType").value === "دراجة") ? "" : byId("vehicleCondition").value,
+      plate: isRestaurant ? "" : byId("plate").value.trim(),
       city: byId("driverCity").value,
       status: "pending",
       submittedAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     }, { merge: true });
-    toast("تم إرسال طلب الانضمام");
+    if (isRestaurant) {
+      await setDoc(doc(db,"restaurants",state.user.uid), {
+        ownerId: state.user.uid,
+        name: byId("captainRestaurantName").value.trim(),
+        address: byId("captainRestaurantAddress").value.trim(),
+        phone: byId("captainRestaurantPhone").value.trim(),
+        location: {...state.restaurantGps},
+        meals: state.restaurantMeals.map(meal=>({...meal})),
+        active: true,
+        createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+      }, {merge:true});
+    }
+    toast(isRestaurant ? "تم إرسال التسجيل ونشر إعلان المطعم" : "تم إرسال طلب الانضمام");
   } catch (error) {
     console.error(error);
     toast("تعذر إرسال الطلب. تأكد من نشر قواعد Firestore الجديدة.");

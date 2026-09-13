@@ -2015,29 +2015,8 @@ body.customer-map-mode .mobile-navigation{display:none!important}
               <div class="service-panel" id="foodPanel">
                 <div class="panel-heading">
                   <div><h2>مطاعم ووجبات</h2><small>اختر مطعمًا ثم اضغط على الوجبة لعرض التفاصيل والسعر</small></div>
-                  <button class="primary-button restaurant-create-toggle" id="openRestaurantCreator" type="button">＋ أضف مطعمك</button>
+                  
                 </div>
-
-                <section class="restaurant-creator" id="restaurantCreator" hidden>
-                  <div class="restaurant-creator-head"><div><strong>إنشاء إعلان مطعم</strong><small>أدخل معلومات المطعم ثم أضف الوجبات المتاحة.</small></div><button class="text-button" id="closeRestaurantCreator" type="button">إغلاق</button></div>
-                  <div class="restaurant-form-grid">
-                    <div class="field"><label for="restaurantName">اسم المطعم</label><input id="restaurantName" maxlength="80" placeholder="مثال: مطعم النخيل"></div>
-                    <div class="field"><label for="restaurantPhone">رقم الهاتف</label><input id="restaurantPhone" inputmode="tel" maxlength="20" placeholder="07xx xxx xxxx"></div>
-                    <div class="field restaurant-address-field"><label for="restaurantAddress">عنوان المطعم</label><input id="restaurantAddress" maxlength="160" placeholder="المدينة، الحي، الشارع"></div>
-                    <div class="field"><label>موقع المطعم GPS</label><button class="gps-capture-button" id="captureRestaurantGps" type="button">📍 تحديد موقعي الحالي</button><small id="restaurantGpsStatus">لم يتم تحديد الموقع بعد</small></div>
-                  </div>
-                  <div class="meal-builder">
-                    <div class="meal-builder-title"><strong>الوجبات المتاحة</strong><small>يمكنك إضافة أكثر من وجبة قبل نشر الإعلان.</small></div>
-                    <div class="restaurant-form-grid meal-fields">
-                      <div class="field"><label for="mealName">اسم الوجبة</label><input id="mealName" maxlength="80" placeholder="مثال: برغر لحم"></div>
-                      <div class="field"><label for="mealPrice">السعر (د.ع)</label><input id="mealPrice" type="number" min="250" step="250" placeholder="9500"></div>
-                      <div class="field restaurant-address-field"><label for="mealDescription">تفاصيل الوجبة</label><input id="mealDescription" maxlength="180" placeholder="المكونات، الحجم، الإضافات..."></div>
-                      <button class="secondary-button add-meal-builder" id="addRestaurantMeal" type="button">＋ إضافة الوجبة</button>
-                    </div>
-                    <div class="draft-meals" id="draftMeals"></div>
-                  </div>
-                  <button class="primary-button publish-restaurant" id="publishRestaurant" type="button">نشر إعلان المطعم</button>
-                </section>
 
                 <div class="restaurant-marketplace" id="restaurantMarketplace"><div class="restaurant-empty">جاري تحميل المطاعم…</div></div>
 

@@ -845,7 +845,7 @@ function renderRestaurantDraftMeals() {
 
 function renderRestaurants() {
   const host = byId("restaurantMarketplace"); if (!host) return;
-  if (!state.restaurants.length) { host.innerHTML = '<div class="restaurant-empty">لا توجد إعلانات مطاعم حتى الآن. يمكنك إضافة أول مطعم.</div>'; return; }
+  if (!state.restaurants.length) { host.innerHTML = '<div class="restaurant-empty">لا توجد مطاعم مسجلة حاليًا.</div>'; return; }
   host.innerHTML = state.restaurants.map(restaurant => {
     const meals = Array.isArray(restaurant.meals) ? restaurant.meals : [];
     const gps = restaurant.location && Number.isFinite(Number(restaurant.location.latitude)) ? `${Number(restaurant.location.latitude).toFixed(5)}, ${Number(restaurant.location.longitude).toFixed(5)}` : "غير محدد";

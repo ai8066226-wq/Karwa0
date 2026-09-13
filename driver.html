@@ -14,7 +14,10 @@
   <link rel="icon" href="./karwa-icon.svg" type="image/svg+xml">
 <style>
 .maplibregl-canvas{direction:ltr!important}.leaflet-tooltip,.leaflet-popup-content{direction:rtl;text-align:right;unicode-bidi:plaintext}.report-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}.report-grid button{border:1px solid #e1e7ef;background:#fff;border-radius:12px;padding:10px;font-weight:800;cursor:pointer}.report-grid button:hover{background:#fff4ef;border-color:#ffb89c}.report-note{width:100%;box-sizing:border-box;margin:0 0 8px;border:1px solid #dfe5ed;border-radius:11px;padding:10px;direction:rtl}.road-report-marker{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:#fff;box-shadow:0 5px 18px rgba(0,0,0,.22);font-size:19px;border:2px solid #ff6b35}.landmark-marker{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:#102044;color:#fff;box-shadow:0 5px 18px rgba(0,0,0,.2);font-size:17px}.report-confirm{margin-top:8px;border:0;border-radius:9px;padding:7px 10px;font-weight:800;cursor:pointer}.driver-landmark-panel{margin-top:12px}.driver-landmark-panel summary{cursor:pointer;font-weight:900}.landmark-form{display:grid;gap:8px;margin-top:10px}
-.road-report-marker{position:relative}.confirm-badge{position:absolute;top:-7px;left:-7px;min-width:18px;height:18px;border-radius:10px;background:#102044;color:#fff;font:700 11px/18px Arial;text-align:center;border:2px solid #fff}</style>
+.road-report-marker{position:relative}.confirm-badge{position:absolute;top:-7px;left:-7px;min-width:18px;height:18px;border-radius:10px;background:#102044;color:#fff;font:700 11px/18px Arial;text-align:center;border:2px solid #fff}
+    .restaurant-application{margin:8px 0 4px;padding:18px;border:1px solid #d9e7e5;border-radius:20px;background:linear-gradient(145deg,#f0fdfa,#fff);box-shadow:0 10px 30px rgba(15,118,110,.06)}
+    .restaurant-app-head,.restaurant-app-head>div,.meal-app-title{display:flex;align-items:center;justify-content:space-between;gap:12px}.restaurant-app-head>div{justify-content:flex-start}.restaurant-app-icon{width:46px;height:46px;display:grid;place-items:center;border-radius:14px;background:#0f766e;color:white;font-size:23px}.restaurant-app-head strong,.meal-app-title strong{display:block;font-size:17px}.restaurant-app-head small,.meal-app-title small{display:block;color:#64748b;margin-top:3px}.restaurant-app-grid{margin-top:16px}.meal-app-box{margin-top:16px;padding-top:16px;border-top:1px solid #dce9e7}.meal-app-title span{font-size:12px;font-weight:800;color:#0f766e;background:#ccfbf1;padding:6px 9px;border-radius:999px}.captain-meal-list{display:grid;gap:8px;margin-top:10px}.captain-meal-item{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:10px;padding:10px 12px;background:white;border:1px solid #e2e8f0;border-radius:13px}.captain-meal-item small{display:block;color:#64748b;margin-top:2px}.captain-meal-item b{color:#0f766e;white-space:nowrap}.captain-meal-item button{border:0;background:#fff1f2;color:#be123c;border-radius:9px;padding:7px 9px;cursor:pointer}@media(max-width:650px){.restaurant-application{padding:14px}.restaurant-app-head{align-items:flex-start}.captain-meal-item{grid-template-columns:1fr auto}.captain-meal-item button{grid-column:2;grid-row:1/3}}
+</style>
 
 <style id="phase20-driver-map-first">
 /* خريطة الكابتن بملء المساحة المرئية مع درج عمليات جانبي */
@@ -237,10 +240,11 @@ body.driver-map-mode #driverView{height:100dvh!important}
               <select id="serviceType" required>
                 <option value="taxi">تكسي — استقبال طلبات الركوب والتوصيل</option>
                 <option value="delivery">توصيل — أغراض وطعام فقط</option>
+                <option value="other">خدمات أخرى — إعلان مطعم</option>
               </select>
-              <small class="muted">كابتن التوصيل لن تظهر له طلبات التكسي.</small>
+              <small class="muted">اختر «خدمات أخرى» إذا كنت تريد تسجيل مطعم وعرض وجباته للعملاء.</small>
             </div>
-            <div class="field">
+            <div class="field vehicle-service-field">
               <label for="vehicleType">نوع المركبة</label>
               <select id="vehicleType" required>
                 <option value="اقتصادي">سيارة اقتصادية</option>
@@ -249,25 +253,44 @@ body.driver-map-mode #driverView{height:100dvh!important}
                 <option value="دراجة">دراجة توصيل</option>
               </select>
             </div>
-            <div class="field car-only-field">
+            <div class="field car-only-field vehicle-service-field">
               <label for="vehicleMake">نوع / ماركة السيارة</label>
               <input id="vehicleMake" placeholder="مثال: تويوتا، كيا، هيونداي">
             </div>
-            <div class="field car-only-field">
+            <div class="field car-only-field vehicle-service-field">
               <label for="vehicleModel">موديل السيارة</label>
               <input id="vehicleModel" placeholder="مثال: كورولا 2022">
             </div>
-            <div class="field car-only-field">
+            <div class="field car-only-field vehicle-service-field">
               <label for="vehicleCondition">حالة السيارة</label>
               <select id="vehicleCondition">
                 <option value="شغالة">شغالة وجاهزة للعمل</option>
                 <option value="غير شغالة">غير شغالة حاليًا</option>
               </select>
             </div>
-            <div class="field">
+            <div class="field vehicle-service-field">
               <label for="plate">رقم اللوحة</label>
               <input id="plate" placeholder="مثال: بغداد 12345" required>
             </div>
+            <section class="restaurant-application full hidden" id="restaurantApplicationFields">
+              <div class="restaurant-app-head"><div><span class="restaurant-app-icon">🍴</span><div><strong>إعلان المطعم</strong><small>ستظهر هذه البيانات والوجبات للعملاء داخل خدمة الطعام.</small></div></div><span class="status-chip pending">خدمة أخرى</span></div>
+              <div class="form-grid restaurant-app-grid">
+                <div class="field"><label for="captainRestaurantName">اسم المطعم</label><input id="captainRestaurantName" maxlength="80" placeholder="مثال: مطعم النخيل"></div>
+                <div class="field"><label for="captainRestaurantPhone">رقم هاتف المطعم</label><input id="captainRestaurantPhone" inputmode="tel" maxlength="20" placeholder="07xx xxx xxxx"></div>
+                <div class="field full"><label for="captainRestaurantAddress">عنوان المطعم</label><input id="captainRestaurantAddress" maxlength="160" placeholder="المدينة، الحي، الشارع"></div>
+                <div class="field full"><label>موقع المطعم GPS</label><button class="secondary wide" id="captainRestaurantGps" type="button">📍 تحديد موقع المطعم الحالي</button><small class="muted" id="captainRestaurantGpsStatus">لم يتم تحديد الموقع بعد</small></div>
+              </div>
+              <div class="meal-app-box">
+                <div class="meal-app-title"><div><strong>الوجبات المتاحة</strong><small>أضف اسم الوجبة والسعر والتفاصيل. يمكن إضافة أكثر من وجبة.</small></div><span id="captainMealCount">0 وجبة</span></div>
+                <div class="form-grid restaurant-app-grid">
+                  <div class="field"><label for="captainMealName">اسم الوجبة</label><input id="captainMealName" maxlength="80" placeholder="مثال: كباب عراقي"></div>
+                  <div class="field"><label for="captainMealPrice">السعر (د.ع)</label><input id="captainMealPrice" type="number" min="250" step="250" placeholder="10000"></div>
+                  <div class="field full"><label for="captainMealDescription">تفاصيل الوجبة</label><input id="captainMealDescription" maxlength="180" placeholder="المكونات، الحجم، الإضافات..."></div>
+                </div>
+                <button class="secondary wide" id="captainAddMeal" type="button">＋ إضافة الوجبة</button>
+                <div class="captain-meal-list" id="captainMealList"></div>
+              </div>
+            </section>
             <div class="field full">
               <label for="driverCity">المدينة</label>
               <select id="driverCity" required>
