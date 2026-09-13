@@ -1,8 +1,4 @@
 {
-  "functions": {
-    "source": "functions",
-    "runtime": "nodejs20"
-  },
   "firestore": {
     "rules": "firestore.rules"
   },
@@ -11,8 +7,7 @@
     "ignore": [
       "firebase.json",
       "**/.*",
-      "**/node_modules/**",
-      "functions/**"
+      "**/node_modules/**"
     ]
   },
   "storage": {

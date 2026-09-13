@@ -166,6 +166,7 @@ function driverCard(driver) {
         <span class="status-chip ${statusClass}">${status}</span>
       </div>
       <p class="order-route">${escapeHtml(driver.city || "-")} • ${escapeHtml(driver.vehicleType || "-")} • ${escapeHtml(driver.plate || "-")}</p>
+      ${driver.vehicleType !== "دراجة" ? `<div class="order-meta"><span>السيارة: ${escapeHtml(driver.vehicleMake || "-")} ${escapeHtml(driver.vehicleModel || "")}</span><span>الحالة: ${escapeHtml(driver.vehicleCondition || "غير محددة")}</span></div>` : `<div class="order-meta"><span>نوع العمل: توصيل أغراض وطعام فقط</span></div>`}
       <div class="order-meta"><span>الهاتف: ${escapeHtml(driver.phone || "بدون هاتف")}</span><span>البريد: ${escapeHtml(driver.email || "-")}</span></div>
       <div class="order-meta driver-trip-stats">
         <span><strong>${trips.completed}</strong> مكتملة</span>
@@ -229,6 +230,7 @@ function applicationCard(application) {
         <span class="status-chip ${status}">${labels[status] || escapeHtml(status)}</span>
       </div>
       <p class="order-route">${escapeHtml(application.city)} • ${escapeHtml(application.vehicleType)} • ${escapeHtml(application.plate)}</p>
+      ${application.vehicleType !== "دراجة" ? `<div class="order-meta"><span>السيارة: ${escapeHtml(application.vehicleMake || "-")} ${escapeHtml(application.vehicleModel || "")}</span><span>الحالة: ${escapeHtml(application.vehicleCondition || "غير محددة")}</span></div>` : `<div class="order-meta"><span>دراجة — توصيل أغراض وطعام فقط</span></div>`}
       <div class="order-meta"><span>${escapeHtml(application.phone)}</span><span>${escapeHtml(application.email)}</span></div>
       ${actions}
     </article>`;
@@ -348,6 +350,9 @@ document.addEventListener("click", async event => {
         email: application.email,
         phone: application.phone,
         vehicleType: application.vehicleType,
+        vehicleMake: application.vehicleMake || "",
+        vehicleModel: application.vehicleModel || "",
+        vehicleCondition: application.vehicleCondition || "",
         plate: application.plate,
         city: application.city,
         online: false,

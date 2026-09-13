@@ -1,0 +1,6 @@
+هذه النسخة لا تحتوي على Firebase Functions.
+
+للتعديلات الجديدة الخاصة بالكباتن والدراجات: انشر firestore.rules فقط، ثم ارفع ملفات الواجهة إلى الاستضافة.
+
+الأمر لنشر القواعد فقط:
+firebase deploy --only firestore:rules

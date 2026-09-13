@@ -438,10 +438,21 @@ byId("blockedLogout").addEventListener("click", async () => {
   toast("تم تسجيل الخروج");
 });
 
+function updateVehicleApplicationFields() {
+  const isBike = byId("vehicleType")?.value === "دراجة";
+  document.querySelectorAll(".car-only-field").forEach(el => el.classList.toggle("hidden", isBike));
+  ["vehicleMake", "vehicleModel", "vehicleCondition"].forEach(id => { const el=byId(id); if(el) el.required=!isBike; });
+}
+byId("vehicleType")?.addEventListener("change", updateVehicleApplicationFields);
+
 function fillApplication(data = {}) {
   byId("driverName").value = data.name || state.userData?.name || state.user?.displayName || "";
   byId("driverPhone").value = data.phone || "";
   byId("vehicleType").value = data.vehicleType || "اقتصادي";
+  byId("vehicleMake").value = data.vehicleMake || "";
+  byId("vehicleModel").value = data.vehicleModel || "";
+  byId("vehicleCondition").value = data.vehicleCondition || "شغالة";
+  updateVehicleApplicationFields();
   byId("plate").value = data.plate || "";
   byId("driverCity").value = data.city || "بغداد";
 }
@@ -499,6 +510,11 @@ byId("applicationForm").addEventListener("submit", async event => {
     toast("أدخل رقم هاتف صحيحًا");
     return;
   }
+  const isBike = byId("vehicleType").value === "دراجة";
+  if (!isBike && (!byId("vehicleMake").value.trim() || !byId("vehicleModel").value.trim())) {
+    toast("أدخل نوع/ماركة السيارة وموديلها");
+    return;
+  }
   const button = byId("submitApplication");
   busy(button, true, "جاري الإرسال…");
   try {
@@ -508,6 +524,9 @@ byId("applicationForm").addEventListener("submit", async event => {
       email: state.user.email || "",
       phone,
       vehicleType: byId("vehicleType").value,
+      vehicleMake: byId("vehicleType").value === "دراجة" ? "" : byId("vehicleMake").value.trim(),
+      vehicleModel: byId("vehicleType").value === "دراجة" ? "" : byId("vehicleModel").value.trim(),
+      vehicleCondition: byId("vehicleType").value === "دراجة" ? "" : byId("vehicleCondition").value,
       plate: byId("plate").value.trim(),
       city: byId("driverCity").value,
       status: "pending",
@@ -552,6 +571,8 @@ function renderOrders() {
   const now=Date.now();
   const available = state.orders.filter(order => {
     if(order.cancelled || Number(order.statusIndex || 0) >= 4 || order.driverId) return false;
+    // دراجات التوصيل تستلم طلبات الغرض والطعام فقط، ولا ترى طلبات التكسي.
+    if(state.driverData?.vehicleType === "دراجة" && order.type === "ride") return false;
     const exp=order.dispatchExpiresAt?.seconds ? order.dispatchExpiresAt.seconds*1000 : new Date(order.dispatchExpiresAt||0).getTime();
     return !exp || exp<=now || !Array.isArray(order.dispatchCandidateIds) || !order.dispatchCandidateIds.length || order.dispatchCandidateIds.includes(state.user?.uid);
   }).sort((a,b) => distanceToOrder(a) - distanceToOrder(b));
