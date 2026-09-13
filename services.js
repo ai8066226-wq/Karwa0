@@ -571,11 +571,12 @@ byId("applicationForm").addEventListener("submit", async event => {
         phone: byId("captainRestaurantPhone").value.trim(),
         location: {...state.restaurantGps},
         meals: state.restaurantMeals.map(meal=>({...meal})),
-        active: true,
+        active: false,
+        approvalStatus: "pending",
         createdAt: serverTimestamp(), updatedAt: serverTimestamp()
       }, {merge:true});
     }
-    toast(isRestaurant ? "تم إرسال التسجيل ونشر إعلان المطعم" : "تم إرسال طلب الانضمام");
+    toast(isRestaurant ? "تم إرسال طلب الخدمة إلى الإدارة للموافقة. لن يظهر المطعم للعملاء قبل الاعتماد." : "تم إرسال طلب الكابتن إلى الإدارة للموافقة");
   } catch (error) {
     console.error(error);
     toast("تعذر إرسال الطلب. تأكد من نشر قواعد Firestore الجديدة.");

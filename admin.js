@@ -382,7 +382,15 @@ document.addEventListener("click", async event => {
         role: isOtherService ? "serviceProvider" : "driver",
         updatedAt: serverTimestamp()
       }, { merge: true });
-      if (!isOtherService) {
+      if (isOtherService) {
+        batch.set(doc(db, "restaurants", id), {
+          active: true,
+          approvalStatus: "approved",
+          approvedBy: state.user.uid,
+          approvedAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      } else {
         batch.set(doc(db, "drivers", id), {
           userId: id, name: application.name, email: application.email, phone: application.phone,
           serviceType: application.serviceType || "taxi", vehicleType: application.vehicleType,
@@ -397,13 +405,24 @@ document.addEventListener("click", async event => {
     } else if (button.dataset.action === "reject") {
       const note = prompt("سبب الرفض أو المطلوب تعديله:", "يرجى مراجعة بيانات المركبة")?.trim();
       if (!note) return;
-      await updateDoc(doc(db, "driverApplications", id), {
+      const rejectedApplication = state.applications.find(item => item.firestoreId === id);
+      const rejectBatch = writeBatch(db);
+      rejectBatch.update(doc(db, "driverApplications", id), {
         status: "rejected",
         reviewNote: note,
         reviewedBy: state.user.uid,
         reviewedAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
+      if (rejectedApplication?.serviceType === "other") {
+        rejectBatch.set(doc(db, "restaurants", id), {
+          active: false,
+          approvalStatus: "rejected",
+          reviewNote: note,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      }
+      await rejectBatch.commit();
       toast("تم رفض الطلب مع إرسال الملاحظة");
     } else if (button.dataset.action === "warn-driver") {
       const note = prompt("اكتب التنبيه الذي سيظهر للكابتن:", "يرجى الالتزام بسياسة الخدمة")?.trim();
