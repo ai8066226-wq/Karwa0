@@ -448,6 +448,7 @@ byId("vehicleType")?.addEventListener("change", updateVehicleApplicationFields);
 function fillApplication(data = {}) {
   byId("driverName").value = data.name || state.userData?.name || state.user?.displayName || "";
   byId("driverPhone").value = data.phone || "";
+  byId("serviceType").value = data.serviceType || "taxi";
   byId("vehicleType").value = data.vehicleType || "اقتصادي";
   byId("vehicleMake").value = data.vehicleMake || "";
   byId("vehicleModel").value = data.vehicleModel || "";
@@ -523,6 +524,7 @@ byId("applicationForm").addEventListener("submit", async event => {
       name: byId("driverName").value.trim(),
       email: state.user.email || "",
       phone,
+      serviceType: byId("serviceType").value,
       vehicleType: byId("vehicleType").value,
       vehicleMake: byId("vehicleType").value === "دراجة" ? "" : byId("vehicleMake").value.trim(),
       vehicleModel: byId("vehicleType").value === "دراجة" ? "" : byId("vehicleModel").value.trim(),
@@ -571,8 +573,9 @@ function renderOrders() {
   const now=Date.now();
   const available = state.orders.filter(order => {
     if(order.cancelled || Number(order.statusIndex || 0) >= 4 || order.driverId) return false;
-    // دراجات التوصيل تستلم طلبات الغرض والطعام فقط، ولا ترى طلبات التكسي.
-    if(state.driverData?.vehicleType === "دراجة" && order.type === "ride") return false;
+    // كابتن التوصيل (وكذلك الدراجة) لا يرى طلبات التكسي؛ كابتن التكسي يراها.
+    const serviceType = state.driverData?.serviceType || "taxi";
+    if((serviceType === "delivery" || state.driverData?.vehicleType === "دراجة") && order.type === "ride") return false;
     const exp=order.dispatchExpiresAt?.seconds ? order.dispatchExpiresAt.seconds*1000 : new Date(order.dispatchExpiresAt||0).getTime();
     return !exp || exp<=now || !Array.isArray(order.dispatchCandidateIds) || !order.dispatchCandidateIds.length || order.dispatchCandidateIds.includes(state.user?.uid);
   }).sort((a,b) => distanceToOrder(a) - distanceToOrder(b));

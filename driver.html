@@ -233,6 +233,14 @@ body.driver-map-mode #driverView{height:100dvh!important}
               <input id="driverPhone" inputmode="tel" placeholder="07xx xxx xxxx" required>
             </div>
             <div class="field">
+              <label for="serviceType">نوع الخدمة</label>
+              <select id="serviceType" required>
+                <option value="taxi">تكسي — استقبال طلبات الركوب والتوصيل</option>
+                <option value="delivery">توصيل — أغراض وطعام فقط</option>
+              </select>
+              <small class="muted">كابتن التوصيل لن تظهر له طلبات التكسي.</small>
+            </div>
+            <div class="field">
               <label for="vehicleType">نوع المركبة</label>
               <select id="vehicleType" required>
                 <option value="اقتصادي">سيارة اقتصادية</option>
