@@ -149,9 +149,39 @@ function driverTripSummary(driverId) {
   };
 }
 
+function driverOrderState(order) {
+  if (order.cancelled) return { label: "ملغاة", css: "cancelled" };
+  if (Number(order.statusIndex || 0) >= 4) return { label: "مكتملة", css: "complete" };
+  return { label: "جارية", css: "active" };
+}
+
+function driverTripDetail(order) {
+  const tripState = driverOrderState(order);
+  const completed = !order.cancelled && Number(order.statusIndex || 0) >= 4;
+  const code = order.id || order.orderCode || order.firestoreId;
+  return `
+    <div class="captain-trip-row">
+      <div class="captain-trip-head">
+        <strong>${icons[order.type] || "🧾"} ${escapeHtml(order.title || "رحلة كروة")}</strong>
+        <span class="status-chip ${tripState.css}">${tripState.label}</span>
+      </div>
+      <p class="order-route">${escapeHtml(order.route || "-")}</p>
+      <div class="order-meta"><span>رمز الرحلة: <b>${escapeHtml(code)}</b></span><span>قيمة الرحلة: ${money(order.price)}</span></div>
+      ${completed ? `<div class="order-meta trip-money"><span>عمولة كروة: ${money(order.commissionAmount)}</span><span>صافي الكابتن: <b>${money(order.driverEarnings)}</b></span></div>` : ""}
+      ${order.cancelled && order.cancellationReason ? `<p class="admin-note danger-note">سبب الإلغاء: ${escapeHtml(order.cancellationReason)}</p>` : ""}
+      <div class="order-meta trip-dates">${order.acceptedAt?.seconds ? `<span>القبول: ${new Date(order.acceptedAt.seconds*1000).toLocaleString("ar-IQ")}</span>` : ""}${order.completedAt?.seconds ? `<span>الإكمال: ${new Date(order.completedAt.seconds*1000).toLocaleString("ar-IQ")}</span>` : ""}</div>
+    </div>`;
+}
+
 function driverCard(driver) {
   const rating = ratingSummary(driver.firestoreId);
   const trips = driverTripSummary(driver.firestoreId);
+  const driverOrders = state.orders.filter(order => order.driverId === driver.firestoreId)
+    .sort((a,b) => Number(b.acceptedAt?.seconds || b.createdAt?.seconds || 0) - Number(a.acceptedAt?.seconds || a.createdAt?.seconds || 0));
+  const completedOrders = driverOrders.filter(o => !o.cancelled && Number(o.statusIndex || 0) >= 4);
+  const activeOrders = driverOrders.filter(o => !o.cancelled && Number(o.statusIndex || 0) < 4);
+  const cancelledOrders = driverOrders.filter(o => o.cancelled === true);
+  const captainBalance = completedOrders.reduce((sum,o) => sum + Number(o.driverEarnings || 0), 0);
   const blocked = driver.blocked === true;
   const status = blocked ? "محظور" : driver.online ? "متصل" : "غير متصل";
   const statusClass = blocked ? "rejected" : driver.online ? "approved" : "pending";
@@ -160,35 +190,38 @@ function driverCard(driver) {
     ? `<button class="secondary" data-action="unblock-driver" data-id="${driver.firestoreId}">إعادة التفعيل</button>`
     : `<button class="danger" data-action="block-driver" data-id="${driver.firestoreId}">حظر الكابتن</button>`;
   return `
-    <article class="order-card driver-management-card">
+    <article class="order-card driver-management-card captain-account-card">
       <div class="order-top">
         <h3>🚕 ${escapeHtml(driver.name || "كابتن كروة")}</h3>
         <span class="status-chip ${statusClass}">${status}</span>
       </div>
-      <p class="order-route">${escapeHtml(driver.city || "-")} • ${escapeHtml(driver.vehicleType || "-")} • ${escapeHtml(driver.plate || "-")}</p>
-      <div class="order-meta"><span>الخدمة: ${driver.serviceType === "delivery" ? "توصيل" : "تكسي"}</span></div>
-      ${driver.vehicleType !== "دراجة" ? `<div class="order-meta"><span>السيارة: ${escapeHtml(driver.vehicleMake || "-")} ${escapeHtml(driver.vehicleModel || "")}</span><span>الحالة: ${escapeHtml(driver.vehicleCondition || "غير محددة")}</span></div>` : `<div class="order-meta"><span>نوع العمل: توصيل أغراض وطعام فقط</span></div>`}
-      <div class="order-meta"><span>الهاتف: ${escapeHtml(driver.phone || "بدون هاتف")}</span><span>البريد: ${escapeHtml(driver.email || "-")}</span></div>
+      <div class="captain-profile-grid">
+        <span><small>رقم الهاتف</small><b>${escapeHtml(driver.phone || "بدون هاتف")}</b></span>
+        <span><small>البريد</small><b>${escapeHtml(driver.email || "-")}</b></span>
+        <span><small>المدينة</small><b>${escapeHtml(driver.city || "-")}</b></span>
+        <span><small>نوع الخدمة</small><b>${driver.serviceType === "delivery" ? "توصيل" : "تكسي"}</b></span>
+        <span><small>المركبة</small><b>${escapeHtml(driver.vehicleType || "-")}</b></span>
+        <span><small>رقم اللوحة</small><b>${escapeHtml(driver.plate || "-")}</b></span>
+        ${driver.vehicleType !== "دراجة" ? `<span><small>السيارة / الموديل</small><b>${escapeHtml(driver.vehicleMake || "-")} ${escapeHtml(driver.vehicleModel || "")}</b></span><span><small>حالة السيارة</small><b>${escapeHtml(driver.vehicleCondition || "غير محددة")}</b></span>` : `<span><small>نطاق العمل</small><b>توصيل أغراض وطعام</b></span>`}
+      </div>
+      <div class="captain-balance"><small>رصيد الكابتن من الرحلات المكتملة</small><strong>${money(captainBalance)}</strong></div>
       <div class="order-meta driver-trip-stats">
         <span><strong>${trips.completed}</strong> مكتملة</span>
         <span><strong>${trips.cancelled}</strong> ملغاة</span>
         <span><strong>${trips.active}</strong> جارية</span>
         <span><strong>${trips.total}</strong> إجمالي الرحلات</span>
       </div>
-      <div class="reputation-row">
-        <span class="stars">★ ${rating.count ? rating.average.toFixed(1) : "جديد"}</span>
-        <span>${rating.count} تقييم</span>
-        <span class="warning-count">⚠ ${warningCount} تنبيه</span>
+      <div class="reputation-row"><span class="stars">★ ${rating.count ? rating.average.toFixed(1) : "جديد"}</span><span>${rating.count} تقييم</span><span class="warning-count">⚠ ${warningCount} تنبيه</span></div>
+      <div class="captain-trip-groups">
+        <details ${activeOrders.length ? "open" : ""}><summary>الرحلات الجارية <b>${activeOrders.length}</b></summary><div class="captain-trip-list">${activeOrders.length ? activeOrders.map(driverTripDetail).join("") : `<p class="muted">لا توجد رحلات جارية.</p>`}</div></details>
+        <details><summary>الرحلات المكتملة <b>${completedOrders.length}</b></summary><div class="captain-trip-list">${completedOrders.length ? completedOrders.map(driverTripDetail).join("") : `<p class="muted">لا توجد رحلات مكتملة.</p>`}</div></details>
+        <details><summary>الرحلات الملغاة <b>${cancelledOrders.length}</b></summary><div class="captain-trip-list">${cancelledOrders.length ? cancelledOrders.map(driverTripDetail).join("") : `<p class="muted">لا توجد رحلات ملغاة.</p>`}</div></details>
       </div>
       ${driver.warningMessage ? `<p class="admin-note">آخر تنبيه: ${escapeHtml(driver.warningMessage)}</p>` : ""}
       ${blocked && driver.blockReason ? `<p class="admin-note danger-note">سبب الحظر: ${escapeHtml(driver.blockReason)}</p>` : ""}
-      <div class="order-actions">
-        <button class="secondary" data-action="warn-driver" data-id="${driver.firestoreId}">إرسال تنبيه</button>
-        ${blockAction}
-      </div>
+      <div class="order-actions"><button class="secondary" data-action="warn-driver" data-id="${driver.firestoreId}">إرسال تنبيه</button>${blockAction}</div>
     </article>`;
 }
-
 function renderDrivers() {
   const sorted = [...state.drivers].sort((a, b) => {
     if (a.blocked === true && b.blocked !== true) return -1;
@@ -281,14 +314,16 @@ function orderCard(order) {
 }
 
 function renderOrders() {
-  const sorted = [...state.orders].sort((a, b) =>
+  const waiting = state.orders.filter(order =>
+    !order.cancelled && !order.driverId && Number(order.statusIndex || 0) === 0
+  );
+  const sorted = [...waiting].sort((a, b) =>
     String(b.createdAtISO || "").localeCompare(String(a.createdAtISO || ""))
   );
   byId("ordersList").innerHTML = sorted.length
     ? sorted.map(orderCard).join("")
-    : `<div class="empty"><span>🧾</span>لا توجد طلبات حتى الآن.</div>`;
+    : `<div class="empty"><span>✅</span>لا توجد طلبات بانتظار كابتن حالياً.</div>`;
 }
-
 function openDashboard() {
   clearDashboardListeners();
   showView("dashboard");
