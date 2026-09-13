@@ -1265,6 +1265,9 @@
       box-shadow: 0 4px 12px rgba(16,32,68,.08);
     }
 
+
+    .role-auth-modal{width:min(940px,calc(100vw - 28px));max-width:940px;padding:24px}.role-entry-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.role-entry-card{padding:22px 18px;border:1px solid #e5eaf2;border-radius:22px;background:linear-gradient(180deg,#fff,#f8fafc);box-shadow:0 10px 30px rgba(16,32,68,.06);text-align:center;transition:.2s}.role-entry-card:hover{transform:translateY(-3px);box-shadow:0 16px 36px rgba(16,32,68,.11)}.role-entry-icon{width:64px;height:64px;margin:0 auto 12px;display:grid;place-items:center;border-radius:20px;background:#eef3ff;font-size:30px}.role-entry-card h3{margin:0 0 7px;font-size:20px;color:var(--navy)}.role-entry-card p{min-height:42px;margin:0 0 18px;color:var(--muted);font-size:13px;line-height:1.6}.role-entry-actions{display:grid;gap:8px}.role-entry-actions button{width:100%}.auth-back-button{border:0;background:transparent;color:var(--muted);font-weight:800;margin-bottom:12px;cursor:pointer}.selected-role-banner{display:flex;align-items:center;gap:12px;padding:12px 14px;margin-bottom:14px;border-radius:16px;background:#f4f7fb}.selected-role-banner>span{font-size:28px}.selected-role-banner small,.selected-role-banner strong{display:block}.selected-role-banner small{color:var(--muted);font-size:11px}.selected-role-banner strong{color:var(--navy);font-size:16px}@media(max-width:720px){.role-auth-modal{padding:18px}.role-entry-grid{grid-template-columns:1fr}.role-entry-card{display:grid;grid-template-columns:58px 1fr;column-gap:12px;text-align:right;padding:16px}.role-entry-icon{grid-row:1/3;width:54px;height:54px;margin:0;font-size:25px}.role-entry-card h3{align-self:end}.role-entry-card p{min-height:0;margin:2px 0 12px}.role-entry-actions{grid-column:1/-1;grid-template-columns:1fr 1fr}}
+
     .auth-message {
       min-height: 22px;
       margin: 4px 0 8px;
@@ -2398,46 +2401,30 @@ body.customer-map-mode .mobile-navigation{display:none!important}
   </div>
 
   <div class="modal-backdrop show" id="authModal" role="dialog" aria-modal="true" aria-labelledby="authTitle">
-    <div class="modal auth-modal">
+    <div class="modal auth-modal role-auth-modal">
       <div class="auth-brand">
         <div class="brand-logo">ك</div>
-        <div>
-          <h2 id="authTitle">مرحبًا بك في كروة</h2>
-          <p>ادخل إلى حسابك لحفظ طلباتك ومتابعتها.</p>
-        </div>
+        <div><h2 id="authTitle">مرحبًا بك في كروة</h2><p>اختر نوع حسابك، ثم سجّل الدخول أو أنشئ حسابًا جديدًا.</p></div>
       </div>
-
-      <div class="auth-tabs" role="tablist">
-        <button class="auth-tab active" id="loginTab" type="button">تسجيل الدخول</button>
-        <button class="auth-tab" id="registerTab" type="button">حساب جديد</button>
+      <div class="role-entry-grid" id="roleEntryGrid">
+        <article class="role-entry-card customer"><div class="role-entry-icon">👤</div><h3>عميل</h3><p>اطلب تكسي أو توصيل وتابع طلباتك بسهولة.</p><div class="role-entry-actions"><button type="button" class="primary-button role-auth-action" data-role="customer" data-mode="login">تسجيل الدخول</button><button type="button" class="secondary-button role-auth-action" data-role="customer" data-mode="register">إنشاء حساب</button></div></article>
+        <article class="role-entry-card captain"><div class="role-entry-icon">🚕</div><h3>كابتن</h3><p>استقبل الرحلات والطلبات المناسبة لنوع خدمتك.</p><div class="role-entry-actions"><button type="button" class="primary-button role-auth-action" data-role="driverApplicant" data-mode="login">تسجيل الدخول</button><button type="button" class="secondary-button role-auth-action" data-role="driverApplicant" data-mode="register">إنشاء حساب</button></div></article>
+        <article class="role-entry-card services"><div class="role-entry-icon">🧰</div><h3>خدمات أخرى</h3><p>للمطاعم ومزودي الخدمات لإدارة الإعلانات والخدمات.</p><div class="role-entry-actions"><button type="button" class="primary-button role-auth-action" data-role="serviceApplicant" data-mode="login">تسجيل الدخول</button><button type="button" class="secondary-button role-auth-action" data-role="serviceApplicant" data-mode="register">إنشاء حساب</button></div></article>
       </div>
-
-      <form id="authForm">
-        <div class="field" id="nameField" hidden>
-          <label for="authName">الاسم الكامل</label>
-          <input id="authName" autocomplete="name" placeholder="مثال: محمد علي">
-        </div>
-
-        <div class="field" id="roleField" hidden>
-          <label for="authRole">نوع الحساب</label>
-          <select id="authRole"><option value="customer">👤 عميل</option><option value="driverApplicant">🚕 كابتن</option><option value="serviceApplicant">🧰 خدمات أخرى</option></select>
-          <small style="display:block;margin-top:7px;color:#64748b">نوع الحساب ثابت بعد الإنشاء: عميل، كابتن، أو خدمات أخرى. كل نوع له بوابته وصلاحياته المستقلة.</small>
-        </div>
-
-        <div class="field">
-          <label for="authEmail">البريد الإلكتروني</label>
-          <input id="authEmail" type="email" inputmode="email" autocomplete="email" placeholder="name@example.com" required>
-        </div>
-
-        <div class="field">
-          <label for="authPassword">كلمة المرور</label>
-          <input id="authPassword" type="password" autocomplete="current-password" minlength="6" placeholder="ستة أحرف على الأقل" required>
-        </div>
-
-        <div class="auth-message" id="authMessage" role="alert"></div>
-        <button class="primary-button auth-submit" id="authSubmit" type="submit">تسجيل الدخول</button>
-        <p class="auth-note">تُحفظ بيانات حسابك وطلباتك بأمان في Firebase.</p>
-      </form>
+      <div id="authFormPanel" hidden>
+        <button type="button" class="auth-back-button" id="authBackToRoles">→ العودة لاختيار نوع الحساب</button>
+        <div class="selected-role-banner"><span id="selectedRoleIcon">👤</span><div><small>نوع الحساب</small><strong id="selectedRoleLabel">عميل</strong></div></div>
+        <form id="authForm">
+          <div class="field" id="nameField" hidden><label for="authName">الاسم الكامل</label><input id="authName" autocomplete="name" placeholder="مثال: محمد علي"></div>
+          <div class="field" id="roleField" hidden><select id="authRole"><option value="customer">عميل</option><option value="driverApplicant">كابتن</option><option value="serviceApplicant">خدمات أخرى</option></select></div>
+          <div class="field"><label for="authEmail">البريد الإلكتروني</label><input id="authEmail" type="email" inputmode="email" autocomplete="email" placeholder="name@example.com" required></div>
+          <div class="field"><label for="authPassword">كلمة المرور</label><input id="authPassword" type="password" autocomplete="current-password" minlength="6" placeholder="ستة أحرف على الأقل" required></div>
+          <div class="auth-message" id="authMessage" role="alert"></div>
+          <button class="primary-button auth-submit" id="authSubmit" type="submit">تسجيل الدخول</button>
+          <p class="auth-note">نوع الحساب ثابت بعد الإنشاء، ولكل نوع بوابته وصلاحياته المستقلة.</p>
+        </form>
+      </div>
+      <button id="loginTab" type="button" hidden></button><button id="registerTab" type="button" hidden></button>
     </div>
   </div>
 

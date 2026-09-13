@@ -419,7 +419,8 @@ function switchView(viewId) {
 function openAuthModal() {
   byId("authMessage").textContent = "";
   byId("authModal").classList.add("show");
-  window.setTimeout(() => byId("authEmail").focus(), 120);
+  byId("roleEntryGrid").hidden = false;
+  byId("authFormPanel").hidden = true;
 }
 
 function closeAuthModal() {
@@ -561,8 +562,26 @@ function subscribeToRatings(user) {
   });
 }
 
-byId("loginTab").addEventListener("click", () => setAuthMode("login"));
-byId("registerTab").addEventListener("click", () => setAuthMode("register"));
+document.querySelectorAll(".role-auth-action").forEach(button => {
+  button.addEventListener("click", () => {
+    const role = button.dataset.role || "customer";
+    const mode = button.dataset.mode || "login";
+    byId("authRole").value = role;
+    const meta = role === "customer" ? ["👤","عميل"] : role === "driverApplicant" ? ["🚕","كابتن"] : ["🧰","خدمات أخرى"];
+    byId("selectedRoleIcon").textContent = meta[0];
+    byId("selectedRoleLabel").textContent = meta[1] + " • " + (mode === "register" ? "إنشاء حساب" : "تسجيل الدخول");
+    byId("roleEntryGrid").hidden = true;
+    byId("authFormPanel").hidden = false;
+    setAuthMode(mode);
+    window.setTimeout(() => byId(mode === "register" ? "authName" : "authEmail")?.focus(), 80);
+  });
+});
+byId("authBackToRoles").addEventListener("click", () => {
+  byId("authFormPanel").hidden = true;
+  byId("roleEntryGrid").hidden = false;
+  byId("authForm").reset();
+  byId("authMessage").textContent = "";
+});
 
 byId("authForm").addEventListener("submit", async event => {
   event.preventDefault();
@@ -599,7 +618,8 @@ byId("authForm").addEventListener("submit", async event => {
       renderProfile();
       renderBalance();
       renderNotificationSwitch();
-      if (selectedRole === "driverApplicant" || selectedRole === "serviceApplicant") { window.location.replace("./driver.html"); return; }
+      if (selectedRole === "driverApplicant") { window.location.replace("./driver.html"); return; }
+      if (selectedRole === "serviceApplicant") { window.location.replace("./services.html"); return; }
       showToast("تم إنشاء حساب العميل بنجاح");
     } else {
       await signInWithEmailAndPassword(auth, email, password);
@@ -1605,8 +1625,12 @@ onAuthStateChanged(auth, async user => {
   try {
     const roleSnap = await getDoc(doc(db, "users", user.uid));
     const accountRole = roleSnap.exists() ? roleSnap.data().role : null;
-    if (["driver","driverApplicant","serviceApplicant","serviceProvider"].includes(accountRole)) {
+    if (["driver","driverApplicant"].includes(accountRole)) {
       window.location.replace("./driver.html");
+      return;
+    }
+    if (["serviceApplicant","serviceProvider"].includes(accountRole)) {
+      window.location.replace("./services.html");
       return;
     }
     if (accountRole && accountRole !== "customer") {
