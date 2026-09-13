@@ -417,3 +417,34 @@ body{letter-spacing:.01em}.topbar{box-shadow:0 5px 22px rgba(16,32,68,.04)}.shel
 /* Phase 17 — Waze-style navigation */
 .driver-nav-strip{grid-template-columns:repeat(4,1fr)!important}.nav-next-turn{margin-top:10px;padding:12px 14px;border-radius:16px;background:#102044;color:#fff;display:flex;gap:12px;align-items:center}.nav-next-turn .turn-icon{font-size:28px;min-width:38px;text-align:center}.nav-next-turn small{display:block;opacity:.72}.nav-next-turn strong{display:block;margin-top:3px;font-size:14px}.portal-map-marker.driver{will-change:transform}.nav-provider{font-size:11px;color:#64748b;margin-top:7px}.route-alert{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:12px;padding:8px 10px;margin-top:8px;font-size:12px;font-weight:700}
 @media(max-width:600px){.driver-nav-strip{grid-template-columns:1fr 1fr!important}.nav-next-turn{position:relative;z-index:3}}
+
+/* Captain trip summary in admin dashboard */
+.driver-trip-stats {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.driver-trip-stats span {
+  padding: 9px 8px;
+  border: 1px solid rgba(148, 163, 184, .22);
+  border-radius: 12px;
+  text-align: center;
+}
+.driver-trip-stats strong { display: block; font-size: 1.08rem; }
+@media (max-width: 640px) {
+  .driver-trip-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+
+/* Professional admin dashboard refinement */
+.admin-hero{min-height:190px;padding:34px 38px;background:linear-gradient(125deg,#0b1735 0%,#15376a 58%,#147c78 125%)}
+.hero-kicker{display:inline-block;margin-bottom:8px;color:#9ee7dc;font-size:12px;font-weight:900;letter-spacing:.04em}.admin-hero h1{font-size:clamp(29px,4vw,42px)}.admin-hero p{max-width:650px;font-size:15px}.hero-side{position:relative;z-index:2;display:flex;align-items:center;gap:9px;flex-wrap:wrap;justify-content:flex-end}.live-indicator{padding:7px 11px;display:inline-flex;align-items:center;gap:7px;border-radius:999px;background:rgba(255,255,255,.12);font-size:12px;font-weight:800}.live-indicator i{width:8px;height:8px;border-radius:50%;background:#62e6c7;box-shadow:0 0 0 5px rgba(98,230,199,.12)}
+.section-title{margin:4px 2px 12px;display:flex;align-items:end;justify-content:space-between;gap:14px}.section-title small{display:block;color:var(--mint);font-size:11px;font-weight:900}.section-title h2{margin:1px 0 0;font-size:19px}.section-title>span{color:var(--muted);font-size:12px}.section-title.compact{margin:1px 2px 10px}.section-title.compact h2{font-size:17px}
+.admin-stats{grid-template-columns:repeat(4,minmax(0,1fr));gap:11px}.admin-stats .stat{position:relative;overflow:hidden;min-height:104px;padding:17px 18px}.admin-stats .stat:before{content:"";position:absolute;right:0;top:0;width:4px;height:100%;background:#dbe4f0}.admin-stats .stat:nth-child(2):before,.admin-stats .stat:nth-child(8):before{background:var(--mint)}.admin-stats .stat:nth-child(3):before,.admin-stats .stat:nth-child(7):before{background:var(--red)}.admin-stats .stat:nth-child(4):before{background:#e5a900}.admin-stats .stat:nth-child(6):before{background:#4385db}.admin-stats .stat:nth-child(n+9):before{background:var(--orange)}.admin-stats .stat small{font-size:12px;font-weight:700}.admin-stats .stat strong{margin-top:8px;font-size:24px;line-height:1.15}
+.admin-layout{grid-template-columns:minmax(0,1.6fr) minmax(285px,.65fr);gap:20px}.admin-panel{padding:0;overflow:hidden}.admin-panel>.card-heading{margin:0;padding:18px 20px;border-bottom:1px solid var(--line);background:#fbfcfe}.admin-panel>.orders{padding:16px}.admin-panel .order-card{box-shadow:none}.admin-sidebar{position:sticky;top:88px}.admin-sidebar .card{padding:18px}.finance-card{background:linear-gradient(150deg,#fff,#f8fbff)}
+.driver-management-card{border-color:#dce5ef}.driver-management-card .order-top h3{font-size:17px}.driver-trip-stats{margin-top:13px!important}.driver-trip-stats span{background:#f7f9fc;border-color:#e4e9f1!important}.driver-trip-stats strong{color:#102044;font-size:19px!important}.driver-management-card .order-actions{padding-top:4px;border-top:1px dashed #e5eaf1}.reputation-row{background:#f7f9fc}
+#financialReport>.order-meta{padding:9px 0;border-bottom:1px solid #edf0f5;justify-content:space-between}.admin-sidebar .notice{margin-bottom:0}.card-heading h2,.card-heading h3{letter-spacing:0}
+@media(max-width:1050px){.admin-stats{grid-template-columns:repeat(3,minmax(0,1fr))}.admin-layout{grid-template-columns:minmax(0,1fr) 300px}}
+@media(max-width:850px){.admin-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.admin-layout{grid-template-columns:1fr}.admin-sidebar{position:static}.hero-side{justify-content:flex-start;margin-top:16px}.admin-hero{display:block}}
+@media(max-width:520px){.admin-hero{min-height:auto;padding:24px 20px}.admin-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.admin-stats .stat{min-height:92px;padding:13px 14px}.admin-stats .stat strong{font-size:20px}.section-title>span{display:none}.admin-panel>.card-heading{padding:15px}.admin-panel>.orders{padding:11px}.driver-trip-stats strong{font-size:17px!important}}

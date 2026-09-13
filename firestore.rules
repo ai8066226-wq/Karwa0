@@ -20,26 +20,87 @@ service cloud.firestore { match /databases/{database}/documents {
    allow delete:if admin();
    match /pushTokens/{id}{allow read:if own(uid)||admin();allow write:if own(uid);}
  }
- match /driverApplications/{uid}{allow create:if own(uid)&&request.resource.data.userId==request.auth.uid;allow read:if own(uid)||admin();allow update,delete:if admin();}
- match /drivers/{uid}{allow read:if signed();allow create,delete:if admin();allow update:if admin()||(own(uid)&&driver()&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['online','latitude','longitude','locationAccuracy','locationUpdatedAt','updatedAt']));}
+ match /driverApplications/{uid}{allow create:if own(uid)&&request.resource.data.userId==request.auth.uid&&request.resource.data.status=='pending';allow read:if own(uid)||admin();allow update:if admin()||(own(uid)&&resource.data.status!='approved'&&request.resource.data.userId==request.auth.uid&&request.resource.data.status=='pending'&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','email','phone','vehicleType','plate','city','status','submittedAt','updatedAt']));allow delete:if admin();}
+ match /drivers/{uid}{
+   allow read:if admin()||driver()||own(uid);
+   allow create,delete:if admin();
+   allow update:if admin()||(own(uid)&&driver()&&(
+     request.resource.data.diff(resource.data).affectedKeys().hasOnly(['online','latitude','longitude','locationAccuracy','locationUpdatedAt','updatedAt'])
+     || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['activeOrderId','activeOrderCode','busySince','updatedAt'])&&(
+       (resource.data.get('activeOrderId','')==''
+         && request.resource.data.activeOrderId is string
+         && request.resource.data.activeOrderId.size()>0
+         && request.resource.data.activeOrderCode is string
+         && request.resource.data.busySince is timestamp
+         && getAfter(/databases/$(database)/documents/orders/$(request.resource.data.activeOrderId)).data.driverId==uid
+         && getAfter(/databases/$(database)/documents/orders/$(request.resource.data.activeOrderId)).data.cancelled==false
+         && getAfter(/databases/$(database)/documents/orders/$(request.resource.data.activeOrderId)).data.statusIndex<4)
+       || (resource.data.get('activeOrderId','')!=''
+         && request.resource.data.activeOrderId==''
+         && request.resource.data.activeOrderCode==''
+         && request.resource.data.busySince==null
+         && (getAfter(/databases/$(database)/documents/orders/$(resource.data.activeOrderId)).data.cancelled==true
+           || getAfter(/databases/$(database)/documents/orders/$(resource.data.activeOrderId)).data.statusIndex>=4))
+     ))
+   ));
+ }
+ match /publicDrivers/{uid}{
+   function privateDriver(){return get(/databases/$(database)/documents/drivers/$(uid)).data;}
+   allow read:if signed();
+   allow create,update:if own(uid)&&driver()
+     && exists(/databases/$(database)/documents/drivers/$(uid))
+     && privateDriver().get('blocked',false)!=true
+     && request.resource.data.keys().hasOnly(['driverId','name','vehicleType','online','latitude','longitude','locationAccuracy','locationUpdatedAt','updatedAt'])
+     && request.resource.data.driverId==uid
+     && request.resource.data.name is string
+     && request.resource.data.name==userDoc().get('name','')
+     && request.resource.data.name.size()>=2
+     && request.resource.data.name.size()<=80
+     && request.resource.data.vehicleType is string
+     && request.resource.data.vehicleType==privateDriver().get('vehicleType','مركبة')
+     && request.resource.data.online==true
+     && request.resource.data.latitude is number
+     && request.resource.data.latitude>=-90
+     && request.resource.data.latitude<=90
+     && request.resource.data.longitude is number
+     && request.resource.data.longitude>=-180
+     && request.resource.data.longitude<=180
+     && request.resource.data.locationAccuracy is number
+     && request.resource.data.locationAccuracy>=0
+     && request.resource.data.locationUpdatedAt is timestamp
+     && request.resource.data.updatedAt is timestamp;
+   allow delete:if admin()||(own(uid)&&driver());
+ }
  match /orders/{id}{
    allow read:if signed()&&(resource.data.userId==request.auth.uid||resource.data.driverId==request.auth.uid||driver()||admin());
    allow create:if admin()||(customer()&&request.resource.data.userId==request.auth.uid&&request.resource.data.driverId==null&&request.resource.data.statusIndex==0&&request.resource.data.cancelled==false);
    allow update:if admin()
-     || (customer()&&resource.data.userId==request.auth.uid&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cancelled','cancellationReason','cancelledBy','cancelledAt','updatedAt']))
+     || (customer()&&resource.data.userId==request.auth.uid&&resource.data.cancelled==false&&request.resource.data.cancelled==true&&request.resource.data.cancelledBy=='customer'&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cancelled','cancellationReason','cancelledBy','cancelledAt','updatedAt']))
      || (driver() && (
-       (resource.data.driverId==null && request.resource.data.driverId==request.auth.uid && request.resource.data.statusIndex==resource.data.statusIndex && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['driverId','driverName','driverPhone','assignmentStatus','acceptedAt','updatedAt']))
+       (resource.data.driverId==null && resource.data.cancelled==false && resource.data.statusIndex==0 && request.resource.data.driverId==request.auth.uid && request.resource.data.statusIndex==resource.data.statusIndex && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['driverId','driverName','driverPhone','assignmentStatus','acceptedAt','updatedAt']) && get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.get('activeOrderId','')=='' && getAfter(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.activeOrderId==id)
        || (resource.data.driverId==request.auth.uid && request.resource.data.driverId==request.auth.uid && request.resource.data.statusIndex==resource.data.statusIndex+1 && request.resource.data.statusIndex<=4 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['statusIndex','arrivedAt','startedAt','completedAt','paymentStatus','updatedAt']))
+       || (resource.data.driverId==request.auth.uid && request.resource.data.driverId==request.auth.uid && resource.data.cancelled==false && request.resource.data.cancelled==true && request.resource.data.cancelledBy=='driver' && request.resource.data.statusIndex==resource.data.statusIndex && resource.data.statusIndex<4 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cancelled','cancelledBy','cancellationReason','cancelledAt','assignmentStatus','updatedAt']))
      ));
    allow delete:if admin();
    match /tracking/{tid}{function o(){return get(/databases/$(database)/documents/orders/$(id)).data;}allow read:if signed()&&(o().userId==request.auth.uid||o().driverId==request.auth.uid||admin());allow create,update:if driver()&&o().driverId==request.auth.uid&&request.resource.data.driverId==request.auth.uid;allow delete:if admin();}
  }
- match /orderSecrets/{id}{allow read:if signed()&&resource.data.userId==request.auth.uid;allow write:if false;}
+ match /orderSecrets/{id}{
+   allow read:if admin()||(signed()&&resource.data.userId==request.auth.uid);
+   allow create:if customer()
+     && request.resource.data.userId==request.auth.uid
+     && request.resource.data.keys().hasOnly(['userId','tripOtp','createdAt'])
+     && request.resource.data.tripOtp is string
+     && request.resource.data.tripOtp.matches('^[0-9]{4}$')
+     && getAfter(/databases/$(database)/documents/orders/$(id)).data.userId==request.auth.uid;
+   allow update,delete:if false;
+ }
  match /supportTickets/{id}{allow create:if signed()&&request.resource.data.userId==request.auth.uid;allow read:if signed()&&(resource.data.userId==request.auth.uid||admin());allow update:if admin();allow delete:if admin();}
  match /coupons/{id}{allow read:if signed();allow write:if admin();}
  match /walletTransactions/{id}{allow read:if signed()&&(resource.data.driverId==request.auth.uid||admin());allow write:if false;}
  match /auditLogs/{id}{allow read:if admin();allow write:if false;}
  match /notificationQueue/{id}{allow read:if admin();allow write:if false;}
+ match /authChallenges/{id}{allow read,write:if false;}
+ match /authRateLimits/{id}{allow read,write:if false;}
  match /safetyEvents/{id}{allow read:if admin()||(signed()&&(resource.data.reportedBy==request.auth.uid));allow write:if false;}
 
  match /roadReports/{id}{

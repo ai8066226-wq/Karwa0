@@ -51,12 +51,20 @@
   </section>
 
   <main class="shell hidden" id="dashboardView">
-    <section class="hero">
-      <div><h1>لوحة تشغيل كروة</h1><p>تابع الطلبات، راجع الكباتن، وأدر التشغيل من مكان واحد.</p></div>
-      <span class="role-badge">مدير النظام</span>
+    <section class="hero admin-hero">
+      <div>
+        <span class="hero-kicker">مركز التحكم والتشغيل</span>
+        <h1>لوحة إدارة كروة</h1>
+        <p>نظرة واضحة على التشغيل، الكباتن، الطلبات والأداء المالي لحظة بلحظة.</p>
+      </div>
+      <div class="hero-side">
+        <span class="live-indicator"><i></i> تحديث مباشر</span>
+        <span class="role-badge">مدير النظام</span>
+      </div>
     </section>
 
-    <section class="stats">
+    <div class="section-title"><div><small>نظرة عامة</small><h2>مؤشرات التشغيل</h2></div><span>بيانات مباشرة من النظام</span></div>
+    <section class="stats admin-stats">
       <div class="stat"><small>إجمالي العملاء</small><strong id="usersCount">0</strong></div>
       <div class="stat"><small>الكباتن المعتمدون</small><strong id="driversCount">0</strong></div>
       <div class="stat"><small>كباتن محظورون</small><strong id="blockedCount">0</strong></div>
@@ -70,26 +78,28 @@
       <div class="stat"><small>أرباح الكباتن</small><strong id="driversPayout">0 د.ع</strong></div>
     </section>
 
-    <div class="layout">
-      <section>
-        <div class="card">
+    <div class="layout admin-layout">
+      <section class="admin-main-column">
+        <div class="section-title compact"><div><small>الإدارة اليومية</small><h2>التشغيل والكباتن</h2></div></div>
+        <div class="card admin-panel">
           <div class="card-heading"><h2>طلبات انضمام الكباتن</h2><span class="status-chip pending">تحتاج مراجعة</span></div>
           <div class="orders" id="applicationsList"></div>
         </div>
 
-        <div class="card">
+        <div class="card admin-panel">
           <div class="card-heading"><h2>إدارة الكباتن</h2><span class="status-chip active">تنبيه وحظر</span></div>
           <div class="orders" id="driversList"></div>
         </div>
 
-        <div class="card">
+        <div class="card admin-panel">
           <div class="card-heading"><h2>جميع طلبات العملاء</h2><span class="muted">مراقبة مباشرة</span></div>
           <div class="orders" id="ordersList"></div>
         </div>
       </section>
 
-      <aside>
-        <div class="card"><div class="card-heading"><h3>التقرير المالي</h3><span class="status-chip approved">مباشر</span></div><div id="financialReport" class="orders"></div></div>
+      <aside class="admin-sidebar">
+        <div class="section-title compact"><div><small>ملخص سريع</small><h2>التقارير والحالة</h2></div></div>
+        <div class="card finance-card"><div class="card-heading"><h3>التقرير المالي</h3><span class="status-chip approved">مباشر</span></div><div id="financialReport" class="orders"></div></div>
         <div class="card">
           <h3>حالة النظام</h3>
           <p class="notice success">Firebase متصل والتحديثات مباشرة.</p>

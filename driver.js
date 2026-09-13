@@ -680,17 +680,34 @@ document.addEventListener("click", async event => {
     if (button.dataset.action === "accept") {
       if (!state.driverData?.online) throw new Error("OFFLINE");
       await runTransaction(db, async transaction => {
-        const snap = await transaction.get(orderRef);
+        const driverRef = doc(db, "drivers", state.user.uid);
+        // Firestore rules require accepting the order and marking the captain busy
+        // in the SAME atomic transaction.
+        const [snap, driverSnap] = await Promise.all([
+          transaction.get(orderRef),
+          transaction.get(driverRef)
+        ]);
         if (!snap.exists()) throw new Error("ORDER_NOT_FOUND");
+        if (!driverSnap.exists()) throw new Error("DRIVER_PROFILE_MISSING");
         const order = snap.data();
+        const driver = driverSnap.data();
+        if (driver.blocked === true) throw new Error("DRIVER_BLOCKED");
+        if (driver.online !== true) throw new Error("OFFLINE");
+        if (driver.activeOrderId) throw new Error("DRIVER_BUSY");
         if (order.cancelled || Number(order.statusIndex || 0) >= 4) throw new Error("ORDER_NOT_AVAILABLE");
         if (order.driverId && order.driverId !== state.user.uid) throw new Error("ORDER_TAKEN");
         transaction.update(orderRef, {
           driverId: state.user.uid,
-          driverName: state.driverData?.name || state.userData?.name || state.user.email || "كابتن كروة",
-          driverPhone: state.driverData?.phone || "",
+          driverName: driver.name || state.userData?.name || state.user.email || "كابتن كروة",
+          driverPhone: driver.phone || "",
           assignmentStatus: "accepted",
           acceptedAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+        transaction.update(driverRef, {
+          activeOrderId: button.dataset.id,
+          activeOrderCode: String(order.orderCode || order.code || button.dataset.id),
+          busySince: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
       });
@@ -715,7 +732,7 @@ document.addEventListener("click", async event => {
     }
   } catch (error) {
     console.error(error);
-    toast(error.message === "OFFLINE" ? "فعّل حالة الاتصال أولًا" : error.message === "OTP_REQUIRED" ? "يجب إدخال رمز بدء الرحلة" : error.message === "OTP_INVALID" ? "رمز بدء الرحلة غير صحيح" : error.message === "ORDER_TAKEN" ? "سبق أن قبل كابتن آخر هذا الطلب" : error.message === "ORDER_NOT_FOUND" ? "الطلب غير موجود" : error.message === "ORDER_NOT_AVAILABLE" ? "الطلب لم يعد متاحًا" : driverCallableMessage(error, button.dataset.action === "accept" ? "قبول الطلب" : "تحديث حالة الرحلة"));
+    toast(error.message === "OFFLINE" ? "فعّل حالة الاتصال أولًا" : error.message === "OTP_REQUIRED" ? "يجب إدخال رمز بدء الرحلة" : error.message === "OTP_INVALID" ? "رمز بدء الرحلة غير صحيح" : error.message === "ORDER_TAKEN" ? "سبق أن قبل كابتن آخر هذا الطلب" : error.message === "ORDER_NOT_FOUND" ? "الطلب غير موجود" : error.message === "ORDER_NOT_AVAILABLE" ? "الطلب لم يعد متاحًا" : error.message === "DRIVER_BUSY" ? "لديك رحلة نشطة بالفعل، أكملها أولًا" : error.message === "DRIVER_PROFILE_MISSING" ? "ملف الكابتن غير موجود. أعد تفعيل الحساب من الإدارة" : error.message === "DRIVER_BLOCKED" ? "الحساب موقوف من الإدارة" : driverCallableMessage(error, button.dataset.action === "accept" ? "قبول الطلب" : "تحديث حالة الرحلة"));
   } finally {
     busy(button, false);
   }
