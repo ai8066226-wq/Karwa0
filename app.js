@@ -588,6 +588,10 @@ document.querySelectorAll(".role-auth-action").forEach(button => {
       window.location.assign(`./services.html?mode=${mode}`);
       return;
     }
+    if (role === "driverApplicant") {
+      window.location.assign(`./driver.html?mode=${mode}`);
+      return;
+    }
     byId("authRole").value = role;
     const meta = role === "customer" ? ["👤","عميل"] : role === "driverApplicant" ? ["🚕","كابتن"] : ["🧰","خدمات أخرى"];
     byId("selectedRoleIcon").textContent = meta[0];
@@ -611,6 +615,10 @@ byId("authForm").addEventListener("submit", async event => {
   const password = byId("authPassword").value;
   const name = byId("authName").value.trim();
   const selectedRole = byId("authRole")?.value || "customer";
+  if (selectedRole === "driverApplicant") {
+    window.location.assign(`./driver.html?mode=${state.authMode}`);
+    return;
+  }
   const submit = byId("authSubmit");
   byId("authMessage").textContent = "";
 
@@ -633,27 +641,6 @@ byId("authForm").addEventListener("submit", async event => {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
-      // Phase 42: إنشاء طلب موافقة إداري فور إنشاء حساب الكابتن.
-      // يبقى الحساب بوضع طالب كابتن ولا تُفتح لوحة التشغيل إلا بعد موافقة الإدارة.
-      if (selectedRole === "driverApplicant") {
-        await setDoc(doc(db, "driverApplications", credential.user.uid), {
-          userId: credential.user.uid,
-          name,
-          email,
-          phone: "",
-          serviceType: "taxi",
-          vehicleType: "",
-          vehicleMake: "",
-          vehicleModel: "",
-          vehicleCondition: "",
-          plate: "",
-          city: "",
-          status: "pending",
-          profileComplete: false,
-          submittedAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        }, { merge: true });
-      }
       state.name = name;
       state.role = selectedRole;
       state.balance = selectedRole === "customer" ? 25000 : 0;

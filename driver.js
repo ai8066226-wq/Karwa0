@@ -6,6 +6,8 @@ import {
   onAuthStateChanged,
   setPersistence,
   signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
   signOut
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
 import {
@@ -113,7 +115,8 @@ const state = {
   lastRouteAt: 0,
   lastRoutePoint: null,
   restaurantGps: null,
-  restaurantMeals: []
+  restaurantMeals: [],
+  directRegistration: new URLSearchParams(window.location.search).get("mode") === "register"
 };
 
 const money = value => Number(value || 0).toLocaleString("ar-IQ") + " د.ع";
@@ -343,9 +346,35 @@ function authMessage(error) {
     "auth/invalid-credential": "البريد الإلكتروني أو كلمة المرور غير صحيحة.",
     "auth/invalid-email": "البريد الإلكتروني غير صحيح.",
     "auth/too-many-requests": "محاولات كثيرة؛ حاول بعد قليل.",
-    "auth/network-request-failed": "تعذر الاتصال بالإنترنت."
+    "auth/network-request-failed": "تعذر الاتصال بالإنترنت.",
+    "auth/email-already-in-use": "هذا البريد مستخدم بالفعل. سجّل الدخول بدل إنشاء حساب جديد.",
+    "auth/weak-password": "كلمة المرور ضعيفة. استخدم 6 أحرف على الأقل."
   };
-  return messages[error.code] || "تعذر تسجيل الدخول.";
+  return messages[error.code] || "تعذر تنفيذ العملية. تحقق من البيانات وحاول مرة أخرى.";
+}
+
+function configureDirectRegistrationUI() {
+  const active = state.directRegistration && !state.user;
+  const fields = byId("driverAccountFields");
+  if (fields) fields.hidden = !active;
+  ["driverRegisterEmail", "driverRegisterPassword", "driverRegisterPasswordConfirm"].forEach(id => {
+    const input = byId(id);
+    if (input) input.required = active;
+  });
+  if (active) {
+    byId("applicationHeroTitle").textContent = "إنشاء حساب كابتن";
+    byId("applicationHeroText").textContent = "أكمل التسجيل مرة واحدة. بعد الإرسال يصل طلبك مباشرةً إلى الإدارة للموافقة.";
+    byId("applicationHeroBadge").textContent = "تسجيل مباشر";
+    byId("applicationStatus").textContent = "تسجيل جديد";
+    byId("applicationNotice").className = "notice";
+    byId("applicationNotice").textContent = "الحساب سيُنشأ بعد اكتمال جميع البيانات، ثم يبقى غير مفعل حتى موافقة الإدارة.";
+    byId("submitApplication").disabled = false;
+    byId("submitApplication").textContent = "إنشاء الحساب وإرسال طلب الموافقة";
+  } else {
+    byId("applicationHeroTitle").textContent = "انضم إلى كباتن كروة";
+    byId("applicationHeroText").textContent = "أكمل بياناتك، ثم يُرسل طلبك إلى الإدارة للموافقة.";
+    byId("applicationHeroBadge").textContent = "طلب انضمام";
+  }
 }
 
 function showView(name) {
@@ -356,7 +385,8 @@ function showView(name) {
   byId("blockedView").classList.toggle("hidden", name !== "blocked");
   byId("applicationView").classList.toggle("hidden", name !== "application");
   byId("driverView").classList.toggle("hidden", name !== "driver");
-  byId("logoutButton").classList.toggle("hidden", name === "auth");
+  byId("logoutButton").classList.toggle("hidden", name === "auth" || (name === "application" && state.directRegistration && !state.user));
+  if (name === "application") configureDirectRegistrationUI();
 }
 
 function clearViewListeners() {
@@ -531,12 +561,25 @@ function openApplication() {
 
 byId("applicationForm").addEventListener("submit", async event => {
   event.preventDefault();
-  if (!state.user) return;
+  const directSignup = !state.user && state.directRegistration;
   const phone = byId("driverPhone").value.replace(/\s/g, "");
-  if (phone.replace(/\D/g, "").length < 8) {
-    toast("أدخل رقم هاتف صحيحًا");
+  const name = byId("driverName").value.trim();
+  if (name.length < 2) { toast("أدخل الاسم الكامل"); return; }
+  if (phone.replace(/\D/g, "").length < 8) { toast("أدخل رقم هاتف صحيحًا"); return; }
+
+  let registerEmail = "", registerPassword = "";
+  if (directSignup) {
+    registerEmail = byId("driverRegisterEmail").value.trim();
+    registerPassword = byId("driverRegisterPassword").value;
+    const confirmPassword = byId("driverRegisterPasswordConfirm").value;
+    if (!registerEmail || !registerEmail.includes("@")) { toast("أدخل بريدًا إلكترونيًا صحيحًا"); return; }
+    if (registerPassword.length < 6) { toast("كلمة المرور يجب أن تكون 6 أحرف على الأقل"); return; }
+    if (registerPassword !== confirmPassword) { toast("كلمتا المرور غير متطابقتين"); return; }
+  } else if (!state.user) {
+    showView("auth");
     return;
   }
+
   const isRestaurant = byId("serviceType").value === "other";
   const isBike = byId("vehicleType").value === "دراجة";
   if (!isRestaurant && !isBike && (!byId("vehicleMake").value.trim() || !byId("vehicleModel").value.trim())) { toast("أدخل نوع/ماركة السيارة وموديلها"); return; }
@@ -546,13 +589,25 @@ byId("applicationForm").addEventListener("submit", async event => {
     if(!state.restaurantGps){toast("حدد موقع المطعم GPS");return;}
     if(!state.restaurantMeals.length){toast("أضف وجبة واحدة على الأقل");return;}
   }
+
   const button = byId("submitApplication");
-  busy(button, true, "جاري الإرسال…");
+  busy(button, true, directSignup ? "جاري إنشاء الحساب…" : "جاري الإرسال…");
   try {
-    await setDoc(doc(db, "driverApplications", state.user.uid), {
-      userId: state.user.uid,
-      name: byId("driverName").value.trim(),
-      email: state.user.email || "",
+    let accountUser = state.user;
+    if (directSignup) {
+      const credential = await createUserWithEmailAndPassword(auth, registerEmail, registerPassword);
+      accountUser = credential.user;
+      await updateProfile(accountUser, { displayName: name });
+      await setDoc(doc(db, "users", accountUser.uid), {
+        name, email: registerEmail, role: "driverApplicant", balance: 0, notifications: true,
+        createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+      });
+    }
+
+    const applicationPayload = {
+      userId: accountUser.uid,
+      name,
+      email: accountUser.email || registerEmail || "",
       phone,
       serviceType: byId("serviceType").value,
       vehicleType: isRestaurant ? "" : byId("vehicleType").value,
@@ -565,24 +620,28 @@ byId("applicationForm").addEventListener("submit", async event => {
       profileComplete: true,
       submittedAt: serverTimestamp(),
       updatedAt: serverTimestamp()
-    }, { merge: true });
+    };
+    await setDoc(doc(db, "driverApplications", accountUser.uid), applicationPayload, { merge: true });
+
     if (isRestaurant) {
-      await setDoc(doc(db,"restaurants",state.user.uid), {
-        ownerId: state.user.uid,
-        name: byId("captainRestaurantName").value.trim(),
-        address: byId("captainRestaurantAddress").value.trim(),
-        phone: byId("captainRestaurantPhone").value.trim(),
-        location: {...state.restaurantGps},
-        meals: state.restaurantMeals.map(meal=>({...meal})),
-        active: false,
-        approvalStatus: "pending",
-        createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+      await setDoc(doc(db,"restaurants",accountUser.uid), {
+        ownerId: accountUser.uid, name: byId("captainRestaurantName").value.trim(),
+        address: byId("captainRestaurantAddress").value.trim(), phone: byId("captainRestaurantPhone").value.trim(),
+        location: {...state.restaurantGps}, meals: state.restaurantMeals.map(meal=>({...meal})),
+        active: false, approvalStatus: "pending", createdAt: serverTimestamp(), updatedAt: serverTimestamp()
       }, {merge:true});
     }
-    toast(isRestaurant ? "تم إرسال طلب الخدمة إلى الإدارة للموافقة. لن يظهر المطعم للعملاء قبل الاعتماد." : "تم إرسال طلب الكابتن إلى الإدارة للموافقة");
+
+    if (directSignup) {
+      state.directRegistration = false;
+      history.replaceState(null, "", "./driver.html");
+      toast("تم إنشاء حساب الكابتن وإرسال طلبك الكامل إلى الإدارة. الحساب ينتظر الموافقة قبل التشغيل.");
+    } else {
+      toast(isRestaurant ? "تم إرسال طلب الخدمة إلى الإدارة للموافقة. لن يظهر المطعم للعملاء قبل الاعتماد." : "تم إرسال طلب الكابتن إلى الإدارة للموافقة");
+    }
   } catch (error) {
     console.error(error);
-    toast("تعذر إرسال الطلب. تأكد من نشر قواعد Firestore الجديدة.");
+    toast(authMessage(error));
   } finally {
     busy(button, false);
   }
@@ -846,13 +905,22 @@ onAuthStateChanged(auth, user => {
   if (!user) {
     state.userData = null;
     state.driverData = null;
-    showView("auth");
+    if (state.directRegistration) {
+      fillApplication();
+      showView("application");
+    } else {
+      showView("auth");
+    }
     return;
   }
 
   state.userUnsubscribe = onSnapshot(doc(db, "users", user.uid), snapshot => {
     if (!snapshot.exists()) {
-      byId("authError").textContent = "افتح تطبيق العميل مرة واحدة لإنشاء ملف الحساب.";
+      if (state.directRegistration) {
+        showView("application");
+        return;
+      }
+      byId("authError").textContent = "ملف الحساب غير موجود. أعد تسجيل الدخول أو أنشئ حساب كابتن جديدًا.";
       showView("auth");
       return;
     }

@@ -193,7 +193,7 @@ body.driver-map-mode #driverView{height:100dvh!important}
         <div class="auth-error" id="authError" role="alert"></div>
         <button class="primary wide" id="loginButton" type="submit">تسجيل الدخول</button>
       </form>
-      <p>لا تملك حساب كابتن؟ ارجع إلى شاشة البداية واختر «حساب جديد» ثم «كابتن».</p>
+      <p>لا تملك حساب كابتن؟ <a href="./driver.html?mode=register">أنشئ حساب كابتن مباشرة من هنا</a>.</p>
     </div>
   </section>
 
@@ -217,8 +217,8 @@ body.driver-map-mode #driverView{height:100dvh!important}
 
   <main class="shell hidden" id="applicationView">
     <section class="hero">
-      <div><h1>انضم إلى كباتن كروة</h1><p>أرسل بيانات المركبة، وستظهر حالة المراجعة هنا.</p></div>
-      <span class="role-badge">طلب انضمام</span>
+      <div><h1 id="applicationHeroTitle">انضم إلى كباتن كروة</h1><p id="applicationHeroText">أكمل بياناتك، ثم يُرسل طلبك إلى الإدارة للموافقة.</p></div>
+      <span class="role-badge" id="applicationHeroBadge">طلب انضمام</span>
     </section>
 
     <div class="layout">
@@ -227,6 +227,15 @@ body.driver-map-mode #driverView{height:100dvh!important}
         <div class="notice hidden" id="applicationNotice"></div>
         <form id="applicationForm">
           <div class="form-grid">
+            <section class="full" id="driverAccountFields" hidden style="padding:14px;border:1px solid #dce5ec;border-radius:16px;background:#f8fafc">
+              <div class="card-heading" style="margin-bottom:10px"><h3>بيانات دخول حساب الكابتن</h3><span class="status-chip pending">حساب جديد</span></div>
+              <div class="form-grid">
+                <div class="field"><label for="driverRegisterEmail">البريد الإلكتروني</label><input id="driverRegisterEmail" type="email" autocomplete="email" placeholder="name@example.com"></div>
+                <div class="field"><label for="driverRegisterPassword">كلمة المرور</label><input id="driverRegisterPassword" type="password" autocomplete="new-password" minlength="6" placeholder="6 أحرف على الأقل"></div>
+                <div class="field full"><label for="driverRegisterPasswordConfirm">تأكيد كلمة المرور</label><input id="driverRegisterPasswordConfirm" type="password" autocomplete="new-password" minlength="6" placeholder="أعد كتابة كلمة المرور"></div>
+              </div>
+              <small class="muted">بعد إكمال التسجيل يُنشأ الحساب فورًا بحالة «بانتظار الموافقة». لا يمكن استقبال الطلبات قبل اعتماد الإدارة.</small>
+            </section>
             <div class="field">
               <label for="driverName">الاسم الكامل</label>
               <input id="driverName" autocomplete="name" required>
@@ -453,7 +462,7 @@ body.driver-map-mode #driverView{height:100dvh!important}
   <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
   <script>try{if(window.maplibregl&&maplibregl.setRTLTextPlugin&&(!maplibregl.getRTLTextPluginStatus||maplibregl.getRTLTextPluginStatus()==="unavailable")){maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",true).catch(()=>{});}}catch(e){}</script>
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
-  <script type="module" src="./driver.js?v=36"></script>
+  <script type="module" src="./driver.js?v=43"></script>
   <script src="./pwa.js?v=37"></script>
 <script id="phase20-driver-map-first-js">
 window.addEventListener("DOMContentLoaded",()=>{
