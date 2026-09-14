@@ -435,6 +435,44 @@ function renderProviderItems() {
   renderPreview();
 }
 
+async function compressMealImage(file, maxBytes = 100 * 1024) {
+  if (!file || !file.type.startsWith("image/")) throw new Error("INVALID_IMAGE");
+  const bitmap = await createImageBitmap(file);
+  let width = bitmap.width;
+  let height = bitmap.height;
+  const maxDimension = 1600;
+  if (Math.max(width, height) > maxDimension) {
+    const scale = maxDimension / Math.max(width, height);
+    width = Math.max(1, Math.round(width * scale));
+    height = Math.max(1, Math.round(height * scale));
+  }
+
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d", { alpha: false });
+  let quality = 0.9;
+  let blob = null;
+
+  for (let attempt = 0; attempt < 14; attempt++) {
+    canvas.width = width;
+    canvas.height = height;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    blob = await new Promise(resolve => canvas.toBlob(resolve, "image/webp", quality));
+    if (blob && blob.size <= maxBytes) break;
+    if (quality > 0.42) quality -= 0.1;
+    else {
+      width = Math.max(320, Math.round(width * 0.82));
+      height = Math.max(320, Math.round(height * 0.82));
+      quality = 0.72;
+    }
+  }
+  bitmap.close?.();
+  if (!blob || blob.size > maxBytes) throw new Error("IMAGE_TOO_LARGE");
+  const baseName = (file.name || "meal").replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9._-]/g, "_");
+  return new File([blob], `${baseName}.webp`, { type: "image/webp", lastModified: Date.now() });
+}
+
 byId("pAddItem").addEventListener("click", async () => {
   const name = byId("pItemName").value.trim();
   const price = Number(byId("pItemPrice").value || 0);
@@ -444,15 +482,15 @@ byId("pAddItem").addEventListener("click", async () => {
   const image = byId("pItemImage").files?.[0] || null;
   if (name.length < 2 || !Number.isFinite(price) || price < 0 || !Number.isFinite(deliveryFee) || deliveryFee < 0) return toast("أدخل الاسم والسعر ورسوم التوصيل بشكل صحيح.");
   if (providerItems.length >= 50) return toast("الحد الأقصى 50 عنصرًا.");
-  if (image && image.size > 100 * 1024) return toast("حجم صورة الوجبة يجب ألا يتجاوز 100 KB.");
-  if (image && !["image/jpeg","image/png","image/webp"].includes(image.type)) return toast("صيغة الصورة يجب أن تكون JPG أو PNG أو WebP.");
+  if (image && !image.type.startsWith("image/")) return toast("الملف المختار يجب أن يكون صورة.");
   const button = byId("pAddItem"); setBusy(button, true, "جاري إضافة الوجبة…");
   try {
     let imageUrl = "";
     if (image) {
-      const safeName = image.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const compressedImage = await compressMealImage(image);
+      const safeName = compressedImage.name.replace(/[^a-zA-Z0-9._-]/g, "_");
       const imageRef = ref(storage, `restaurant-meals/${currentUser.uid}/${Date.now()}-${safeName}`);
-      await uploadBytes(imageRef, image, { contentType: image.type });
+      await uploadBytes(imageRef, compressedImage, { contentType: compressedImage.type });
       imageUrl = await getDownloadURL(imageRef);
     }
     providerItems.push({ name, price: Math.round(price), unit, deliveryFee: Math.round(deliveryFee), description, imageUrl });
