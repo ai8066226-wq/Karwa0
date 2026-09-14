@@ -2041,49 +2041,6 @@ body{color:#12243f;background:radial-gradient(circle at 85% 0,rgba(27,174,158,.1
                 <div class="food-flow-note"><strong>🍽️ طعام</strong><span>اختر المطعم أولًا، ثم اختر الأكلة وشاهد التفاصيل قبل إرسال الطلب.</span></div>
                 <div class="restaurant-marketplace" id="restaurantMarketplace"><div class="restaurant-empty">جاري تحميل المطاعم…</div></div>
 
-                <div class="panel-heading food-legacy-heading" hidden><h2>وجبات كروة السريعة</h2><button class="text-button" id="foodFilter">الأسرع توصيلًا</button></div>
-                <div class="food-list" hidden>
-                  <article class="food-item">
-                    <div class="food-icon">🍔</div>
-                    <h3>برغر بغداد</h3>
-                    <p>برغر لحم مع بطاطا • 25 دقيقة</p>
-                    <div class="food-bottom">
-                      <strong>9,500 د.ع</strong>
-                      <button class="add-food-button" data-food="برغر بغداد" data-price="9500">+</button>
-                    </div>
-                  </article>
-
-                  <article class="food-item">
-                    <div class="food-icon">🥙</div>
-                    <h3>شاورما الدار</h3>
-                    <p>وجبة شاورما عربي • 20 دقيقة</p>
-                    <div class="food-bottom">
-                      <strong>7,000 د.ع</strong>
-                      <button class="add-food-button" data-food="شاورما الدار" data-price="7000">+</button>
-                    </div>
-                  </article>
-
-                  <article class="food-item">
-                    <div class="food-icon">🍕</div>
-                    <h3>بيتزا التنور</h3>
-                    <p>بيتزا جبن وسط • 30 دقيقة</p>
-                    <div class="food-bottom">
-                      <strong>12,000 د.ع</strong>
-                      <button class="add-food-button" data-food="بيتزا التنور" data-price="12000">+</button>
-                    </div>
-                  </article>
-
-                  <article class="food-item">
-                    <div class="food-icon">🍗</div>
-                    <h3>دجاج الكرخ</h3>
-                    <p>نصف دجاجة مع رز • 28 دقيقة</p>
-                    <div class="food-bottom">
-                      <strong>10,500 د.ع</strong>
-                      <button class="add-food-button" data-food="دجاج الكرخ" data-price="10500">+</button>
-                    </div>
-                  </article>
-                </div>
-
                 <div class="meal-detail-backdrop" id="mealDetailBackdrop" hidden>
                   <div class="meal-detail-card" role="dialog" aria-modal="true" aria-labelledby="mealDetailTitle">
                     <button class="meal-detail-close" id="closeMealDetail" type="button" aria-label="إغلاق">×</button>
@@ -2098,9 +2055,12 @@ body{color:#12243f;background:radial-gradient(circle at 85% 0,rgba(27,174,158,.1
                     <small id="cartPrice"></small>
                   </div>
                   <div class="food-delivery-fields">
-                    <input id="foodCustomerAddress" maxlength="180" placeholder="عنوان العميل: الحي، الشارع، أقرب نقطة دالة">
-                    <button class="secondary-button" id="useFoodCustomerLocation" type="button">📍 تحديد موقعي للتوصيل</button>
-                    <small id="foodLocationStatus">يجب تحديد موقعك قبل إرسال الطلب للمطعم.</small>
+                    <label class="customer-delivery-choice" id="foodDeliveryChoice"><input id="foodDeliveryRequested" type="checkbox" checked><span><b>أريد توصيل الطلب</b><small id="foodDeliveryFeeLabel">يمكنك إلغاء الاختيار والاستلام من المطعم</small></span></label>
+                    <div id="foodDeliveryDetails" style="display:contents">
+                      <input id="foodCustomerAddress" maxlength="180" placeholder="عنوان العميل: الحي، الشارع، أقرب نقطة دالة">
+                      <button class="secondary-button" id="useFoodCustomerLocation" type="button">📍 تحديد موقعي للتوصيل</button>
+                      <small id="foodLocationStatus">يجب تحديد موقعك قبل إرسال طلب التوصيل للمطعم.</small>
+                    </div>
                   </div>
                   <button class="primary-button" id="orderFood">إرسال الطلب إلى المطعم</button>
                 </div>
