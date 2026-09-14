@@ -78,6 +78,19 @@ service cloud.firestore { match /databases/{database}/documents {
  match /orders/{id}{
    function linkedServiceRequest(){return getAfter(/databases/$(database)/documents/serviceRequests/$(request.resource.data.serviceRequestId)).data;}
    function currentDriver(){return get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data;}
+   // حماية إضافية عند قبول الطلب: موقع الكابتن المسجل يجب أن يكون قريبًا من نقطة بداية الطلب.
+   // الواجهة تطبق Haversine بدقة 10 كم؛ هذه الدالة تمنع تجاوزًا مباشرًا من عميل معدل.
+   function driverNearPickup10Km(){
+     let d=currentDriver();
+     let p=resource.data.pickupLocation;
+     let dLat=(p.latitude-d.latitude)*111.32;
+     let lonFactor=d.latitude>=35?90:(d.latitude>=33?92:(d.latitude>=31?94.5:97));
+     let dLon=(p.longitude-d.longitude)*lonFactor;
+     return p is map
+       && p.latitude is number && p.longitude is number
+       && d.latitude is number && d.longitude is number
+       && dLat*dLat+dLon*dLon<=100;
+   }
    function taxiOrderVisible(){return driver()&&currentDriver().get('serviceType','')=='taxi'&&currentDriver().get('vehicleType','')!='دراجة'&&resource.data.type=='ride';}
    function deliveryOrderVisible(){return driver()&&currentDriver().get('serviceType','')=='delivery'&&currentDriver().get('vehicleType','') in ['اقتصادي','تكسي','عائلي','دراجة']&&resource.data.type in ['parcel','food','serviceDelivery'];}
    allow read:if signed()&&(resource.data.userId==request.auth.uid||resource.data.driverId==request.auth.uid||taxiOrderVisible()||deliveryOrderVisible()||admin()||(serviceProvider()&&resource.data.get('providerId','')==request.auth.uid));
@@ -112,6 +125,7 @@ service cloud.firestore { match /databases/{database}/documents {
        (resource.data.driverId==null && resource.data.cancelled==false && resource.data.statusIndex==0 && request.resource.data.driverId==request.auth.uid && request.resource.data.statusIndex==resource.data.statusIndex && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['driverId','driverName','driverPhone','assignmentStatus','acceptedAt','updatedAt'])
          && ((resource.data.type=='ride' && currentDriver().get('serviceType','')=='taxi' && currentDriver().get('vehicleType','')!='دراجة')
            || (resource.data.type in ['parcel','food','serviceDelivery'] && currentDriver().get('serviceType','')=='delivery' && currentDriver().get('vehicleType','') in ['اقتصادي','تكسي','عائلي','دراجة'] && (resource.data.type!='serviceDelivery' || currentDriver().get('city','')==resource.data.get('serviceCity',''))))
+         && driverNearPickup10Km()
          && currentDriver().get('activeOrderId','')=='' && getAfter(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.activeOrderId==id)
        || (resource.data.driverId==request.auth.uid && request.resource.data.driverId==request.auth.uid && request.resource.data.statusIndex==resource.data.statusIndex+1 && request.resource.data.statusIndex<=4 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['statusIndex','arrivedAt','startedAt','completedAt','paymentStatus','updatedAt']))
        || (resource.data.driverId==request.auth.uid && request.resource.data.driverId==request.auth.uid && resource.data.cancelled==false && request.resource.data.cancelled==true && request.resource.data.cancelledBy=='driver' && request.resource.data.statusIndex==resource.data.statusIndex && resource.data.statusIndex<4 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cancelled','cancelledBy','cancellationReason','cancelledAt','assignmentStatus','updatedAt']))

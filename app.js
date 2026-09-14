@@ -870,6 +870,10 @@ byId("bookParcel").addEventListener("click", async event => {
     showToast("أكمل عناوين التوصيل واسم المستلم");
     return;
   }
+  if (!validServiceLocation(state.customerLocation)) {
+    showToast("حدد موقع استلام الغرض عبر GPS حتى يصل الطلب إلى كباتن التوصيل ضمن نطاق 10 كم");
+    return;
+  }
   if (recipientPhone.replace(/\D/g, "").length < 8) {
     showToast("أدخل رقم هاتف صحيحًا");
     return;
@@ -877,7 +881,7 @@ byId("bookParcel").addEventListener("click", async event => {
   const button = event.currentTarget;
   setButtonBusy(button, true, "جاري الطلب…");
   try {
-    await createOrder("parcel", `توصيل غرض إلى ${recipientName}`, `${from} ← ${to}`, price, { payment: "نقدًا" });
+    await createOrder("parcel", `توصيل غرض إلى ${recipientName}`, `${from} ← ${to}`, price, { payment: "نقدًا", pickupLocation: { ...state.customerLocation } });
   } catch (error) {
     console.error(error);
     showToast("تعذر حفظ طلب التوصيل.");

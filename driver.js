@@ -78,6 +78,33 @@ const byId = id => document.getElementById(id);
 const statuses = ["بانتظار كابتن", "الكابتن في الطريق", "وصلت إلى العميل", "بدأت الرحلة", "تم الوصول"];
 const icons = { ride: "🚕", parcel: "📦", food: "🍽️", serviceDelivery: "🛵" };
 const DELIVERY_ORDER_TYPES = new Set(["parcel", "food", "serviceDelivery"]);
+const DRIVER_REQUEST_RADIUS_KM = 10;
+
+function validDispatchPoint(point) {
+  const lat = Number(point?.latitude);
+  const lng = Number(point?.longitude);
+  return Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+}
+
+function currentDriverPoint() {
+  if (!state.lastPosition) return null;
+  const point = { latitude: Number(state.lastPosition.coords.latitude), longitude: Number(state.lastPosition.coords.longitude) };
+  return validDispatchPoint(point) ? point : null;
+}
+
+function distanceKmBetween(a, b) {
+  if (!validDispatchPoint(a) || !validDispatchPoint(b)) return Infinity;
+  const R = 6371;
+  const toRad = value => Number(value) * Math.PI / 180;
+  const dLat = toRad(Number(b.latitude) - Number(a.latitude));
+  const dLng = toRad(Number(b.longitude) - Number(a.longitude));
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(Number(a.latitude))) * Math.cos(toRad(Number(b.latitude))) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+
+function orderWithinRequestRadius(order, point = currentDriverPoint()) {
+  return distanceKmBetween(point, order?.pickupLocation) <= DRIVER_REQUEST_RADIUS_KM;
+}
 
 function driverOrderMode(driver = state.driverData) {
   if (!driver) return "none";
@@ -322,8 +349,8 @@ function startLocationSharing() {
   state.locationWatchId = navigator.geolocation.watchPosition(position => {
     state.lastPosition = position;
     showOwnPosition(position);
-    renderOrders(); // يعيد ترتيب الطلبات فور تغير موقع الكابتن
-    sharePosition(position).catch(error => console.error(error));
+    // نحدّث موقع الكابتن في Firestore أولًا، ثم نعرض طلبات نطاق 10 كم حتى يكون القبول متوافقًا مع قواعد الأمان.
+    sharePosition(position).then(() => renderOrders()).catch(error => { console.error(error); renderOrders(); });
   }, error => {
     console.error(error);
     setLocationStatus("تعذر الموقع", "rejected");
@@ -695,7 +722,7 @@ function formatOrderCreatedAt(order) {
   return `${datePart} • ${timePart}`;
 }
 
-function distanceToOrder(order){if(!state.lastPosition||!order.pickupLocation)return Infinity;const a={latitude:state.lastPosition.coords.latitude,longitude:state.lastPosition.coords.longitude},b=order.pickupLocation;const R=6371,toRad=v=>v*Math.PI/180,dLat=toRad(b.latitude-a.latitude),dLon=toRad(b.longitude-a.longitude);const x=Math.sin(dLat/2)**2+Math.cos(toRad(a.latitude))*Math.cos(toRad(b.latitude))*Math.sin(dLon/2)**2;return 2*R*Math.asin(Math.sqrt(x));}
+function distanceToOrder(order){ return distanceKmBetween(currentDriverPoint(), order?.pickupLocation); }
 function orderCard(order, mode) {
   const statusIndex = Number(order.statusIndex || 0);
   const statusClass = order.cancelled ? "cancelled" : statusIndex >= 4 ? "complete" : "active";
@@ -727,6 +754,8 @@ function renderOrders() {
     if(order.cancelled || Number(order.statusIndex || 0) >= 4 || order.driverId) return false;
     // فصل صارم: التكسي يرى الركوب فقط، والتوصيل يرى طلبات التوصيل فقط.
     if (!canDriverHandleOrder(order)) return false;
+    // لا يصل الطلب إلى الكابتن إلا إذا كان GPS الحالي داخل 10 كم من نقطة بداية الطلب.
+    if (!orderWithinRequestRadius(order)) return false;
     if(order.type === "serviceDelivery" && order.serviceCity && String(order.serviceCity).trim() !== String(state.driverData?.city || "").trim()) return false;
     const exp=order.dispatchExpiresAt?.seconds ? order.dispatchExpiresAt.seconds*1000 : new Date(order.dispatchExpiresAt||0).getTime();
     return !exp || exp<=now || !Array.isArray(order.dispatchCandidateIds) || !order.dispatchCandidateIds.length || order.dispatchCandidateIds.includes(state.user?.uid);
@@ -742,9 +771,12 @@ function renderOrders() {
   byId("activeCount").textContent = mine.length;
   byId("completedCount").textContent = completed.length;
   byId("driverEarnings").textContent = money(completed.filter(o=>!o.cancelled).reduce((sum,o)=>sum+Number(o.driverEarnings||0),0));
+  const hasLiveLocation = Boolean(currentDriverPoint());
   byId("availableOrders").innerHTML = available.length
     ? available.map(order => orderCard(order, "available")).join("")
-    : `<div class="empty"><span>✓</span>لا توجد طلبات متاحة الآن.</div>`;
+    : !hasLiveLocation && state.driverData?.online
+      ? `<div class="empty"><span>📍</span>جارٍ تحديد موقعك. لن تظهر الطلبات إلا بعد تفعيل GPS، وضمن نطاق ${DRIVER_REQUEST_RADIUS_KM} كم فقط.</div>`
+      : `<div class="empty"><span>✓</span>لا توجد طلبات مطابقة لتصنيفك ضمن نطاق ${DRIVER_REQUEST_RADIUS_KM} كم الآن.</div>`;
   byId("myOrders").innerHTML = mine.length
     ? mine.map(order => orderCard(order, "mine")).join("")
     : `<div class="empty"><span>🚕</span>لا توجد رحلة نشطة لديك.</div>`;
@@ -825,7 +857,7 @@ function openDriverDashboard() {
     ordersUnsubscribe = onSnapshot(ordersQuery, snapshot => {
       const incoming = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
       if (knownOrderIds.size && state.driverData?.online) {
-        const fresh = incoming.find(o => !knownOrderIds.has(o.firestoreId) && !o.driverId && !o.cancelled && Number(o.statusIndex||0) < 4 && canDriverHandleOrder(o));
+        const fresh = incoming.find(o => !knownOrderIds.has(o.firestoreId) && !o.driverId && !o.cancelled && Number(o.statusIndex||0) < 4 && canDriverHandleOrder(o) && orderWithinRequestRadius(o));
         if (fresh) {
           toast(fresh.type === "ride" ? "طلب تكسي جديد متاح" : "طلب توصيل جديد متاح");
           if ("Notification" in window && Notification.permission === "granted") new Notification("كروة — طلب جديد", { body: fresh.title || "لديك طلب متاح", icon: "./karwa-icon.svg" });
@@ -899,6 +931,10 @@ document.addEventListener("click", async event => {
         if (order.cancelled || Number(order.statusIndex || 0) >= 4) throw new Error("ORDER_NOT_AVAILABLE");
         if (order.driverId && order.driverId !== state.user.uid) throw new Error("ORDER_TAKEN");
         if (!canDriverHandleOrder(order, driver)) throw new Error(order.type === "ride" ? "TAXI_DRIVER_ONLY" : "DELIVERY_DRIVER_ONLY");
+        const livePoint = currentDriverPoint();
+        if (!livePoint) throw new Error("LOCATION_REQUIRED");
+        const requestDistanceKm = distanceKmBetween(livePoint, order.pickupLocation);
+        if (!Number.isFinite(requestDistanceKm) || requestDistanceKm > DRIVER_REQUEST_RADIUS_KM) throw new Error("OUTSIDE_REQUEST_RADIUS");
         if (order.type === "serviceDelivery" && order.serviceCity && String(order.serviceCity).trim() !== String(driver.city || "").trim()) throw new Error("OUTSIDE_DRIVER_AREA");
         transaction.update(orderRef, {
           driverId: state.user.uid,
@@ -947,7 +983,7 @@ document.addEventListener("click", async event => {
     }
   } catch (error) {
     console.error(error);
-    toast(error.message === "OFFLINE" ? "فعّل حالة الاتصال أولًا" : error.message === "OTP_REQUIRED" ? "يجب إدخال الرمز" : error.message === "OTP_INVALID" ? "الرمز غير صحيح" : error.message === "ORDER_TAKEN" ? "سبق أن قبل كابتن آخر هذا الطلب" : error.message === "ORDER_NOT_FOUND" ? "الطلب غير موجود" : error.message === "ORDER_NOT_AVAILABLE" ? "الطلب لم يعد متاحًا" : error.message === "DRIVER_BUSY" ? "لديك رحلة نشطة بالفعل، أكملها أولًا" : error.message === "DRIVER_PROFILE_MISSING" ? "ملف الكابتن غير موجود. أعد تفعيل الحساب من الإدارة" : error.message === "DRIVER_BLOCKED" ? "الحساب موقوف من الإدارة" : error.message === "DELIVERY_DRIVER_ONLY" ? "هذا الطلب مخصص لكابتن مسجل في خدمة التوصيل" : error.message === "TAXI_DRIVER_ONLY" ? "هذا الطلب مخصص لكابتن تكسي مسجل لخدمة الركوب" : error.message === "OUTSIDE_DRIVER_AREA" ? "هذا الطلب خارج نطاق المدينة المسجلة لحسابك" : driverCallableMessage(error, button.dataset.action === "accept" ? "قبول الطلب" : "تحديث حالة الرحلة"));
+    toast(error.message === "OFFLINE" ? "فعّل حالة الاتصال أولًا" : error.message === "OTP_REQUIRED" ? "يجب إدخال الرمز" : error.message === "OTP_INVALID" ? "الرمز غير صحيح" : error.message === "ORDER_TAKEN" ? "سبق أن قبل كابتن آخر هذا الطلب" : error.message === "ORDER_NOT_FOUND" ? "الطلب غير موجود" : error.message === "ORDER_NOT_AVAILABLE" ? "الطلب لم يعد متاحًا" : error.message === "DRIVER_BUSY" ? "لديك رحلة نشطة بالفعل، أكملها أولًا" : error.message === "DRIVER_PROFILE_MISSING" ? "ملف الكابتن غير موجود. أعد تفعيل الحساب من الإدارة" : error.message === "DRIVER_BLOCKED" ? "الحساب موقوف من الإدارة" : error.message === "DELIVERY_DRIVER_ONLY" ? "هذا الطلب مخصص لكابتن مسجل في خدمة التوصيل" : error.message === "TAXI_DRIVER_ONLY" ? "هذا الطلب مخصص لكابتن تكسي مسجل لخدمة الركوب" : error.message === "OUTSIDE_DRIVER_AREA" ? "هذا الطلب خارج نطاق المدينة المسجلة لحسابك" : error.message === "LOCATION_REQUIRED" ? "يجب تفعيل GPS وتحديد موقعك الحالي قبل قبول أي طلب" : error.message === "OUTSIDE_REQUEST_RADIUS" ? `هذا الطلب أصبح خارج نطاق ${DRIVER_REQUEST_RADIUS_KM} كم من موقعك الحالي` : driverCallableMessage(error, button.dataset.action === "accept" ? "قبول الطلب" : "تحديث حالة الرحلة"));
   } finally {
     busy(button, false);
   }
