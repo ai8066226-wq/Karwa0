@@ -235,6 +235,6 @@ firebase deploy --only hosting
 - Deploy both `firestore.rules` and `storage.rules` with this release.
 
 
-## Phase 39
+## Phase 40
 - تم إلغاء رفع صور الخدمات والمنتجات بالكامل لتسريع الإضافة.
 - تم تحديث بطاقات الخدمات والمنتجات بتصميم احترافي يعتمد على الأيقونات والمعلومات والسعر وأزرار الإدارة.

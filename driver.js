@@ -612,6 +612,7 @@ function orderCard(order, mode) {
         <span class="status-chip ${statusClass}">${escapeHtml(order.cancelled ? "ملغي" : statuses[statusIndex])}</span>
       </div>
       <p class="order-route">${escapeHtml(order.route)}</p>
+      ${order.type === "serviceDelivery" && order.serviceDelivery ? `<div class="service-delivery-details"><b>تفاصيل طلب الخدمة</b><span>🏪 ${escapeHtml(order.serviceDelivery.providerName || "صاحب الخدمة")}</span><span>📍 عنوان الخدمة: ${escapeHtml(order.serviceDelivery.providerAddress || "غير محدد")}</span><span>🧾 ${escapeHtml(order.serviceDelivery.itemName || "طلب خدمة")}</span><span>📝 ${escapeHtml(order.serviceDelivery.requestText || "بدون تفاصيل")}</span><hr><span>👤 العميل: ${escapeHtml(order.serviceDelivery.customerName || "عميل كروة")}</span><span>📞 ${escapeHtml(order.serviceDelivery.customerPhone || "غير متوفر")}</span><span>📍 عنوان العميل: ${escapeHtml(order.serviceDelivery.customerAddress || "غير محدد")}</span></div>` : ""}
       <div class="order-bottom">
         <div class="order-meta"><span>${escapeHtml(order.id)}</span><span>${escapeHtml(order.payment || "نقدًا")}</span>${mode === "available" ? `<span>🗓️ ${escapeHtml(formatOrderCreatedAt(order))}</span>` : ""}${mode === "available" && Number.isFinite(distanceToOrder(order)) ? `<span>يبعد ${distanceToOrder(order).toFixed(1)} كم</span>` : ""}</div>
         ${order.distanceKm ? `<div class="order-meta"><span>المشوار ${Number(order.distanceKm).toFixed(1)} كم</span><span>≈ ${Math.round(Number(order.durationMin||0))} دقيقة</span><span>صافي الكابتن ${money(order.driverEarnings)}</span></div>` : ""}
@@ -628,6 +629,11 @@ function renderOrders() {
     // كابتن التوصيل (وكذلك الدراجة) لا يرى طلبات التكسي؛ كابتن التكسي يراها.
     const serviceType = state.driverData?.serviceType || "taxi";
     if((serviceType === "delivery" || state.driverData?.vehicleType === "دراجة") && order.type === "ride") return false;
+    if(order.type === "serviceDelivery") {
+      if(serviceType !== "delivery") return false;
+      const distance = distanceToOrder(order);
+      if(!Number.isFinite(distance) || distance > 10) return false;
+    }
     if(order.type === "food") {
       if(order.foodDetails?.deliveryRequested !== true) return false;
       if(serviceType !== "delivery") return false;

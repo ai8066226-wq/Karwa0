@@ -513,7 +513,7 @@ function renderProviderRequests(requests) {
         return `<article class="request-card">
           <div class="request-card-head"><h3>${escapeHtml(request.itemName || "طلب خدمة")}</h3><span class="status ${status === "completed" || status === "accepted" ? "ok" : status === "rejected" || status === "cancelled" ? "bad" : ""}">${escapeHtml(requestStatusLabels[status] || status)}</span></div>
           <p>${escapeHtml(request.requestText || "بدون تفاصيل إضافية")}</p>
-          <div class="request-meta"><span>العميل: ${escapeHtml(request.customerName || "عميل كروة")}</span><span>الموقع: ${escapeHtml(request.customerAddress || "غير محدد")}</span><span>السعر: ${money(request.itemPrice)}</span></div>
+          <div class="request-meta"><span>👤 العميل: ${escapeHtml(request.customerName || "عميل كروة")}</span><span>📞 الهاتف: ${escapeHtml(request.customerPhone || "غير متوفر")}</span><span>📍 عنوان العميل: ${escapeHtml(request.customerAddress || "غير محدد")}</span><span>🏪 عنوان الخدمة: ${escapeHtml(request.providerAddress || "غير محدد")}</span><span>💰 السعر: ${money(request.itemPrice)}</span></div>
           ${request.providerNote ? `<p class="notice bad" style="margin-top:10px">${escapeHtml(request.providerNote)}</p>` : ""}
           ${actions}
         </article>`;
@@ -531,13 +531,30 @@ byId("providerRequestsList").addEventListener("click", async event => {
   if (nextStatus === "rejected" && !providerNote) return;
   setBusy(button, true);
   try {
-    await updateDoc(doc(db, "serviceRequests", button.dataset.requestId), {
-      status: nextStatus,
-      providerNote: providerNote?.slice(0, 300) || "",
-      statusUpdatedAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    });
-    toast(nextStatus === "accepted" ? "تم قبول طلب العميل" : nextStatus === "completed" ? "تم إكمال الطلب" : "تم رفض الطلب مع توضيح السبب");
+    const requestRef = doc(db, "serviceRequests", button.dataset.requestId);
+    const requestSnap = await getDoc(requestRef);
+    const requestData = requestSnap.exists() ? requestSnap.data() : null;
+    if (!requestData) throw new Error("REQUEST_NOT_FOUND");
+    if (nextStatus === "accepted") {
+      const deliveryOrderRef = doc(collection(db, "orders"));
+      const deliveryOrder = {
+        id: "KW-S-" + String(Date.now()).slice(-6), userId: requestData.customerId, type: "serviceDelivery",
+        title: `توصيل طلب: ${requestData.itemName || "خدمة"}`,
+        route: `${requestData.providerName || "موقع الخدمة"} ← ${requestData.customerAddress || "عنوان العميل"}`,
+        price: 0, payment: "حسب اتفاق الخدمة", driverId: null, driverName: "", driverPhone: "",
+        assignmentStatus: "available", pickupLocation: requestData.providerLocation || null, destinationLocation: requestData.customerLocation || null,
+        distanceKm: 0, durationMin: 0, commissionRate: 0, commissionAmount: 0, driverEarnings: 0,
+        statusIndex: 0, cancelled: false, createdAt: serverTimestamp(), createdAtISO: new Date().toISOString(),
+        serviceDelivery: { requestId: button.dataset.requestId, providerId: currentUser.uid, providerName: requestData.providerName || currentProfile?.businessName || "صاحب الخدمة", providerAddress: requestData.providerAddress || currentProfile?.address || "غير محدد", itemName: requestData.itemName || "طلب خدمة", requestText: requestData.requestText || "", customerName: requestData.customerName || "عميل كروة", customerPhone: requestData.customerPhone || "غير متوفر", customerAddress: requestData.customerAddress || "غير محدد" }
+      };
+      const batch = writeBatch(db);
+      batch.update(requestRef, { status: "accepted", providerNote: "", deliveryOrderId: deliveryOrderRef.id, statusUpdatedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      batch.set(deliveryOrderRef, deliveryOrder);
+      await batch.commit();
+    } else {
+      await updateDoc(requestRef, { status: nextStatus, providerNote: providerNote?.slice(0, 300) || "", statusUpdatedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    }
+    toast(nextStatus === "accepted" ? "تم قبول الطلب وإرساله إلى كابتن التوصيل" : nextStatus === "completed" ? "تم إكمال الطلب" : "تم رفض الطلب مع توضيح السبب");
   } catch (error) {
     console.error(error);
     toast("تعذر تحديث حالة الطلب.");

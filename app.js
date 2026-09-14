@@ -1169,6 +1169,7 @@ byId("bookOtherService")?.addEventListener("click", async event => {
     await addDoc(collection(db, "serviceRequests"), {
       customerId: state.user.uid,
       customerName: state.name,
+      customerPhone: state.user.phoneNumber || "غير متوفر",
       providerId: profile.firestoreId,
       providerName: profile.businessName,
       providerCategory: profile.category || "other",
