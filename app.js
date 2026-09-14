@@ -106,6 +106,8 @@ const state = {
   serviceRequests: [],
   unsubscribeServiceProfiles: null,
   unsubscribeServiceRequests: null,
+  serviceRatings: [],
+  unsubscribeServiceRatings: null,
   orders: [],
   activeOrder: null,
   balance: 0,
@@ -987,6 +989,12 @@ function serviceLocationText(location) {
     : "غير محدد";
 }
 
+function serviceRatingStats(providerId) {
+  const rows = state.serviceRatings.filter(r => r.providerId === providerId);
+  if (!rows.length) return {avg:0,count:0};
+  return { avg: rows.reduce((a,r)=>a+Number(r.score||0),0)/rows.length, count: rows.length };
+}
+
 function renderOtherServices() {
   const host = byId("otherServicesMarketplace");
   if (!host) return;
@@ -1008,6 +1016,7 @@ function renderOtherServices() {
         <small>${restaurantSafeText(category)} • مزود معتمد</small>
         <h3>${restaurantSafeText(profile.businessName || "نشاط كروة")}</h3>
         <p>${restaurantSafeText(profile.description || "خدمة موثقة ومتاحة للطلب عبر كروة.")}</p>
+        ${(()=>{const r=serviceRatingStats(profile.firestoreId); return r.count ? `<div class="rating-result">★ ${r.avg.toFixed(1)} <small>(${r.count} تقييم)</small></div>` : `<small>لا توجد تقييمات بعد</small>`})()}
         <div class="other-service-location"><span>📍 ${restaurantSafeText(profile.address || profile.city || "العنوان غير محدد")}</span><span>GPS: ${restaurantSafeText(serviceLocationText(profile.location))}</span></div>
         <div class="other-service-actions">
           <button class="primary-button" type="button" data-select-service="${restaurantSafeText(profile.firestoreId)}">اختيار وطلب الخدمة</button>
@@ -1066,7 +1075,7 @@ function subscribeServiceProfiles() {
   state.unsubscribeServiceProfiles = onSnapshot(
     query(collection(db, "serviceProfiles"), where("active", "==", true), where("approvalStatus", "==", "approved")),
     snapshot => {
-      state.serviceProfiles = snapshot.docs.map(item => ({ firestoreId: item.id, ...item.data() }))
+      state.serviceProfiles = snapshot.docs.map(item => ({ firestoreId: item.id, ...item.data() })).filter(item => item.blocked !== true)
         .sort((a, b) => String(a.businessName || "").localeCompare(String(b.businessName || ""), "ar"));
       renderOtherServices();
       if (state.selectedServiceProfile) {
@@ -1085,6 +1094,13 @@ function subscribeServiceProfiles() {
   );
 }
 
+function subscribeServiceRatings() {
+  state.unsubscribeServiceRatings?.();
+  state.unsubscribeServiceRatings = onSnapshot(collection(db, "serviceRatings"), snap => {
+    state.serviceRatings = snap.docs.map(d=>({firestoreId:d.id,...d.data()})); renderOtherServices(); renderMyServiceRequests();
+  }, e => console.warn("service ratings", e));
+}
+
 function renderMyServiceRequests() {
   const host = byId("myServiceRequests");
   if (!host) return;
@@ -1101,6 +1117,7 @@ function renderMyServiceRequests() {
       <div class="service-request-meta"><span>📍 ${restaurantSafeText(request.providerAddress || "العنوان غير محدد")}</span><span>التوصيل إلى: ${restaurantSafeText(request.customerAddress || "غير محدد")}</span><span>${Number(request.itemPrice || 0) > 0 ? formatMoney(request.itemPrice) : "السعر حسب الاتفاق"}</span>${date ? `<span>${date.toLocaleDateString("ar-IQ")}</span>` : ""}</div>
       ${request.providerNote ? `<div class="service-provider-note">ملاحظة المزود: ${restaurantSafeText(request.providerNote)}</div>` : ""}
       ${request.status === "pending" ? `<button class="secondary-button danger-button" type="button" data-cancel-service-request="${restaurantSafeText(request.firestoreId)}">إلغاء الطلب</button>` : ""}
+      ${request.status === "completed" ? (state.serviceRatings.some(r=>r.requestId===request.firestoreId) ? `<span class="rating-result">تم التقييم ★ ${state.serviceRatings.find(r=>r.requestId===request.firestoreId)?.score}</span>` : `<div class="service-rating-actions"><small>قيّم الخدمة/المنتج:</small>${[1,2,3,4,5].map(n=>`<button type="button" class="text-button" data-rate-service="${restaurantSafeText(request.firestoreId)}" data-score="${n}">${n}★</button>`).join("")}</div>`) : ""}
     </article>`;
   }).join("") : '<div class="restaurant-empty">لا توجد طلبات خدمات بعد.</div>';
 }
@@ -1177,6 +1194,13 @@ byId("bookOtherService")?.addEventListener("click", async event => {
   }
 });
 byId("myServiceRequests")?.addEventListener("click", async event => {
+  const rateButton = event.target.closest("[data-rate-service]");
+  if (rateButton) {
+    const request = state.serviceRequests.find(r=>r.firestoreId===rateButton.dataset.rateService); if(!request || request.status!=="completed") return;
+    const score=Number(rateButton.dataset.score); rateButton.disabled=true;
+    try { await setDoc(doc(db,"serviceRatings",request.firestoreId), { requestId:request.firestoreId, customerId:state.user.uid, providerId:request.providerId, providerName:request.providerName, itemName:request.itemName, score, createdAt:serverTimestamp() }); showToast("شكرًا، تم حفظ تقييمك"); }
+    catch(e){console.error(e); showToast("تعذر حفظ التقييم"); rateButton.disabled=false;} return;
+  }
   const button = event.target.closest("[data-cancel-service-request]");
   if (!button || !confirm("هل تريد إلغاء طلب الخدمة؟")) return;
   setButtonBusy(button, true, "جاري الإلغاء…");
@@ -1825,6 +1849,7 @@ async function startVerifiedCustomerSession(user) {
   subscribeRestaurants();
   subscribeServiceProfiles();
   subscribeServiceRequests(user);
+  subscribeServiceRatings();
   try {
     startCustomerCommunityLayers();
   } catch (communityError) {
@@ -1878,6 +1903,7 @@ onAuthStateChanged(auth, async user => {
       state.unsubscribeServiceProfiles();
       state.unsubscribeServiceProfiles = null;
     }
+    if (state.unsubscribeServiceRatings) { state.unsubscribeServiceRatings(); state.unsubscribeServiceRatings = null; state.serviceRatings = []; }
     if (state.unsubscribeServiceRequests) {
       state.unsubscribeServiceRequests();
       state.unsubscribeServiceRequests = null;

@@ -226,3 +226,10 @@ firebase deploy --only hosting
 - تظهر حالات الطلب لحظيًا للطرفين، وتمنع قواعد Firestore كل طرف من تعديل الحقول التي لا تخصه.
 
 > انشر `firestore.rules` الجديدة قبل اختبار سوق الخدمات والطلبات المباشرة.
+
+## Phase 38 — media reliability, catalog management, blocking and service ratings
+- Meal/service images are compressed immediately after selection to a safe ~92 KB target and upload/download operations have timeouts so the UI cannot remain indefinitely on “جاري الإضافة”.
+- Providers can edit or delete individual catalog items before publishing changes.
+- Admin can block/unblock approved service providers; blocked profiles are hidden from customers and cannot receive new service requests.
+- Customers can rate a completed service/product from 1–5 stars; marketplace cards show provider rating averages.
+- Deploy both `firestore.rules` and `storage.rules` with this release.

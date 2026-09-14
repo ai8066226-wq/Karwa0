@@ -297,7 +297,7 @@ function serviceApplicationCard(application) {
   const gps = location?.latitude != null && location?.longitude != null ? `${Number(location.latitude).toFixed(5)}, ${Number(location.longitude).toFixed(5)}` : "غير محدد";
   const items = profile?.items || restaurant?.meals || [];
   const hasLocation = Number.isFinite(Number(location?.latitude)) && Number.isFinite(Number(location?.longitude));
-  const actions = status === "pending" ? `<div class="order-actions"><button class="primary" data-action="approve-service" data-source="${source}" data-id="${application.firestoreId}" ${hasLocation ? "" : 'disabled title="يجب أن يحدد المزود موقع GPS أولًا"'}>${hasLocation ? "قبول وتفعيل" : "GPS مطلوب قبل القبول"}</button><button class="danger" data-action="reject-service" data-source="${source}" data-id="${application.firestoreId}">رفض مع ملاحظة</button></div>` : "";
+  const actions = status === "pending" ? `<div class="order-actions"><button class="primary" data-action="approve-service" data-source="${source}" data-id="${application.firestoreId}" ${hasLocation ? "" : 'disabled title="يجب أن يحدد المزود موقع GPS أولًا"'}>${hasLocation ? "قبول وتفعيل" : "GPS مطلوب قبل القبول"}</button><button class="danger" data-action="reject-service" data-source="${source}" data-id="${application.firestoreId}">رفض مع ملاحظة</button></div>` : status === "approved" ? `<div class="order-actions"><button class="${profile?.blocked===true ? "primary" : "danger"}" data-action="${profile?.blocked===true ? "unblock-service" : "block-service"}" data-id="${application.firestoreId}">${profile?.blocked===true ? "إلغاء الحظر" : "حظر صاحب الخدمة"}</button></div>` : "";
   return `<article class="order-card service-application-card">
     <div class="order-top"><h3>🧰 ${escapeHtml(businessName)}</h3><span class="status-chip ${status}">${labels[status] || escapeHtml(status)}</span></div>
     <p class="order-route">${escapeHtml(serviceCategoryLabels[category] || serviceCategoryLabels.other)} • ${escapeHtml(application.city || profile?.city || "—")}</p>
@@ -428,7 +428,12 @@ document.addEventListener("click", async event => {
   const id = button.dataset.id;
   busy(button, true);
   try {
-    if (button.dataset.action === "approve-service") {
+    if (button.dataset.action === "block-service" || button.dataset.action === "unblock-service") {
+      const blocked = button.dataset.action === "block-service";
+      const batch=writeBatch(db); batch.set(doc(db,"serviceProfiles",id), { blocked, active: blocked ? false : true, updatedAt:serverTimestamp() }, {merge:true});
+      batch.set(doc(db,"restaurants",id), { blocked, active: blocked ? false : true, updatedAt:serverTimestamp() }, {merge:true});
+      await batch.commit(); toast(blocked ? "تم حظر صاحب الخدمة وإخفاء خدماته عن العملاء" : "تم إلغاء الحظر وإعادة تفعيل الخدمة");
+    } else if (button.dataset.action === "approve-service") {
       const legacy = button.dataset.source === "legacy";
       const application = legacy
         ? state.applications.find(item => item.firestoreId === id && item.serviceType === "other")
@@ -468,6 +473,7 @@ document.addEventListener("click", async event => {
         location,
         items,
         active: true,
+        blocked: false,
         approvalStatus: "approved",
         approvedBy: state.user.uid,
         approvedAt: serverTimestamp(),

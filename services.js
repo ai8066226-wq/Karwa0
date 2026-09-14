@@ -423,21 +423,30 @@ function renderProviderItems() {
         <div class="catalog-item">
           <div style="display:flex;gap:10px;align-items:center">${item.imageUrl ? `<img src="${escapeHtml(item.imageUrl)}" alt="" style="width:58px;height:58px;object-fit:cover;border-radius:12px">` : ""}<div><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.description || "بدون وصف")}</small><small>${escapeHtml(item.unit || "")} ${Number(item.deliveryFee||0)>0 ? `• توصيل ${money(item.deliveryFee)}` : ""}</small></div></div>
           <span class="price">${money(item.price)}</span>
-          <button class="button danger" type="button" data-remove-item="${index}">حذف</button>
+          <div style="display:flex;gap:6px"><button class="button" type="button" data-edit-item="${index}">تعديل</button><button class="button danger" type="button" data-remove-item="${index}">حذف</button></div>
         </div>`).join("")
     : `<div class="empty">لم تضف خدمات أو منتجات بعد.</div>`;
+  byId("pItemList").querySelectorAll("[data-edit-item]").forEach(button => button.addEventListener("click", () => {
+    const i=Number(button.dataset.editItem), item=providerItems[i]; if(!item) return; editingItemIndex=i;
+    byId("pItemName").value=item.name||""; byId("pItemPrice").value=item.price||0; byId("pItemUnit").value=item.unit||""; byId("pItemDeliveryFee").value=item.deliveryFee||0; byId("pItemDescription").value=item.description||"";
+    byId("pAddItem").textContent="حفظ التعديل"; byId("pItemName").focus(); toast("عدّل البيانات ثم اضغط حفظ التعديل");
+  }));
   byId("pItemList").querySelectorAll("[data-remove-item]").forEach(button => {
     button.addEventListener("click", () => {
-      providerItems.splice(Number(button.dataset.removeItem), 1);
-      renderProviderItems();
+      const i=Number(button.dataset.removeItem); if (!confirm(`حذف ${providerItems[i]?.name || "هذا العنصر"}؟`)) return;
+      providerItems.splice(i, 1); if(editingItemIndex===i) editingItemIndex=-1; renderProviderItems();
     });
   });
   renderPreview();
 }
 
-async function compressMealImage(file, maxBytes = 100 * 1024) {
+async function compressMealImage(file, maxBytes = 92 * 1024) {
   if (!file || !file.type.startsWith("image/")) throw new Error("INVALID_IMAGE");
-  const bitmap = await createImageBitmap(file);
+  let bitmap;
+  try { bitmap = await createImageBitmap(file); }
+  catch (_) {
+    bitmap = await new Promise((resolve, reject) => { const img = new Image(); img.onload=()=>resolve(img); img.onerror=reject; img.src=URL.createObjectURL(file); });
+  }
   let width = bitmap.width;
   let height = bitmap.height;
   const maxDimension = 1600;
@@ -468,10 +477,23 @@ async function compressMealImage(file, maxBytes = 100 * 1024) {
     }
   }
   bitmap.close?.();
+  if (bitmap.src?.startsWith?.("blob:")) URL.revokeObjectURL(bitmap.src);
   if (!blob || blob.size > maxBytes) throw new Error("IMAGE_TOO_LARGE");
   const baseName = (file.name || "meal").replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9._-]/g, "_");
   return new File([blob], `${baseName}.webp`, { type: "image/webp", lastModified: Date.now() });
 }
+
+let editingItemIndex = -1;
+let preparedMealImage = null;
+function withTimeout(promise, ms, code = "TIMEOUT") { return Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error(code)), ms))]); }
+byId("pItemImage")?.addEventListener("change", async event => {
+  const file = event.target.files?.[0] || null; preparedMealImage = null;
+  if (!file) return;
+  const button = byId("pAddItem"); setBusy(button, true, "جاري تجهيز الصورة…");
+  try { preparedMealImage = await withTimeout(compressMealImage(file), 12000, "COMPRESS_TIMEOUT"); toast(`تم تجهيز الصورة (${Math.ceil(preparedMealImage.size/1024)} KB)`); }
+  catch (e) { console.error(e); event.target.value=""; toast("تعذر تجهيز الصورة. اختر صورة أخرى أو أصغر."); }
+  finally { setBusy(button, false); }
+});
 
 byId("pAddItem").addEventListener("click", async () => {
   const name = byId("pItemName").value.trim();
@@ -487,13 +509,16 @@ byId("pAddItem").addEventListener("click", async () => {
   try {
     let imageUrl = "";
     if (image) {
-      const compressedImage = await compressMealImage(image);
+      const compressedImage = preparedMealImage || await withTimeout(compressMealImage(image), 12000, "COMPRESS_TIMEOUT");
       const safeName = compressedImage.name.replace(/[^a-zA-Z0-9._-]/g, "_");
       const imageRef = ref(storage, `restaurant-meals/${currentUser.uid}/${Date.now()}-${safeName}`);
-      await uploadBytes(imageRef, compressedImage, { contentType: compressedImage.type });
-      imageUrl = await getDownloadURL(imageRef);
+      await withTimeout(uploadBytes(imageRef, compressedImage, { contentType: compressedImage.type, cacheControl: "public,max-age=31536000" }), 15000, "UPLOAD_TIMEOUT");
+      imageUrl = await withTimeout(getDownloadURL(imageRef), 8000, "URL_TIMEOUT");
     }
-    providerItems.push({ name, price: Math.round(price), unit, deliveryFee: Math.round(deliveryFee), description, imageUrl });
+    const previous = editingItemIndex >= 0 ? providerItems[editingItemIndex] : null;
+    const nextItem = { name, price: Math.round(price), unit, deliveryFee: Math.round(deliveryFee), description, imageUrl: imageUrl || previous?.imageUrl || "" };
+    if (editingItemIndex >= 0) providerItems[editingItemIndex] = nextItem; else providerItems.push(nextItem);
+    editingItemIndex = -1; preparedMealImage = null; byId("pAddItem").textContent = "إضافة";
     ["pItemName","pItemPrice","pItemUnit","pItemDeliveryFee","pItemDescription","pItemImage"].forEach(id => byId(id).value = "");
     renderProviderItems();
   } catch (error) { console.error(error); toast("تعذر رفع صورة الوجبة أو إضافتها."); }

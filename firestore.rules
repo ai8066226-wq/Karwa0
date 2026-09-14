@@ -148,8 +148,9 @@ service cloud.firestore { match /databases/{database}/documents {
      && data.get('description','') is string && data.get('description','').size()<=500
      && data.get('items',[]) is list && data.get('items',[]).size()<=50
      && data.active is bool
+     && data.get('blocked',false) is bool
      && data.approvalStatus=='approved';}
-   allow read:if admin()||own(uid)||(signed()&&resource.data.active==true&&resource.data.approvalStatus=='approved');
+   allow read:if admin()||own(uid)||(signed()&&resource.data.active==true&&resource.data.approvalStatus=='approved'&&resource.data.get('blocked',false)!=true);
    allow create:if admin()||(own(uid)&&serviceProvider()&&validProfile(request.resource.data));
    allow update:if admin()||(own(uid)
      && serviceProvider()
@@ -169,6 +170,7 @@ service cloud.firestore { match /databases/{database}/documents {
      && request.resource.data.providerId is string
      && request.resource.data.providerId.size()>0
      && providerProfile().active==true
+     && providerProfile().get('blocked',false)!=true
      && providerProfile().approvalStatus=='approved'
      && request.resource.data.providerName==providerProfile().businessName
      && request.resource.data.providerAddress==providerProfile().address
@@ -236,5 +238,14 @@ service cloud.firestore { match /databases/{database}/documents {
  }
  match /tripShares/{id}{allow read,write:if false;}
  match /customerRatings/{id}{allow read:if admin()||(signed()&&(resource.data.customerId==request.auth.uid||resource.data.driverId==request.auth.uid));allow write:if false;}
+ match /serviceRatings/{id}{
+   function req(){return get(/databases/$(database)/documents/serviceRequests/$(id)).data;}
+   allow read:if signed();
+   allow create:if customer() && id==request.resource.data.requestId && request.resource.data.customerId==request.auth.uid
+     && req().customerId==request.auth.uid && req().status=='completed' && request.resource.data.providerId==req().providerId
+     && request.resource.data.itemName==req().itemName && request.resource.data.score is int && request.resource.data.score>=1 && request.resource.data.score<=5
+     && request.resource.data.keys().hasOnly(['requestId','customerId','providerId','providerName','itemName','score','createdAt']);
+   allow update:if false; allow delete:if admin();
+ }
  match /ratings/{id}{function o(){return get(/databases/$(database)/documents/orders/$(id)).data;}allow create:if signed()&&o().userId==request.auth.uid&&o().statusIndex>=4&&request.resource.data.customerId==request.auth.uid;allow read:if signed()&&(resource.data.customerId==request.auth.uid||resource.data.driverId==request.auth.uid||admin());allow update:if false;allow delete:if admin();}
 }}
