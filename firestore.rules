@@ -115,20 +115,23 @@ service cloud.firestore { match /databases/{database}/documents {
      && data.email is string && data.email.size()>=3 && data.email.size()<=160
      && data.city is string && data.city.size()>=2 && data.city.size()<=50
      && data.address is string && data.address.size()>=3 && data.address.size()<=160
+     && data.location is map
+     && data.location.latitude is number && data.location.latitude>=-90 && data.location.latitude<=90
+     && data.location.longitude is number && data.location.longitude>=-180 && data.location.longitude<=180
      && data.get('description','') is string && data.get('description','').size()<=500
      && data.serviceType=='other';}
    allow create:if own(uid)
      && getAfter(/databases/$(database)/documents/users/$(uid)).data.get('role',null)=='serviceApplicant'
      && request.resource.data.status=='pending'
      && validApplication(request.resource.data)
-     && request.resource.data.keys().hasOnly(['userId','ownerName','businessName','category','serviceType','phone','email','city','address','description','status','reviewNote','submittedAt','updatedAt']);
+     && request.resource.data.keys().hasOnly(['userId','ownerName','businessName','category','serviceType','phone','email','city','address','location','description','status','reviewNote','submittedAt','updatedAt']);
    allow read:if own(uid)||admin();
    allow update:if admin()||(own(uid)
      && serviceApplicant()
      && resource.data.status!='approved'
      && request.resource.data.status=='pending'
      && validApplication(request.resource.data)
-     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ownerName','businessName','category','phone','email','city','address','description','status','reviewNote','resubmittedAt','updatedAt']));
+     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ownerName','businessName','category','phone','email','city','address','location','description','status','reviewNote','resubmittedAt','updatedAt']));
    allow delete:if admin();
  }
 
@@ -139,6 +142,9 @@ service cloud.firestore { match /databases/{database}/documents {
      && data.phone is string && data.phone.size()>=8 && data.phone.size()<=20
      && data.city is string && data.city.size()<=50
      && data.address is string && data.address.size()>=3 && data.address.size()<=160
+     && data.location is map
+     && data.location.latitude is number && data.location.latitude>=-90 && data.location.latitude<=90
+     && data.location.longitude is number && data.location.longitude>=-180 && data.location.longitude<=180
      && data.get('description','') is string && data.get('description','').size()<=500
      && data.get('items',[]) is list && data.get('items',[]).size()<=50
      && data.active is bool
@@ -152,6 +158,35 @@ service cloud.firestore { match /databases/{database}/documents {
      && request.resource.data.category==resource.data.category
      && request.resource.data.approvalStatus==resource.data.approvalStatus
      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['businessName','phone','city','address','description','location','items','active','updatedAt']));
+   allow delete:if admin();
+ }
+
+ match /serviceRequests/{id}{
+   function providerProfile(){return get(/databases/$(database)/documents/serviceProfiles/$(request.resource.data.providerId)).data;}
+   allow create:if customer()
+     && request.resource.data.customerId==request.auth.uid
+     && request.resource.data.customerName==userDoc().get('name','')
+     && request.resource.data.providerId is string
+     && request.resource.data.providerId.size()>0
+     && providerProfile().active==true
+     && providerProfile().approvalStatus=='approved'
+     && request.resource.data.providerName==providerProfile().businessName
+     && request.resource.data.providerAddress==providerProfile().address
+     && request.resource.data.status=='pending'
+     && request.resource.data.itemName is string && request.resource.data.itemName.size()>=2 && request.resource.data.itemName.size()<=80
+     && request.resource.data.requestText is string && request.resource.data.requestText.size()>=3 && request.resource.data.requestText.size()<=500
+     && request.resource.data.customerAddress is string && request.resource.data.customerAddress.size()>=3 && request.resource.data.customerAddress.size()<=180
+     && request.resource.data.keys().hasOnly(['customerId','customerName','providerId','providerName','providerCategory','providerAddress','providerLocation','itemName','itemPrice','requestText','customerAddress','customerLocation','status','createdAt','updatedAt']);
+   allow read:if admin()||(customer()&&resource.data.customerId==request.auth.uid)||(serviceProvider()&&resource.data.providerId==request.auth.uid);
+   allow update:if admin()
+     || (customer()&&resource.data.customerId==request.auth.uid&&resource.data.status=='pending'&&request.resource.data.status=='cancelled'&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','cancelledAt','updatedAt']))
+     || (serviceProvider()
+       && resource.data.providerId==request.auth.uid
+       && request.resource.data.providerId==request.auth.uid
+       && ((resource.data.status=='pending'&&request.resource.data.status in ['accepted','rejected'])||(resource.data.status=='accepted'&&request.resource.data.status=='completed'))
+       && request.resource.data.get('providerNote','') is string
+       && request.resource.data.get('providerNote','').size()<=300
+       && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','providerNote','statusUpdatedAt','updatedAt']));
    allow delete:if admin();
  }
 

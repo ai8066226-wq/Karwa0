@@ -3,18 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#102044">
+  <meta name="theme-color" content="#0b6f75">
   <meta name="description" content="بوابة كابتن كروة لاستلام الطلبات وتحديث الرحلات">
   <title>كروة | بوابة الكابتن</title>
-  <link rel="stylesheet" href="./portal.css">
+  <link rel="stylesheet" href="./portal.css?v=35">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css">
   <link rel="manifest" href="./manifest.webmanifest">
-  <meta name="theme-color" content="#111827">
+  <meta name="theme-color" content="#0b6f75">
   <link rel="icon" href="./karwa-icon.svg" type="image/svg+xml">
 <style>
-.maplibregl-canvas{direction:ltr!important}.leaflet-tooltip,.leaflet-popup-content{direction:rtl;text-align:right;unicode-bidi:plaintext}.report-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}.report-grid button{border:1px solid #e1e7ef;background:#fff;border-radius:12px;padding:10px;font-weight:800;cursor:pointer}.report-grid button:hover{background:#fff4ef;border-color:#ffb89c}.report-note{width:100%;box-sizing:border-box;margin:0 0 8px;border:1px solid #dfe5ed;border-radius:11px;padding:10px;direction:rtl}.road-report-marker{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:#fff;box-shadow:0 5px 18px rgba(0,0,0,.22);font-size:19px;border:2px solid #ff6b35}.landmark-marker{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:#102044;color:#fff;box-shadow:0 5px 18px rgba(0,0,0,.2);font-size:17px}.report-confirm{margin-top:8px;border:0;border-radius:9px;padding:7px 10px;font-weight:800;cursor:pointer}.driver-landmark-panel{margin-top:12px}.driver-landmark-panel summary{cursor:pointer;font-weight:900}.landmark-form{display:grid;gap:8px;margin-top:10px}
-.road-report-marker{position:relative}.confirm-badge{position:absolute;top:-7px;left:-7px;min-width:18px;height:18px;border-radius:10px;background:#102044;color:#fff;font:700 11px/18px Arial;text-align:center;border:2px solid #fff}
+.maplibregl-canvas{direction:ltr!important}.leaflet-tooltip,.leaflet-popup-content{direction:rtl;text-align:right;unicode-bidi:plaintext}.report-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}.report-grid button{border:1px solid #e1e7ef;background:#fff;border-radius:12px;padding:10px;font-weight:800;cursor:pointer}.report-grid button:hover{background:#eaf7f5;border-color:#8ccfc8}.report-note{width:100%;box-sizing:border-box;margin:0 0 8px;border:1px solid #dfe5ed;border-radius:11px;padding:10px;direction:rtl}.road-report-marker{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:#fff;box-shadow:0 5px 18px rgba(0,0,0,.22);font-size:19px;border:2px solid #087b75}.landmark-marker{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:#0b4f70;color:#fff;box-shadow:0 5px 18px rgba(0,0,0,.2);font-size:17px}.report-confirm{margin-top:8px;border:0;border-radius:9px;padding:7px 10px;font-weight:800;cursor:pointer}.driver-landmark-panel{margin-top:12px}.driver-landmark-panel summary{cursor:pointer;font-weight:900}.landmark-form{display:grid;gap:8px;margin-top:10px}
+.road-report-marker{position:relative}.confirm-badge{position:absolute;top:-7px;left:-7px;min-width:18px;height:18px;border-radius:10px;background:#0b4f70;color:#fff;font:700 11px/18px Arial;text-align:center;border:2px solid #fff}
     .restaurant-application{margin:8px 0 4px;padding:18px;border:1px solid #d9e7e5;border-radius:20px;background:linear-gradient(145deg,#f0fdfa,#fff);box-shadow:0 10px 30px rgba(15,118,110,.06)}
     .restaurant-app-head,.restaurant-app-head>div,.meal-app-title{display:flex;align-items:center;justify-content:space-between;gap:12px}.restaurant-app-head>div{justify-content:flex-start}.restaurant-app-icon{width:46px;height:46px;display:grid;place-items:center;border-radius:14px;background:#0f766e;color:white;font-size:23px}.restaurant-app-head strong,.meal-app-title strong{display:block;font-size:17px}.restaurant-app-head small,.meal-app-title small{display:block;color:#64748b;margin-top:3px}.restaurant-app-grid{margin-top:16px}.meal-app-box{margin-top:16px;padding-top:16px;border-top:1px solid #dce9e7}.meal-app-title span{font-size:12px;font-weight:800;color:#0f766e;background:#ccfbf1;padding:6px 9px;border-radius:999px}.captain-meal-list{display:grid;gap:8px;margin-top:10px}.captain-meal-item{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:10px;padding:10px 12px;background:white;border:1px solid #e2e8f0;border-radius:13px}.captain-meal-item small{display:block;color:#64748b;margin-top:2px}.captain-meal-item b{color:#0f766e;white-space:nowrap}.captain-meal-item button{border:0;background:#fff1f2;color:#be123c;border-radius:9px;padding:7px 9px;cursor:pointer}@media(max-width:650px){.restaurant-application{padding:14px}.restaurant-app-head{align-items:flex-start}.captain-meal-item{grid-template-columns:1fr auto}.captain-meal-item button{grid-column:2;grid-row:1/3}}
 </style>
@@ -35,7 +35,7 @@ body.driver-map-mode{height:100dvh;overflow:hidden}
 #driverView .nav-next-turn{top:180px;right:16px;max-width:430px;padding:10px 13px;border-radius:16px;background:rgba(16,32,68,.94);color:#fff}
 #driverView .route-alert{top:248px;right:16px;max-width:430px;padding:9px 12px;border-radius:12px}
 #driverView #locationHint{left:16px;bottom:18px;padding:8px 11px;border-radius:12px}
-.driver-options-toggle{position:absolute;z-index:900;right:16px;top:50%;min-width:120px;padding:12px 16px;display:flex;align-items:center;justify-content:center;gap:9px;border:1px solid rgba(255,255,255,.55);border-radius:16px;color:#fff;background:linear-gradient(135deg,#102044,#1f6871);box-shadow:0 14px 34px rgba(16,32,68,.32);font-weight:900;transform:translateY(-50%);transition:transform .2s,opacity .2s}
+.driver-options-toggle{position:absolute;z-index:900;right:16px;top:50%;min-width:120px;padding:12px 16px;display:flex;align-items:center;justify-content:center;gap:9px;border:1px solid rgba(255,255,255,.55);border-radius:16px;color:#fff;background:linear-gradient(135deg,#0b4f70,#087b75);box-shadow:0 14px 34px rgba(16,43,72,.32);font-weight:900;transform:translateY(-50%);transition:transform .2s,opacity .2s}
 .driver-options-toggle span{font-size:21px;line-height:1}.driver-options-toggle:hover{transform:translateY(-50%) scale(1.03)}
 #driverView.driver-options-open .driver-options-toggle{opacity:0;pointer-events:none;transform:translateY(-50%) translateX(24px)}
 .driver-options-scrim{position:absolute;z-index:925;inset:0;background:rgba(9,21,45,.3);opacity:0;pointer-events:none;transition:opacity .25s ease}
@@ -453,8 +453,8 @@ body.driver-map-mode #driverView{height:100dvh!important}
   <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
   <script>try{if(window.maplibregl&&maplibregl.setRTLTextPlugin&&(!maplibregl.getRTLTextPluginStatus||maplibregl.getRTLTextPluginStatus()==="unavailable")){maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",true).catch(()=>{});}}catch(e){}</script>
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
-  <script type="module" src="./driver.js?v=33"></script>
-  <script src="./pwa.js?v=34"></script>
+  <script type="module" src="./driver.js?v=35"></script>
+  <script src="./pwa.js?v=35"></script>
 <script id="phase20-driver-map-first-js">
 window.addEventListener("DOMContentLoaded",()=>{
   const view=document.getElementById("driverView");

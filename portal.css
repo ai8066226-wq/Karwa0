@@ -1,16 +1,16 @@
 :root {
-  --navy: #102044;
-  --navy-2: #203f76;
-  --orange: #ff6b35;
-  --mint: #19b79f;
-  --green: #12805c;
-  --red: #cf3f49;
-  --amber: #b87306;
+  --navy: #12243f;
+  --navy-2: #0b4f70;
+  --orange: #087b75;
+  --mint: #087b75;
+  --green: #08765b;
+  --red: #ae263b;
+  --amber: #976000;
   --surface: #ffffff;
-  --background: #f3f6fb;
-  --line: #dfe5ee;
-  --muted: #6d788b;
-  --shadow: 0 16px 45px rgba(16, 32, 68, .11);
+  --background: #f4f7fb;
+  --line: #dfe7ef;
+  --muted: #69798f;
+  --shadow: 0 16px 45px rgba(16, 43, 72, .11);
 }
 
 * { box-sizing: border-box; }
@@ -22,8 +22,8 @@ body {
   margin: 0;
   color: var(--navy);
   background:
-    radial-gradient(circle at 90% 0, rgba(25,183,159,.10), transparent 32rem),
-    radial-gradient(circle at 5% 100%, rgba(255,107,53,.09), transparent 28rem),
+    radial-gradient(circle at 90% 0, rgba(8,123,117,.11), transparent 32rem),
+    radial-gradient(circle at 5% 100%, rgba(11,79,112,.08), transparent 28rem),
     var(--background);
   font-family: Tahoma, Arial, sans-serif;
   line-height: 1.5;
@@ -63,8 +63,8 @@ a { color: inherit; }
   place-items: center;
   border-radius: 14px;
   color: white;
-  background: linear-gradient(135deg, var(--orange), #ff8a5c);
-  box-shadow: 0 9px 22px rgba(255,107,53,.25);
+  background: linear-gradient(145deg, var(--navy-2), var(--orange));
+  box-shadow: 0 9px 22px rgba(8,123,117,.24);
   font-size: 22px;
   font-weight: 900;
 }
@@ -187,7 +187,7 @@ a { color: inherit; }
   text-decoration: none;
 }
 
-.primary { border: 0; color: white; background: linear-gradient(135deg, var(--orange), #ff895e); }
+.primary { border: 0; color: white; background: linear-gradient(135deg, var(--navy-2), var(--orange)); }
 .secondary { border: 1px solid var(--line); color: var(--navy); background: white; }
 .danger { border: 1px solid #f1c8cd; color: var(--red); background: #fff8f8; }
 .ghost { border: 1px solid rgba(255,255,255,.25); color: white; background: rgba(255,255,255,.08); }
@@ -203,7 +203,7 @@ input, select {
   color: var(--navy);
   background: #fbfcfe;
 }
-input:focus, select:focus { border-color: var(--mint); outline: 0; box-shadow: 0 0 0 4px rgba(25,183,159,.10); }
+input:focus, select:focus { border-color: var(--mint); outline: 0; box-shadow: 0 0 0 4px rgba(8,123,117,.12); }
 
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
 .full { grid-column: 1 / -1; }
@@ -363,7 +363,7 @@ input:focus, select:focus { border-color: var(--mint); outline: 0; box-shadow: 0
 }
 
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
-  outline: 3px solid rgba(25,183,159,.28);
+  outline: 3px solid rgba(8,123,117,.28);
   outline-offset: 2px;
 }
 
@@ -471,3 +471,24 @@ body{letter-spacing:.01em}.topbar{box-shadow:0 5px 22px rgba(16,32,68,.04)}.shel
 .admin-panel:nth-of-type(3)>.card-heading{background:linear-gradient(90deg,#fffaf5,#fff)}
 @media(max-width:700px){.driver-trip-stats{grid-template-columns:1fr 1fr}.captain-account-card>.order-top{align-items:flex-start}.captain-profile-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:420px){.captain-profile-grid{grid-template-columns:1fr}.captain-account-card>.order-top{margin:-13px -13px 0;padding:19px 14px 14px}.captain-account-card>.order-actions{margin:14px -13px -13px;padding:12px 13px}.captain-balance strong{font-size:20px}}
+
+/* Phase 35 — unified palette from the Other Services portal */
+.hero,
+.admin-hero {
+  background: linear-gradient(135deg, #0c365e 0%, #0b4f70 46%, #087b75 100%);
+}
+
+.hero-kicker { color: #9ce8df; }
+.live-indicator i { background: #72e6d8; box-shadow: 0 0 0 5px rgba(114,230,216,.13); }
+.nav-next-turn { background: linear-gradient(135deg, #0b4f70, #087b75); }
+.portal-map-marker { background: #0b4f70; box-shadow: 0 8px 20px rgba(11,79,112,.28); }
+.portal-map-marker.pickup { background: #087b75; }
+.captain-balance { background: linear-gradient(135deg, #0c365e, #087b75); }
+.captain-account-card:before { background: linear-gradient(90deg, #0b4f70, #087b75, #55c9bc); }
+.captain-account-card>.order-top h3:before { background: linear-gradient(135deg, #0b4f70, #087b75); }
+.driver-management-card .driver-trip-stats strong,
+.captain-profile-grid b,
+.captain-trip-head strong { color: #12243f; }
+.captain-trip-groups summary b { color: #0b4f70; }
+.admin-panel:nth-of-type(2)>.card-heading,
+.admin-panel:nth-of-type(3)>.card-heading { background: linear-gradient(90deg, #f0f8f7, #fff); }

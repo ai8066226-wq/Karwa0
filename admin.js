@@ -293,13 +293,16 @@ function serviceApplicationCard(application) {
   const businessName = application.businessName || profile?.businessName || restaurant?.name || application.name || "مزود خدمة";
   const ownerName = application.ownerName || application.name || "—";
   const address = application.address || profile?.address || restaurant?.address || "—";
+  const location = application.location || profile?.location || restaurant?.location;
+  const gps = location?.latitude != null && location?.longitude != null ? `${Number(location.latitude).toFixed(5)}, ${Number(location.longitude).toFixed(5)}` : "غير محدد";
   const items = profile?.items || restaurant?.meals || [];
-  const actions = status === "pending" ? `<div class="order-actions"><button class="primary" data-action="approve-service" data-source="${source}" data-id="${application.firestoreId}">قبول وتفعيل</button><button class="danger" data-action="reject-service" data-source="${source}" data-id="${application.firestoreId}">رفض مع ملاحظة</button></div>` : "";
+  const hasLocation = Number.isFinite(Number(location?.latitude)) && Number.isFinite(Number(location?.longitude));
+  const actions = status === "pending" ? `<div class="order-actions"><button class="primary" data-action="approve-service" data-source="${source}" data-id="${application.firestoreId}" ${hasLocation ? "" : 'disabled title="يجب أن يحدد المزود موقع GPS أولًا"'}>${hasLocation ? "قبول وتفعيل" : "GPS مطلوب قبل القبول"}</button><button class="danger" data-action="reject-service" data-source="${source}" data-id="${application.firestoreId}">رفض مع ملاحظة</button></div>` : "";
   return `<article class="order-card service-application-card">
     <div class="order-top"><h3>🧰 ${escapeHtml(businessName)}</h3><span class="status-chip ${status}">${labels[status] || escapeHtml(status)}</span></div>
     <p class="order-route">${escapeHtml(serviceCategoryLabels[category] || serviceCategoryLabels.other)} • ${escapeHtml(application.city || profile?.city || "—")}</p>
     <div class="order-meta"><span>صاحب الخدمة: ${escapeHtml(ownerName)}</span><span>الهاتف: ${escapeHtml(application.phone || profile?.phone || restaurant?.phone || "—")}</span></div>
-    <div class="order-meta"><span>البريد: ${escapeHtml(application.email || "—")}</span><span>العنوان: ${escapeHtml(address)}</span></div>
+    <div class="order-meta"><span>البريد: ${escapeHtml(application.email || "—")}</span><span>العنوان: ${escapeHtml(address)}</span><span>GPS: ${escapeHtml(gps)}</span></div>
     ${application.description ? `<p class="admin-note">${escapeHtml(application.description)}</p>` : ""}
     <div class="order-meta"><span>العناصر المضافة: ${Array.isArray(items) ? items.length : 0}</span>${application.legacy ? `<span>طلب قديم — مدعوم تلقائيًا</span>` : ""}</div>
     ${application.reviewNote ? `<p class="admin-note danger-note">ملاحظة المراجعة: ${escapeHtml(application.reviewNote)}</p>` : ""}
@@ -438,7 +441,11 @@ document.addEventListener("click", async event => {
       const ownerName = application.ownerName || application.name || "";
       const phone = application.phone || existingProfile?.phone || restaurant?.phone || "";
       const address = application.address || existingProfile?.address || restaurant?.address || "";
-      const location = existingProfile?.location || restaurant?.location || null;
+      const location = application.location || existingProfile?.location || restaurant?.location || null;
+      if (!Number.isFinite(Number(location?.latitude)) || !Number.isFinite(Number(location?.longitude))) {
+        toast("لا يمكن اعتماد النشاط قبل أن يحدد مزود الخدمة موقع GPS.");
+        return;
+      }
       const items = Array.isArray(existingProfile?.items) ? existingProfile.items : Array.isArray(restaurant?.meals) ? restaurant.meals : [];
       const batch = writeBatch(db);
       batch.update(doc(db, legacy ? "driverApplications" : "serviceApplications", id), {

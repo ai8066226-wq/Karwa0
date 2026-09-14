@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#102044">
+  <meta name="theme-color" content="#0b6f75">
   <meta name="description" content="كروة — تطبيق عربي لحجز المشاوير وتوصيل الأغراض والطعام">
   <title>كروة | الحجز والتوصيل</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
@@ -11,18 +11,18 @@
 
   <style>
     :root {
-      --navy: #102044;
-      --navy-light: #1e3b70;
-      --orange: #ff6b35;
-      --orange-light: #ff8a5c;
-      --mint: #19b79f;
-      --mint-dark: #118672;
+      --navy: #12243f;
+      --navy-light: #0b4f70;
+      --orange: #087b75;
+      --orange-light: #19a69a;
+      --mint: #087b75;
+      --mint-dark: #08635e;
       --background: #f4f7fb;
       --white: #fff;
-      --line: #dfe5ee;
-      --muted: #6e788b;
-      --danger: #d64242;
-      --shadow: 0 16px 40px rgba(16, 32, 68, .12);
+      --line: #dfe7ef;
+      --muted: #69798f;
+      --danger: #ae263b;
+      --shadow: 0 16px 40px rgba(16, 43, 72, .12);
       --radius: 23px;
     }
 
@@ -79,7 +79,7 @@
       height: 100vh;
       padding: 27px 18px;
       color: white;
-      background: linear-gradient(180deg, #102044, #0b1833);
+      background: linear-gradient(180deg, #0b4f70, #073c56);
     }
 
     .brand {
@@ -286,7 +286,7 @@
       gap: 15px;
       border-radius: 26px;
       color: white;
-      background: linear-gradient(125deg, #102044 0%, #1d3b70 63%, #166c72 130%);
+      background: linear-gradient(125deg, #0c365e 0%, #0b4f70 58%, #087b75 125%);
       box-shadow: 0 18px 45px rgba(16,32,68,.18);
     }
 
@@ -1436,7 +1436,7 @@
 
       .mobile-navigation button.active {
         color: white;
-        background: linear-gradient(135deg, #294a82, #1f6871);
+        background: linear-gradient(135deg, #0b4f70, #087b75);
         box-shadow: 0 5px 14px rgba(0,0,0,.18);
       }
 
@@ -1516,7 +1516,7 @@
       }
     }
   
-    .map-pick-actions{display:flex;gap:8px;flex-wrap:wrap;margin:-4px 0 14px}.map-pick-button{border:1px solid #dce3ee!important;border-radius:10px;padding:8px 11px}.map-pick-button.active{background:#fff2ec;color:#d84f18;border-color:#ffb79a!important}.route-summary{display:flex;gap:10px;flex-wrap:wrap;padding:10px 12px;margin:0 0 14px;border-radius:12px;background:#f6f8fb;color:#526078;font-size:13px}.route-summary span{font-weight:700}.karwa-map-marker.pickup span,.karwa-map-marker.destination span{font-size:22px}.karwa-map-marker.destination{background:#102044!important}
+    .map-pick-actions{display:flex;gap:8px;flex-wrap:wrap;margin:-4px 0 14px}.map-pick-button{border:1px solid #dce3ee!important;border-radius:10px;padding:8px 11px}.map-pick-button.active{background:#eaf7f5;color:#08635e;border-color:#8ccfc8!important}.route-summary{display:flex;gap:10px;flex-wrap:wrap;padding:10px 12px;margin:0 0 14px;border-radius:12px;background:#f6f8fb;color:#526078;font-size:13px}.route-summary span{font-weight:700}.karwa-map-marker.pickup span,.karwa-map-marker.destination span{font-size:22px}.karwa-map-marker.destination{background:#0b4f70!important}
 
     .place-results{position:relative;z-index:30}.place-results:not(:empty){position:absolute;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);max-height:220px;overflow:auto;width:calc(100% - 40px)}.place-result{display:block;width:100%;padding:10px 12px;border:0;border-bottom:1px solid var(--line);background:#fff;text-align:right;cursor:pointer}.order-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.mini-action{border:1px solid var(--line);background:#fff;border-radius:9px;padding:6px 9px;font-weight:700;cursor:pointer} select,textarea{width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;font:inherit} textarea{min-height:90px;resize:vertical}
 
@@ -1528,7 +1528,7 @@
     #customerMap{min-height:590px!important}.leaflet-control-zoom a,.leaflet-control-layers{border:0!important;box-shadow:0 7px 22px rgba(16,32,68,.16)!important}.leaflet-control-zoom a{width:38px!important;height:38px!important;line-height:38px!important}.leaflet-control-layers{border-radius:12px!important}.leaflet-popup-content-wrapper{border-radius:14px}
     .map-pick-actions{margin-top:9px!important}.map-pick-button{min-height:40px;background:#fff!important}.route-summary{margin-top:12px!important;border:1px solid #e5eaf1;background:#f8fafc!important}.route-summary span{display:inline-flex;align-items:center;min-height:28px}
     .service-panel .panel-heading{margin-bottom:16px}.service-panel .panel-heading h2{font-size:22px}.main-grid{gap:22px!important}.card{border-radius:22px!important}
-    .map-confirm-bar{display:none;align-items:center;justify-content:space-between;gap:12px;margin:10px 0 14px;padding:10px 12px;border:1px solid #dfe6ef;border-radius:14px;background:#fff}.map-confirm-bar.show{display:flex}.map-confirm-bar span{font-size:12px;color:#526078;line-height:1.5}.map-confirm-bar button{border:0;border-radius:10px;padding:9px 12px;background:#102044;color:#fff;font-weight:800;white-space:nowrap}.center-pin{position:absolute;z-index:650;left:50%;top:50%;transform:translate(-50%,-100%);display:none;pointer-events:none;font-size:38px;filter:drop-shadow(0 5px 4px rgba(0,0,0,.25))}.map-card.center-pick .center-pin{display:block}.map-card.center-pick #customerMap{cursor:grab}.map-search-hint{font-size:11px;color:#748197;margin-top:5px}.place-result .distance{font-size:10px;color:#d65b2b;font-weight:800;margin-top:4px;display:block}.map-pick-actions{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+    .map-confirm-bar{display:none;align-items:center;justify-content:space-between;gap:12px;margin:10px 0 14px;padding:10px 12px;border:1px solid #dfe6ef;border-radius:14px;background:#fff}.map-confirm-bar.show{display:flex}.map-confirm-bar span{font-size:12px;color:#526078;line-height:1.5}.map-confirm-bar button{border:0;border-radius:10px;padding:9px 12px;background:#0b4f70;color:#fff;font-weight:800;white-space:nowrap}.center-pin{position:absolute;z-index:650;left:50%;top:50%;transform:translate(-50%,-100%);display:none;pointer-events:none;font-size:38px;filter:drop-shadow(0 5px 4px rgba(0,0,0,.25))}.map-card.center-pick .center-pin{display:block}.map-card.center-pick #customerMap{cursor:grab}.map-search-hint{font-size:11px;color:#748197;margin-top:5px}.place-result .distance{font-size:10px;color:#087b75;font-weight:800;margin-top:4px;display:block}.map-pick-actions{grid-template-columns:repeat(3,minmax(0,1fr))!important}
     @media(max-width:760px){.map-card,#customerMap{min-height:430px!important}.place-result small{max-width:250px}.service-panel .panel-heading{align-items:center}.map-pick-actions{display:grid!important;grid-template-columns:1fr 1fr}.map-pick-button{padding:9px 6px!important}.route-summary{display:grid!important;grid-template-columns:1fr 1fr}.route-summary #routeMode{grid-column:1/-1}.card{border-radius:18px!important}}
 
   
@@ -1536,7 +1536,7 @@
     .trip-live-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}.trip-live-strip>div{background:#f7f9fc;border:1px solid #e7ebf2;border-radius:14px;padding:10px;text-align:center}.trip-live-strip small{display:block;color:var(--muted);font-size:11px}.trip-live-strip strong{display:block;margin-top:3px;color:var(--navy);font-size:14px}.trip-stage-hint{margin:10px 0 0;padding:9px 12px;border-radius:12px;background:rgba(255,107,53,.08);color:#9b431f;font-size:12px;font-weight:800}.tracking-actions a.secondary-button{text-decoration:none;text-align:center;display:flex;align-items:center;justify-content:center}.tracking-actions .hidden{display:none!important}.karwa-map-marker.driver{transition:transform .2s ease;box-shadow:0 8px 24px rgba(16,32,68,.25)}
     @media(max-width:600px){.trip-live-strip{grid-template-columns:1fr 1fr}.trip-live-strip>div:last-child{grid-column:1/-1}.tracking-card{border-radius:22px}.tracking-actions{grid-template-columns:1fr 1fr!important}}
 
-    .map-search-button{margin:-4px 0 10px;border:0;border-radius:12px;padding:10px 16px;background:#102044;color:#fff;font-weight:800;box-shadow:0 6px 16px rgba(16,32,68,.12)}
+    .map-search-button{margin:-4px 0 10px;border:0;border-radius:12px;padding:10px 16px;background:#0b4f70;color:#fff;font-weight:800;box-shadow:0 6px 16px rgba(16,43,72,.12)}
     .maplibregl-canvas{outline:none}.maplibregl-ctrl-attrib{font-size:10px!important}.leaflet-maplibre-gl{border-radius:inherit}
   
     /* Phase 16: Arabic/RTL map and search fixes */
@@ -1544,7 +1544,7 @@
     .place-result>span:nth-child(2){min-width:0;flex:1}.place-result strong,.place-result small,.place-result .distance{direction:rtl!important;text-align:right!important}
     #rideFrom,#rideTo{direction:rtl;text-align:right}.leaflet-tooltip,.leaflet-popup-content{direction:rtl;text-align:right}
     .maplibregl-canvas{direction:ltr}
-  .road-report-marker{position:relative}.confirm-badge{position:absolute;top:-7px;left:-7px;min-width:18px;height:18px;border-radius:10px;background:#102044;color:#fff;font:700 11px/18px Arial;text-align:center;border:2px solid #fff}
+  .road-report-marker{position:relative}.confirm-badge{position:absolute;top:-7px;left:-7px;min-width:18px;height:18px;border-radius:10px;background:#0b4f70;color:#fff;font:700 11px/18px Arial;text-align:center;border:2px solid #fff}
     /* Restaurant marketplace */
     .restaurant-create-toggle{white-space:nowrap}.restaurant-creator{margin:16px 0 20px;padding:20px;border:1px solid rgba(15,118,110,.18);border-radius:22px;background:linear-gradient(145deg,rgba(240,253,250,.95),#fff);box-shadow:0 14px 34px rgba(15,23,42,.07)}
     .restaurant-creator-head,.meal-builder-title{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:16px}.restaurant-creator-head strong,.meal-builder-title strong{font-size:18px}.restaurant-creator-head small,.meal-builder-title small{display:block;color:#64748b;margin-top:3px}.restaurant-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.restaurant-address-field{grid-column:span 1}.gps-capture-button{width:100%;min-height:46px;border:1px dashed #0f766e;border-radius:14px;background:#fff;color:#0f766e;font-weight:800;cursor:pointer}.meal-builder{margin-top:18px;padding-top:18px;border-top:1px solid #e2e8f0}.meal-fields{grid-template-columns:1fr .6fr 1.5fr auto;align-items:end}.add-meal-builder{height:46px}.draft-meals{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.draft-meal{display:flex;align-items:center;gap:8px;padding:8px 11px;border-radius:999px;background:#fff;border:1px solid #dbe4ea;font-size:13px}.draft-meal button{border:0;background:transparent;color:#dc2626;cursor:pointer;font-size:16px}.publish-restaurant{margin-top:16px;width:100%}
@@ -1554,7 +1554,7 @@
 
 </style>
   <link rel="manifest" href="./manifest.webmanifest">
-  <meta name="theme-color" content="#111827">
+  <meta name="theme-color" content="#0b6f75">
   <link rel="icon" href="./karwa-icon.svg" type="image/svg+xml">
 
 <style id="phase20-map-first">
@@ -1576,7 +1576,7 @@ body.customer-map-mode main{max-width:none;margin:0;padding:0}
 .map-options-header{position:sticky;top:0;z-index:30;margin:0 -18px 14px;padding:14px 18px 12px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid rgba(223,229,238,.9);background:rgba(255,255,255,.94);backdrop-filter:blur(18px)}
 .map-options-header div{display:grid;gap:1px}.map-options-header small{color:var(--muted);font-size:11px}.map-options-header strong{font-size:17px}
 .map-options-close{width:40px;height:40px;display:grid;place-items:center;flex:0 0 auto;border:1px solid var(--line);border-radius:13px;color:var(--navy);background:#fff;font-size:25px;line-height:1}
-.map-options-toggle{position:absolute;z-index:900;right:14px;top:50%;min-width:112px;padding:12px 16px;display:flex;align-items:center;justify-content:center;gap:9px;border:1px solid rgba(255,255,255,.55);border-radius:16px;color:#fff;background:linear-gradient(135deg,#102044,#1f6871);box-shadow:0 14px 34px rgba(16,32,68,.3);font-weight:900;transform:translateY(-50%);transition:transform .2s,opacity .2s}
+.map-options-toggle{position:absolute;z-index:900;right:14px;top:50%;min-width:112px;padding:12px 16px;display:flex;align-items:center;justify-content:center;gap:9px;border:1px solid rgba(255,255,255,.55);border-radius:16px;color:#fff;background:linear-gradient(135deg,#0b4f70,#087b75);box-shadow:0 14px 34px rgba(16,43,72,.3);font-weight:900;transform:translateY(-50%);transition:transform .2s,opacity .2s}
 .map-options-toggle span{font-size:21px;line-height:1}.map-options-toggle:hover{transform:translateY(-50%) scale(1.03)}
 #home.customer-options-open .map-options-toggle{opacity:0;pointer-events:none;transform:translateY(-50%) translateX(24px)}
 .map-options-scrim{position:absolute;z-index:925;inset:0;background:rgba(9,21,45,.28);opacity:0;pointer-events:none;transition:opacity .25s ease}
@@ -1779,6 +1779,15 @@ body.customer-map-mode .mobile-navigation{display:none!important}
 .map-place-locate{width:100%;min-height:42px;display:flex;align-items:center;justify-content:center;gap:8px;border:1.5px solid #9fded8;border-radius:12px;color:#005f5b;background:#eafbf8;font:inherit;font-size:12px;font-weight:900;cursor:pointer}.map-place-locate:hover{border-color:#008f88;background:#dff8f3}.map-place-locate:disabled{opacity:.58;cursor:wait}.map-place-filters{display:grid;grid-template-columns:1fr 1fr;gap:7px}.map-place-filters select{width:100%;min-width:0;min-height:41px;padding:8px 10px;border:1.5px solid #c8d4df;border-radius:12px;color:#243d56;background:#f8fafc;font:inherit;font-size:10px;font-weight:800;box-sizing:border-box}.map-place-filters select:focus{border-color:#008f88;outline:3px solid rgba(0,143,136,.14)}.map-place-result .map-place-distance{margin-top:4px;display:block;color:#00746f;font-size:9px;font-weight:900}.map-place-result[aria-current="true"]{border-color:#008f88;background:#e7faf6}.map-place-tool .map-place-search-row>button:disabled{opacity:.58;cursor:wait}
 @media(max-width:430px){.map-place-filters{grid-template-columns:1fr}.map-place-locate{min-height:40px}}
 </style>
+<style id="phase35-unified-services-theme">
+/* هوية بصرية موحدة مع بوابة الخدمات الأخرى */
+body{color:#12243f;background:radial-gradient(circle at 85% 0,rgba(27,174,158,.14),transparent 32rem),radial-gradient(circle at 5% 35%,rgba(30,97,148,.08),transparent 28rem),#f4f7fb}
+.sidebar{background:linear-gradient(180deg,#0b4f70,#073c56)}.brand-logo{background:linear-gradient(145deg,#0b4f70,#087b75);box-shadow:0 10px 24px rgba(8,123,117,.25)}.nav-button:hover,.nav-button.active{background:rgba(8,123,117,.38)}.nav-button.active{box-shadow:inset -4px 0 #55d5c6}
+.welcome{background:linear-gradient(135deg,#0c365e,#087a74)!important}.primary-button,#customerOptionsPanel .primary-button{background:linear-gradient(135deg,#0b4f70,#087b75)!important;box-shadow:0 8px 20px rgba(8,123,117,.22)!important}.primary-button:hover{box-shadow:0 12px 26px rgba(8,123,117,.29)!important}.text-button{color:#08635e}.service-button.active,#customerOptionsPanel .service-button.active{border-color:#087b75!important;background:linear-gradient(135deg,#0b4f70,#087b75)!important;box-shadow:0 9px 21px rgba(8,123,117,.22)!important}.vehicle-button.active,.payment-button.active{border-color:#087b75!important;background:#eaf7f5!important;color:#08635e!important}.map-options-toggle{background:linear-gradient(135deg,#0b4f70,#087b75)}
+.service-tabs{grid-template-columns:repeat(4,minmax(0,1fr))}.other-services-marketplace{display:grid;gap:11px;margin:13px 0}.other-service-card{padding:15px;display:grid;grid-template-columns:54px minmax(0,1fr);gap:13px;overflow:hidden;border:1px solid #dfe7ef;border-radius:18px;background:#fff;box-shadow:0 8px 24px rgba(16,43,72,.065)}.other-service-icon{width:54px;height:54px;display:grid;place-items:center;border-radius:17px;color:#fff;background:linear-gradient(145deg,#0b4f70,#087b75);font-size:25px}.other-service-copy small{color:#087b75;font-size:10px;font-weight:900}.other-service-copy h3{margin:3px 0;font-size:17px}.other-service-copy p{margin:5px 0;color:#69798f;font-size:12px;line-height:1.65}.other-service-location{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:10px}.other-service-location span{padding:8px;border-radius:10px;color:#506178;background:#f2f6f8;font-size:10px}.other-service-actions{display:grid;grid-template-columns:minmax(145px,1fr) minmax(110px,.72fr) auto;gap:8px;align-items:center;margin-top:12px}.other-service-actions button{min-height:41px;border-radius:11px;font-weight:900}.other-service-actions>span{color:#69798f;font-size:10px;white-space:nowrap}.other-service-actions button:disabled{opacity:.5}
+.selected-service-box{margin-top:14px;padding:15px;border:1px solid #bfe0dc;border-radius:18px;background:linear-gradient(145deg,#effaf8,#fff)}.selected-service-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.selected-service-head h3{margin:0}.selected-service-head button{width:34px;height:34px;border:1px solid #d4e0e6;border-radius:10px;color:#52637a;background:#fff;font-size:20px}.selected-service-summary{display:grid;gap:5px;margin:10px 0;padding:11px;border-radius:12px;background:#fff;color:#5a6a7e;font-size:11px}.selected-service-price{display:block;margin-top:6px;color:#087b75;font-size:13px;font-weight:900}.my-service-requests{display:grid;gap:8px;margin-top:12px}.my-service-request-card{padding:13px;border:1px solid #dfe7ef;border-radius:14px;background:#fff}.service-request-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.service-request-head h3{margin:2px 0;font-size:14px}.service-request-head small{color:#69798f;font-size:10px}.my-service-request-card>p{margin:8px 0;color:#506178;font-size:11px}.service-request-meta{display:flex;flex-wrap:wrap;gap:5px 12px;color:#69798f;font-size:9px}.service-provider-note{margin-top:9px;padding:8px 10px;border-radius:10px;color:#0b4f70;background:#edf6fa;font-size:10px}.my-service-request-card>.danger-button{margin-top:10px}.service-request-status{padding:5px 8px;border-radius:999px;color:#976000;background:#fff3cf;font-size:9px;font-weight:900;white-space:nowrap}.service-request-status.accepted,.service-request-status.completed{color:#08765b;background:#e2f7ef}.service-request-status.rejected,.service-request-status.cancelled{color:#ae263b;background:#ffebef}
+@media(max-width:760px){.other-service-actions{grid-template-columns:1fr 1fr}.other-service-actions>span{grid-column:1/-1}}@media(max-width:620px){.service-tabs{grid-template-columns:1fr 1fr}.other-service-card{grid-template-columns:1fr}.other-service-icon{width:45px;height:45px;border-radius:14px}.other-service-location,.other-service-actions{grid-template-columns:1fr}.other-service-actions>span{grid-column:auto}.selected-service-head{align-items:flex-start}}
+</style>
 </head>
 
 <body>
@@ -1894,6 +1903,9 @@ body.customer-map-mode .mobile-navigation{display:none!important}
                 </button>
                 <button class="service-button" data-service="food">
                   <span>🍽️</span>طعام
+                </button>
+                <button class="service-button" data-service="other">
+                  <span>🧰</span>خدمات أخرى
                 </button>
               </div>
 
@@ -2081,6 +2093,23 @@ body.customer-map-mode .mobile-navigation{display:none!important}
                   </div>
                   <button class="primary-button" id="orderFood">إتمام الطلب</button>
                 </div>
+              </div>
+
+              <div class="service-panel" id="otherPanel">
+                <div class="panel-heading"><div><h2>الخدمات الأخرى</h2><small>اختر مطعمًا أو ماركت أو مزود خدمة معتمدًا وشاهد اسمه وموقعه قبل الطلب</small></div></div>
+                <div class="other-services-marketplace" id="otherServicesMarketplace"><div class="restaurant-empty">سجّل الدخول لعرض مزودي الخدمات المعتمدين.</div></div>
+
+                <section class="selected-service-box" id="selectedServiceBox" hidden>
+                  <div class="selected-service-head"><div><small id="selectedServiceCategory">خدمة معتمدة</small><h3 id="selectedServiceName">اسم النشاط</h3></div><button id="closeSelectedService" type="button" aria-label="إلغاء اختيار الخدمة">×</button></div>
+                  <div class="selected-service-summary"><span>📍 <b id="selectedServiceAddress">العنوان</b></span><span>GPS: <b id="selectedServiceGps">غير محدد</b></span><button class="text-button" id="locateSelectedService" type="button">عرض الموقع على الخريطة</button></div>
+                  <div class="field"><label for="otherServiceItem">الخدمة أو المنتج</label><select id="otherServiceItem"><option value="custom">طلب مخصص</option></select><strong class="selected-service-price" id="selectedServicePrice">السعر حسب الاتفاق</strong></div>
+                  <div class="field"><label for="otherServiceRequest">تفاصيل الطلب</label><textarea id="otherServiceRequest" maxlength="500" placeholder="اكتب ما تحتاجه بوضوح"></textarea></div>
+                  <div class="field"><label for="otherCustomerAddress">موقع العميل</label><input id="otherCustomerAddress" maxlength="180" placeholder="اكتب العنوان أو استخدم موقعك الحالي"><button class="text-button" id="useOtherCustomerLocation" type="button">⌖ استخدام موقعي الحالي</button></div>
+                  <button class="primary-button" id="bookOtherService" type="button" style="width:100%">إرسال الطلب إلى النشاط</button>
+                </section>
+
+                <div class="panel-heading" style="margin-top:20px"><div><h3>طلباتي من الخدمات</h3><small>تابع قبول مزود الخدمة وحالة التنفيذ</small></div></div>
+                <div class="my-service-requests" id="myServiceRequests"><div class="restaurant-empty">لا توجد طلبات خدمات بعد.</div></div>
               </div>
             </div>
 
@@ -2432,8 +2461,8 @@ body.customer-map-mode .mobile-navigation{display:none!important}
   <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
   <script>try{if(window.maplibregl&&maplibregl.setRTLTextPlugin&&(!maplibregl.getRTLTextPluginStatus||maplibregl.getRTLTextPluginStatus()==="unavailable")){maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",true).catch(()=>{});}}catch(e){}</script>
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
-  <script type="module" src="./app.js?v=34"></script>
-  <script src="./pwa.js?v=34"></script>
+  <script type="module" src="./app.js?v=35"></script>
+  <script src="./pwa.js?v=35"></script>
 
 <script id="phase20-map-first-js">
 window.addEventListener("DOMContentLoaded",()=>{

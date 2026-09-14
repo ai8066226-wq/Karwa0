@@ -11,12 +11,16 @@ import {
   updateProfile
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
 import {
+  collection,
   doc,
   getDoc,
   getFirestore,
   onSnapshot,
+  query,
   serverTimestamp,
   setDoc,
+  updateDoc,
+  where,
   writeBatch
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 
@@ -57,10 +61,13 @@ let currentApplication = null;
 let currentProfile = null;
 let providerItems = [];
 let providerLocation = null;
+let registrationLocation = null;
+let editApplicationLocation = null;
 let authMode = new URLSearchParams(location.search).get("mode") === "register" ? "register" : "login";
 let activeRole = "";
 let roleUnsubscribe = null;
 let contentUnsubscribe = null;
+let requestsUnsubscribe = null;
 
 function showView(id) {
   views.forEach(view => byId(view)?.classList.toggle("hidden", view !== id));
@@ -101,6 +108,35 @@ function validPhone(value) {
   return digits.length >= 8 && digits.length <= 15;
 }
 
+function locationLabel(value) {
+  return value?.latitude != null && value?.longitude != null
+    ? `${Number(value.latitude).toFixed(5)}, ${Number(value.longitude).toFixed(5)}`
+    : "غير محدد";
+}
+
+function captureLocation(buttonId, statusId, target) {
+  if (!navigator.geolocation) return toast("تحديد الموقع غير مدعوم في هذا الجهاز.");
+  const button = byId(buttonId);
+  setBusy(button, true, "جاري تحديد الموقع…");
+  navigator.geolocation.getCurrentPosition(position => {
+    const value = {
+      latitude: position.coords.latitude,
+      longitude: position.coords.longitude,
+      accuracy: position.coords.accuracy
+    };
+    if (target === "register") registrationLocation = value;
+    else if (target === "edit") editApplicationLocation = value;
+    else providerLocation = value;
+    byId(statusId).textContent = `تم التحديد ✓ ${locationLabel(value)}`;
+    setBusy(button, false);
+    toast("تم حفظ موقع النشاط");
+  }, error => {
+    console.error(error);
+    setBusy(button, false);
+    toast("تعذر الوصول إلى الموقع. اسمح للمتصفح باستخدام GPS.");
+  }, { enableHighAccuracy: true, timeout: 12000 });
+}
+
 function authErrorMessage(error) {
   const messages = {
     "auth/email-already-in-use": "هذا البريد مستخدم في حساب آخر.",
@@ -138,6 +174,8 @@ byId("loginMode").addEventListener("click", () => setAuthMode("login"));
 byId("registerMode").addEventListener("click", () => setAuthMode("register"));
 byId("logoutBtn").addEventListener("click", () => signOut(auth));
 byId("deniedLogout").addEventListener("click", () => signOut(auth));
+byId("registerGpsButton").addEventListener("click", () => captureLocation("registerGpsButton", "registerGpsStatus", "register"));
+byId("editGpsButton").addEventListener("click", () => captureLocation("editGpsButton", "editGpsStatus", "edit"));
 
 function registrationData() {
   return {
@@ -147,7 +185,8 @@ function registrationData() {
     phone: byId("registerPhone").value.trim(),
     city: byId("registerCity").value,
     address: byId("registerAddress").value.trim(),
-    description: byId("registerDescription").value.trim()
+    description: byId("registerDescription").value.trim(),
+    location: registrationLocation
   };
 }
 
@@ -158,6 +197,7 @@ function validateApplication(data) {
   if (!validPhone(data.phone)) return "اكتب رقم هاتف صحيحًا.";
   if (!data.city) return "اختر المدينة.";
   if (data.address.length < 3) return "اكتب عنوان النشاط بشكل أوضح.";
+  if (data.location?.latitude == null || data.location?.longitude == null) return "حدد موقع النشاط الجغرافي قبل إرسال الطلب.";
   return "";
 }
 
@@ -203,6 +243,7 @@ byId("authForm").addEventListener("submit", async event => {
         city: data.city,
         address: data.address,
         description: data.description,
+        location: data.location,
         status: "pending",
         submittedAt: serverTimestamp(),
         updatedAt: serverTimestamp()
@@ -247,7 +288,8 @@ function applicationSummary(data) {
     ["التصنيف", categories[data.category] || "خدمة أخرى"],
     ["الهاتف", data.phone || "—"],
     ["المدينة", data.city || "—"],
-    ["العنوان", data.address || "—"]
+    ["العنوان", data.address || "—"],
+    ["موقع GPS", locationLabel(data.location)]
   ];
   byId("applicationSummary").innerHTML = values.map(([label, value]) =>
     `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`
@@ -262,6 +304,10 @@ function fillResubmitForm(data = {}) {
   byId("editCity").value = data.city || "الموصل";
   byId("editAddress").value = data.address || "";
   byId("editDescription").value = data.description || "";
+  editApplicationLocation = data.location || null;
+  byId("editGpsStatus").textContent = editApplicationLocation
+    ? `محفوظ ✓ ${locationLabel(editApplicationLocation)}`
+    : "لم يتم تحديد الموقع بعد";
 }
 
 function renderApplication(data) {
@@ -338,7 +384,8 @@ byId("resubmitForm").addEventListener("submit", async event => {
     phone: byId("editPhone").value.trim(),
     city: byId("editCity").value,
     address: byId("editAddress").value.trim(),
-    description: byId("editDescription").value.trim()
+    description: byId("editDescription").value.trim(),
+    location: editApplicationLocation
   };
   const validationMessage = validateApplication(data);
   if (validationMessage) return toast(validationMessage);
@@ -431,6 +478,63 @@ function fillProviderForm(data) {
   renderProviderItems();
 }
 
+const requestStatusLabels = {
+  pending: "طلب جديد",
+  accepted: "تم القبول",
+  completed: "مكتمل",
+  rejected: "مرفوض",
+  cancelled: "ألغاه العميل"
+};
+
+function renderProviderRequests(requests) {
+  const pending = requests.filter(request => request.status === "pending").length;
+  byId("requestsMetric").textContent = requests.length;
+  byId("requestsStatus").textContent = pending ? `${pending} جديد` : "مباشر";
+  byId("requestsStatus").className = pending ? "status" : "status ok";
+  byId("providerRequestsList").innerHTML = requests.length
+    ? requests.map(request => {
+        const status = request.status || "pending";
+        const actions = status === "pending"
+          ? `<div class="request-actions"><button class="button primary" type="button" data-request-action="accepted" data-request-id="${request.firestoreId}">قبول الطلب</button><button class="button danger" type="button" data-request-action="rejected" data-request-id="${request.firestoreId}">رفض</button></div>`
+          : status === "accepted"
+            ? `<div class="request-actions"><button class="button primary" type="button" data-request-action="completed" data-request-id="${request.firestoreId}">تم إكمال الخدمة</button></div>`
+            : "";
+        return `<article class="request-card">
+          <div class="request-card-head"><h3>${escapeHtml(request.itemName || "طلب خدمة")}</h3><span class="status ${status === "completed" || status === "accepted" ? "ok" : status === "rejected" || status === "cancelled" ? "bad" : ""}">${escapeHtml(requestStatusLabels[status] || status)}</span></div>
+          <p>${escapeHtml(request.requestText || "بدون تفاصيل إضافية")}</p>
+          <div class="request-meta"><span>العميل: ${escapeHtml(request.customerName || "عميل كروة")}</span><span>الموقع: ${escapeHtml(request.customerAddress || "غير محدد")}</span><span>السعر: ${money(request.itemPrice)}</span></div>
+          ${request.providerNote ? `<p class="notice bad" style="margin-top:10px">${escapeHtml(request.providerNote)}</p>` : ""}
+          ${actions}
+        </article>`;
+      }).join("")
+    : `<div class="empty">لا توجد طلبات عملاء حتى الآن.</div>`;
+}
+
+byId("providerRequestsList").addEventListener("click", async event => {
+  const button = event.target.closest("[data-request-action]");
+  if (!button || !currentUser) return;
+  const nextStatus = button.dataset.requestAction;
+  const providerNote = nextStatus === "rejected"
+    ? prompt("اكتب سبب رفض الطلب للعميل:", "الخدمة غير متاحة حاليًا")?.trim()
+    : "";
+  if (nextStatus === "rejected" && !providerNote) return;
+  setBusy(button, true);
+  try {
+    await updateDoc(doc(db, "serviceRequests", button.dataset.requestId), {
+      status: nextStatus,
+      providerNote: providerNote?.slice(0, 300) || "",
+      statusUpdatedAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    toast(nextStatus === "accepted" ? "تم قبول طلب العميل" : nextStatus === "completed" ? "تم إكمال الطلب" : "تم رفض الطلب مع توضيح السبب");
+  } catch (error) {
+    console.error(error);
+    toast("تعذر تحديث حالة الطلب.");
+  } finally {
+    setBusy(button, false);
+  }
+});
+
 async function openProvider() {
   showView("providerView");
   const [profileSnapshot, applicationSnapshot, restaurantSnapshot] = await Promise.all([
@@ -447,7 +551,7 @@ async function openProvider() {
     city: currentApplication?.city || "",
     address: restaurant?.address || currentApplication?.address || "",
     description: currentApplication?.description || "",
-    location: restaurant?.location || null,
+    location: restaurant?.location || currentApplication?.location || null,
     items: restaurant?.meals || [],
     active: restaurant?.active !== false
   };
@@ -459,6 +563,20 @@ async function openProvider() {
     currentProfile = snapshot.data();
     byId("activeMetric").textContent = currentProfile.active === false ? "متوقف مؤقتًا" : "نشط";
   }, error => console.error(error));
+
+  requestsUnsubscribe?.();
+  requestsUnsubscribe = onSnapshot(
+    query(collection(db, "serviceRequests"), where("providerId", "==", currentUser.uid)),
+    snapshot => {
+      const requests = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }))
+        .sort((a, b) => Number(b.createdAt?.seconds || 0) - Number(a.createdAt?.seconds || 0));
+      renderProviderRequests(requests);
+    },
+    error => {
+      console.error(error);
+      byId("providerRequestsList").innerHTML = `<div class="empty">تعذر تحميل طلبات العملاء.</div>`;
+    }
+  );
 }
 
 byId("pGpsBtn").addEventListener("click", () => {
@@ -495,7 +613,7 @@ byId("providerForm").addEventListener("submit", async event => {
   const description = byId("pDescription").value.trim();
   const active = byId("pActive").checked;
   if (businessName.length < 2 || !validPhone(phone) || city.length < 2 || address.length < 3) return toast("أكمل بيانات النشاط بشكل صحيح.");
-  if (category === "restaurant" && !providerLocation) return toast("حدد موقع المطعم قبل نشره للعملاء.");
+  if (!providerLocation) return toast("حدد موقع النشاط قبل نشره للعملاء.");
   if (category === "restaurant" && !providerItems.length) return toast("أضف وجبة واحدة على الأقل للمطعم.");
 
   const button = byId("saveProviderButton");
@@ -545,6 +663,8 @@ byId("providerForm").addEventListener("submit", async event => {
 function clearRoleContent() {
   contentUnsubscribe?.();
   contentUnsubscribe = null;
+  requestsUnsubscribe?.();
+  requestsUnsubscribe = null;
 }
 
 onAuthStateChanged(auth, user => {

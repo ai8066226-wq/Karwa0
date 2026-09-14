@@ -74,7 +74,7 @@ const orderStatuses = [
   "بدأت الرحلة",
   "تم الوصول"
 ];
-const serviceIcons = { ride: "🚕", parcel: "📦", food: "🍽️" };
+const serviceIcons = { ride: "🚕", parcel: "📦", food: "🍽️", service: "🧰" };
 const CUSTOMER_MAP_STYLES = {
   day: "https://tiles.openfreemap.org/styles/positron",
   night: "https://tiles.openfreemap.org/styles/dark"
@@ -101,6 +101,11 @@ const state = {
   restaurantGps: null,
   selectedMeal: null,
   unsubscribeRestaurants: null,
+  serviceProfiles: [],
+  selectedServiceProfile: null,
+  serviceRequests: [],
+  unsubscribeServiceProfiles: null,
+  unsubscribeServiceRequests: null,
   orders: [],
   activeOrder: null,
   balance: 0,
@@ -121,6 +126,7 @@ const state = {
   mapSearchMarker: null,
   mapSearchSelection: null,
   customerMarker: null,
+  serviceMarker: null,
   driverMarker: null,
   routeLine: null,
   customerLocation: null,
@@ -171,7 +177,7 @@ async function calculateBookingRoute(){
   try{const route=await valhallaRoute(a,b);state.routeDistanceKm=route.km;state.routeDurationMin=route.mins;state.routeSource="valhalla";coords=route.coords;}
   catch(primary){try{const url=`https://router.project-osrm.org/route/v1/driving/${a.longitude},${a.latitude};${b.longitude},${b.latitude}?overview=full&geometries=geojson`;const r=await fetch(url,{signal:AbortSignal.timeout(5500)});if(!r.ok)throw 0;const data=await r.json(),route=data.routes?.[0];if(!route)throw 0;state.routeDistanceKm=route.distance/1000;state.routeDurationMin=route.duration/60;state.routeSource="osrm";coords=route.geometry.coordinates.map(([lng,lat])=>[lat,lng]);}
   catch(e){const straight=haversineKm(a,b);state.routeDistanceKm=straight*1.28;state.routeDurationMin=(state.routeDistanceKm/28)*60;state.routeSource="fallback";coords=[[a.latitude,a.longitude],[b.latitude,b.longitude]];}}
-  if(state.bookingRouteLine)state.bookingRouteLine.setLatLngs(coords);else state.bookingRouteLine=window.L.polyline(coords,{color:"#6657f5",weight:7,opacity:.94,lineCap:"round"}).addTo(state.map);state.map.fitBounds(state.bookingRouteLine.getBounds(),{padding:[35,35]});calculateRidePrice();updateRouteSummary();
+  if(state.bookingRouteLine)state.bookingRouteLine.setLatLngs(coords);else state.bookingRouteLine=window.L.polyline(coords,{color:"#087b75",weight:7,opacity:.94,lineCap:"round"}).addTo(state.map);state.map.fitBounds(state.bookingRouteLine.getBounds(),{padding:[35,35]});calculateRidePrice();updateRouteSummary();
 }
 async function setBookingPoint(type,lat,lng,label=""){
   initializeCustomerMap(); const p={latitude:Number(lat),longitude:Number(lng),label:label||""};
@@ -329,7 +335,7 @@ async function drawLiveRoute(force=false) {
   let coords=[[d.lat,d.lng],[target.latitude,target.longitude]],km=haversineKm({latitude:d.lat,longitude:d.lng},target),mins=0,source="تقديري";
   try{const vr=await valhallaRoute({latitude:d.lat,longitude:d.lng},target,5000);coords=vr.coords;km=vr.km;mins=vr.mins;source="Valhalla";}catch(e){try{const u=`https://router.project-osrm.org/route/v1/driving/${d.lng},${d.lat};${target.longitude},${target.latitude}?overview=full&geometries=geojson`;const r=await fetch(u,{signal:AbortSignal.timeout(4500)}),x=await r.json(),route=x.routes?.[0];if(!route)throw 0;coords=route.geometry.coordinates.map(([lng,lat])=>[lat,lng]);km=route.distance/1000;mins=route.duration/60;source="OSRM احتياطي";}catch(_){mins=(km*1.28/28)*60;km*=1.28;source="تقدير مباشر";}}
   if(!mins)mins=(km/28)*60;
-  if(state.routeLine)state.routeLine.setLatLngs(coords);else state.routeLine=window.L.polyline(coords,{color:"#6657f5",weight:7,opacity:.94,lineCap:"round"}).addTo(state.map);
+  if(state.routeLine)state.routeLine.setLatLngs(coords);else state.routeLine=window.L.polyline(coords,{color:"#087b75",weight:7,opacity:.94,lineCap:"round"}).addTo(state.map);
   byId("liveEta").textContent=`${Math.max(1,Math.round(mins))} دقيقة`; byId("liveDistance").textContent=liveDistanceText(km); byId("liveRouteSource").textContent=source;
   if(force)state.map.fitBounds(state.routeLine.getBounds(),{padding:[55,55],maxZoom:16});
 }
@@ -488,6 +494,18 @@ async function loadUserProfile(user) {
       } catch (error) {
         profileNeedsMigration = true;
         console.warn("تعذر إكمال ترقية ملف العميل القديم؛ انشر قواعد Firestore المرفقة", error);
+      }
+    }
+    if (!storedName) {
+      try {
+        await setDoc(userRef, {
+          name: state.name,
+          email: typeof data.email === "string" ? data.email : (user.email || ""),
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      } catch (error) {
+        profileNeedsMigration = true;
+        console.warn("تعذر حفظ اسم العميل القديم", error);
       }
     }
   } else {
@@ -892,7 +910,7 @@ function renderRestaurants() {
 
 function subscribeRestaurants() {
   state.unsubscribeRestaurants?.();
-  state.unsubscribeRestaurants = onSnapshot(collection(db, "restaurants"), snapshot => {
+  state.unsubscribeRestaurants = onSnapshot(query(collection(db, "restaurants"), where("active", "==", true)), snapshot => {
     state.restaurants = snapshot.docs.map(item => ({ firestoreId: item.id, ...item.data() })).filter(item => item.active !== false).sort((a,b) => String(a.name||"").localeCompare(String(b.name||""), "ar"));
     renderRestaurants();
   }, error => { console.error(error); const host=byId("restaurantMarketplace"); if(host) host.innerHTML='<div class="restaurant-empty">تعذر تحميل المطاعم. تأكد من نشر قواعد Firestore الجديدة.</div>'; });
@@ -933,7 +951,244 @@ byId("mealDetailBackdrop")?.addEventListener("click",event=>{if(event.target===e
 byId("addDetailedMeal")?.addEventListener("click",()=>{
   const meal=state.selectedMeal; if(!meal)return; state.cart.push({name:meal.name,price:Number(meal.price),restaurantId:meal.restaurantId,restaurantName:meal.restaurantName,restaurantAddress:meal.restaurantAddress,restaurantPhone:meal.restaurantPhone,restaurantLocation:meal.restaurantLocation}); renderCart(); byId("mealDetailBackdrop").hidden=true; showToast("تمت إضافة الوجبة إلى الطلب");
 });
-subscribeRestaurants();
+
+const otherServiceCategories = {
+  restaurant: ["🍴", "مطعم ومأكولات"],
+  grocery: ["🛒", "بقالة ومتجر غذائي"],
+  retail: ["🛍️", "تسوق ومنتجات"],
+  maintenance: ["🔧", "صيانة وإصلاح"],
+  home: ["🏠", "خدمات منزلية"],
+  health: ["🩺", "صحة وعناية"],
+  other: ["🧰", "خدمة أخرى"]
+};
+const otherRequestStatuses = {
+  pending: ["قيد انتظار المزود", "pending"],
+  accepted: ["تم قبول الطلب", "accepted"],
+  completed: ["اكتملت الخدمة", "completed"],
+  rejected: ["اعتذر المزود", "rejected"],
+  cancelled: ["ملغي", "cancelled"]
+};
+
+function validServiceLocation(location) {
+  const latitude = Number(location?.latitude);
+  const longitude = Number(location?.longitude);
+  return Number.isFinite(latitude) && latitude >= -90 && latitude <= 90
+    && Number.isFinite(longitude) && longitude >= -180 && longitude <= 180;
+}
+
+function serviceLocationText(location) {
+  return validServiceLocation(location)
+    ? `${Number(location.latitude).toFixed(5)}, ${Number(location.longitude).toFixed(5)}`
+    : "غير محدد";
+}
+
+function renderOtherServices() {
+  const host = byId("otherServicesMarketplace");
+  if (!host) return;
+  if (!state.user) {
+    host.innerHTML = '<div class="restaurant-empty">سجّل الدخول لعرض مزودي الخدمات المعتمدين.</div>';
+    return;
+  }
+  if (!state.serviceProfiles.length) {
+    host.innerHTML = '<div class="restaurant-empty">لا توجد خدمات معتمدة ومتاحة حاليًا.</div>';
+    return;
+  }
+  host.innerHTML = state.serviceProfiles.map(profile => {
+    const [icon, category] = otherServiceCategories[profile.category] || otherServiceCategories.other;
+    const items = Array.isArray(profile.items) ? profile.items : [];
+    const locationAvailable = validServiceLocation(profile.location);
+    return `<article class="other-service-card">
+      <div class="other-service-icon">${icon}</div>
+      <div class="other-service-copy">
+        <small>${restaurantSafeText(category)} • مزود معتمد</small>
+        <h3>${restaurantSafeText(profile.businessName || "نشاط كروة")}</h3>
+        <p>${restaurantSafeText(profile.description || "خدمة موثقة ومتاحة للطلب عبر كروة.")}</p>
+        <div class="other-service-location"><span>📍 ${restaurantSafeText(profile.address || profile.city || "العنوان غير محدد")}</span><span>GPS: ${restaurantSafeText(serviceLocationText(profile.location))}</span></div>
+        <div class="other-service-actions">
+          <button class="primary-button" type="button" data-select-service="${restaurantSafeText(profile.firestoreId)}">اختيار وطلب الخدمة</button>
+          <button class="secondary-button" type="button" data-show-service-location="${restaurantSafeText(profile.firestoreId)}" ${locationAvailable ? "" : "disabled"}>عرض الموقع</button>
+          <span>${items.length ? `${items.length} خدمة/منتج` : "طلبات مخصصة"}</span>
+        </div>
+      </div>
+    </article>`;
+  }).join("");
+}
+
+function updateSelectedServicePrice() {
+  const select = byId("otherServiceItem");
+  const profile = state.selectedServiceProfile;
+  if (!select || !profile) return;
+  const item = Array.isArray(profile.items) ? profile.items[Number(select.value)] : null;
+  byId("selectedServicePrice").textContent = item ? formatMoney(item.price) : "السعر حسب الاتفاق";
+}
+
+function selectServiceProfile(profile) {
+  if (!profile) return;
+  state.selectedServiceProfile = profile;
+  const [, category] = otherServiceCategories[profile.category] || otherServiceCategories.other;
+  byId("selectedServiceCategory").textContent = category;
+  byId("selectedServiceName").textContent = profile.businessName || "نشاط كروة";
+  byId("selectedServiceAddress").textContent = profile.address || profile.city || "العنوان غير محدد";
+  byId("selectedServiceGps").textContent = serviceLocationText(profile.location);
+  byId("locateSelectedService").disabled = !validServiceLocation(profile.location);
+  const items = Array.isArray(profile.items) ? profile.items : [];
+  byId("otherServiceItem").innerHTML = items.map((item, index) =>
+    `<option value="${index}">${restaurantSafeText(item.name || "خدمة")} — ${restaurantSafeText(Number(item.price || 0) > 0 ? formatMoney(item.price) : "حسب الاتفاق")}</option>`
+  ).join("") + '<option value="custom">طلب مخصص — السعر حسب الاتفاق</option>';
+  byId("selectedServiceBox").hidden = false;
+  updateSelectedServicePrice();
+  byId("selectedServiceBox").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function focusServiceLocation(profile) {
+  if (!profile || !validServiceLocation(profile.location)) return showToast("لم يحدد مزود الخدمة موقع GPS بعد");
+  initializeCustomerMap();
+  const coordinates = [Number(profile.location.latitude), Number(profile.location.longitude)];
+  if (state.serviceMarker) state.serviceMarker.setLatLng(coordinates);
+  else state.serviceMarker = window.L.marker(coordinates).addTo(state.map);
+  state.serviceMarker.bindPopup(`<div dir="rtl"><b>${restaurantSafeText(profile.businessName || "موقع الخدمة")}</b><br>${restaurantSafeText(profile.address || "")}</div>`).openPopup();
+  state.map.setView(coordinates, 16);
+  byId("mapInfoTitle").textContent = profile.businessName || "موقع الخدمة";
+  byId("mapInfoText").textContent = profile.address || "موقع النشاط المعتمد";
+  byId("customerOptionsClose")?.click();
+  const mapCard = document.querySelector(".map-card");
+  mapCard?.scrollIntoView({ behavior: "smooth", block: "center" });
+  window.setTimeout(() => state.map?.invalidateSize(), 250);
+}
+
+function subscribeServiceProfiles() {
+  state.unsubscribeServiceProfiles?.();
+  state.unsubscribeServiceProfiles = onSnapshot(
+    query(collection(db, "serviceProfiles"), where("active", "==", true), where("approvalStatus", "==", "approved")),
+    snapshot => {
+      state.serviceProfiles = snapshot.docs.map(item => ({ firestoreId: item.id, ...item.data() }))
+        .sort((a, b) => String(a.businessName || "").localeCompare(String(b.businessName || ""), "ar"));
+      renderOtherServices();
+      if (state.selectedServiceProfile) {
+        const freshProfile = state.serviceProfiles.find(item => item.firestoreId === state.selectedServiceProfile.firestoreId);
+        if (freshProfile) selectServiceProfile(freshProfile);
+        else {
+          state.selectedServiceProfile = null;
+          byId("selectedServiceBox").hidden = true;
+        }
+      }
+    },
+    error => {
+      console.error(error);
+      byId("otherServicesMarketplace").innerHTML = '<div class="restaurant-empty">تعذر تحميل الخدمات. انشر قواعد Firestore المرفقة.</div>';
+    }
+  );
+}
+
+function renderMyServiceRequests() {
+  const host = byId("myServiceRequests");
+  if (!host) return;
+  if (!state.user) {
+    host.innerHTML = '<div class="restaurant-empty">سجّل الدخول لمتابعة طلباتك.</div>';
+    return;
+  }
+  host.innerHTML = state.serviceRequests.length ? state.serviceRequests.map(request => {
+    const [statusLabel, statusClass] = otherRequestStatuses[request.status] || otherRequestStatuses.pending;
+    const date = request.createdAt?.toDate?.();
+    return `<article class="my-service-request-card">
+      <div class="service-request-head"><div><small>${restaurantSafeText(request.itemName || "طلب خدمة")}</small><h3>${restaurantSafeText(request.providerName || "مزود خدمة")}</h3></div><span class="service-request-status ${statusClass}">${statusLabel}</span></div>
+      <p>${restaurantSafeText(request.requestText || "")}</p>
+      <div class="service-request-meta"><span>📍 ${restaurantSafeText(request.providerAddress || "العنوان غير محدد")}</span><span>التوصيل إلى: ${restaurantSafeText(request.customerAddress || "غير محدد")}</span><span>${Number(request.itemPrice || 0) > 0 ? formatMoney(request.itemPrice) : "السعر حسب الاتفاق"}</span>${date ? `<span>${date.toLocaleDateString("ar-IQ")}</span>` : ""}</div>
+      ${request.providerNote ? `<div class="service-provider-note">ملاحظة المزود: ${restaurantSafeText(request.providerNote)}</div>` : ""}
+      ${request.status === "pending" ? `<button class="secondary-button danger-button" type="button" data-cancel-service-request="${restaurantSafeText(request.firestoreId)}">إلغاء الطلب</button>` : ""}
+    </article>`;
+  }).join("") : '<div class="restaurant-empty">لا توجد طلبات خدمات بعد.</div>';
+}
+
+function subscribeServiceRequests(user) {
+  state.unsubscribeServiceRequests?.();
+  state.unsubscribeServiceRequests = onSnapshot(
+    query(collection(db, "serviceRequests"), where("customerId", "==", user.uid)),
+    snapshot => {
+      state.serviceRequests = snapshot.docs.map(item => ({ firestoreId: item.id, ...item.data() }))
+        .sort((a, b) => Number(b.createdAt?.seconds || 0) - Number(a.createdAt?.seconds || 0));
+      renderMyServiceRequests();
+    },
+    error => {
+      console.error(error);
+      byId("myServiceRequests").innerHTML = '<div class="restaurant-empty">تعذر تحميل طلبات الخدمات.</div>';
+    }
+  );
+}
+
+byId("otherServicesMarketplace")?.addEventListener("click", event => {
+  const selectButton = event.target.closest("[data-select-service]");
+  const locationButton = event.target.closest("[data-show-service-location]");
+  const id = selectButton?.dataset.selectService || locationButton?.dataset.showServiceLocation;
+  const profile = state.serviceProfiles.find(item => item.firestoreId === id);
+  if (selectButton) selectServiceProfile(profile);
+  if (locationButton) focusServiceLocation(profile);
+});
+byId("otherServiceItem")?.addEventListener("change", updateSelectedServicePrice);
+byId("closeSelectedService")?.addEventListener("click", () => {
+  state.selectedServiceProfile = null;
+  byId("selectedServiceBox").hidden = true;
+});
+byId("locateSelectedService")?.addEventListener("click", () => focusServiceLocation(state.selectedServiceProfile));
+byId("useOtherCustomerLocation")?.addEventListener("click", () => locateUser(byId("otherCustomerAddress")));
+byId("bookOtherService")?.addEventListener("click", async event => {
+  if (!requireUser()) return;
+  const profile = state.selectedServiceProfile;
+  if (!profile) return showToast("اختر مزود خدمة أولًا");
+  const selectedValue = byId("otherServiceItem").value;
+  const item = selectedValue === "custom" ? null : profile.items?.[Number(selectedValue)];
+  const itemName = item?.name || "طلب مخصص";
+  const requestText = byId("otherServiceRequest").value.trim();
+  const customerAddress = byId("otherCustomerAddress").value.trim();
+  if (requestText.length < 3) return showToast("اكتب تفاصيل الطلب بوضوح");
+  if (customerAddress.length < 3) return showToast("حدد عنوان العميل أو استخدم موقعك الحالي");
+  const button = event.currentTarget;
+  setButtonBusy(button, true, "جاري إرسال الطلب…");
+  try {
+    await addDoc(collection(db, "serviceRequests"), {
+      customerId: state.user.uid,
+      customerName: state.name,
+      providerId: profile.firestoreId,
+      providerName: profile.businessName,
+      providerCategory: profile.category || "other",
+      providerAddress: profile.address || profile.city || "غير محدد",
+      providerLocation: validServiceLocation(profile.location) ? { ...profile.location } : null,
+      itemName,
+      itemPrice: Number(item?.price || 0),
+      requestText,
+      customerAddress,
+      customerLocation: state.customerLocation ? { ...state.customerLocation } : null,
+      status: "pending",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    byId("otherServiceRequest").value = "";
+    showToast(`تم إرسال الطلب إلى ${profile.businessName}`);
+  } catch (error) {
+    console.error(error);
+    showToast("تعذر إرسال الطلب. تأكد من نشر قواعد Firestore الجديدة.");
+  } finally {
+    setButtonBusy(button, false);
+  }
+});
+byId("myServiceRequests")?.addEventListener("click", async event => {
+  const button = event.target.closest("[data-cancel-service-request]");
+  if (!button || !confirm("هل تريد إلغاء طلب الخدمة؟")) return;
+  setButtonBusy(button, true, "جاري الإلغاء…");
+  try {
+    await updateDoc(doc(db, "serviceRequests", button.dataset.cancelServiceRequest), {
+      status: "cancelled",
+      cancelledAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    showToast("تم إلغاء طلب الخدمة");
+  } catch (error) {
+    console.error(error);
+    showToast("تعذر إلغاء الطلب");
+  } finally {
+    setButtonBusy(button, false);
+  }
+});
 
 document.querySelectorAll(".add-food-button").forEach(button => {
   button.addEventListener("click", () => {
@@ -1356,7 +1611,7 @@ document.addEventListener("keydown", event => {
 });
 
 
-function printInvoice(order){const w=window.open("","_blank","width=520,height=700");if(!w)return showToast("اسمح بالنوافذ المنبثقة لعرض الفاتورة");w.document.write(`<html dir="rtl"><head><title>فاتورة ${order.id}</title><style>body{font-family:Arial;padding:30px}h1{color:#102044}.row{display:flex;justify-content:space-between;border-bottom:1px solid #ddd;padding:10px 0}</style></head><body><h1>كروة — فاتورة رحلة</h1><div class="row"><b>رقم الرحلة</b><span>${order.id}</span></div><div class="row"><b>المسار</b><span>${order.route}</span></div><div class="row"><b>الكابتن</b><span>${order.driverName||"—"}</span></div><div class="row"><b>المبلغ</b><span>${formatMoney(order.price)}</span></div><div class="row"><b>الدفع</b><span>${order.payment||"—"}</span></div><div class="row"><b>التاريخ</b><span>${new Date(order.createdAtISO||Date.now()).toLocaleString("ar-IQ")}</span></div><script>window.onload=()=>window.print()<\/script></body></html>`);w.document.close();}
+function printInvoice(order){const w=window.open("","_blank","width=520,height=700");if(!w)return showToast("اسمح بالنوافذ المنبثقة لعرض الفاتورة");w.document.write(`<html dir="rtl"><head><title>فاتورة ${order.id}</title><style>body{font-family:Arial;padding:30px}h1{color:#0b4f70}.row{display:flex;justify-content:space-between;border-bottom:1px solid #ddd;padding:10px 0}</style></head><body><h1>كروة — فاتورة رحلة</h1><div class="row"><b>رقم الرحلة</b><span>${order.id}</span></div><div class="row"><b>المسار</b><span>${order.route}</span></div><div class="row"><b>الكابتن</b><span>${order.driverName||"—"}</span></div><div class="row"><b>المبلغ</b><span>${formatMoney(order.price)}</span></div><div class="row"><b>الدفع</b><span>${order.payment||"—"}</span></div><div class="row"><b>التاريخ</b><span>${new Date(order.createdAtISO||Date.now()).toLocaleString("ar-IQ")}</span></div><script>window.onload=()=>window.print()<\/script></body></html>`);w.document.close();}
 let geoTimer;
 const placeSearchCache=new Map();
 function normalizeArabicSearch(v){return String(v||"").trim().replace(/[أإآ]/g,"ا").replace(/ى/g,"ي").replace(/ة/g,"ه").replace(/[\u064B-\u065F]/g,"").replace(/\s+/g," ");}
@@ -1537,6 +1792,8 @@ renderNotificationSwitch();
 renderTracking();
 renderOrders();
 renderCart();
+renderOtherServices();
+renderMyServiceRequests();
 renderBalance();
 
 try {
@@ -1558,6 +1815,9 @@ async function startVerifiedCustomerSession(user) {
   }
   subscribeToOrders(user);
   subscribeToRatings(user);
+  subscribeRestaurants();
+  subscribeServiceProfiles();
+  subscribeServiceRequests(user);
   try {
     startCustomerCommunityLayers();
   } catch (communityError) {
@@ -1603,11 +1863,27 @@ onAuthStateChanged(auth, async user => {
       state.unsubscribeRatings();
       state.unsubscribeRatings = null;
     }
+    if (state.unsubscribeRestaurants) {
+      state.unsubscribeRestaurants();
+      state.unsubscribeRestaurants = null;
+    }
+    if (state.unsubscribeServiceProfiles) {
+      state.unsubscribeServiceProfiles();
+      state.unsubscribeServiceProfiles = null;
+    }
+    if (state.unsubscribeServiceRequests) {
+      state.unsubscribeServiceRequests();
+      state.unsubscribeServiceRequests = null;
+    }
     state.name = "ضيف";
     state.role = "customer";
     state.balance = 0;
     state.orders = [];
     state.ratings = [];
+    state.restaurants = [];
+    state.serviceProfiles = [];
+    state.serviceRequests = [];
+    state.selectedServiceProfile = null;
     state.activeOrder = null;
     if (state.trackingUnsubscribe) state.trackingUnsubscribe();
     state.trackingUnsubscribe = null;
@@ -1618,6 +1894,10 @@ onAuthStateChanged(auth, async user => {
     renderBalance();
     renderOrders();
     renderTracking();
+    renderRestaurants();
+    renderOtherServices();
+    renderMyServiceRequests();
+    byId("selectedServiceBox").hidden = true;
     openAuthModal();
     return;
   }
