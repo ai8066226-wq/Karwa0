@@ -492,9 +492,12 @@ function renderCaptainRestaurantMeals() {
   host.querySelectorAll("[data-remove-captain-meal]").forEach(btn=>btn.addEventListener("click",()=>{state.restaurantMeals.splice(Number(btn.dataset.removeCaptainMeal),1);renderCaptainRestaurantMeals();}));
 }
 function updateVehicleApplicationFields() {
-  const serviceType = byId("serviceType")?.value || "taxi";
-  const other = serviceType === "other";
+  const serviceSelect = byId("serviceType");
   const vehicleSelect = byId("vehicleType");
+  // الدراجة في كروة مخصصة للتوصيل فقط. إذا اختارها المستخدم نثبت نوع الخدمة على توصيل تلقائيًا.
+  if (vehicleSelect?.value === "دراجة" && serviceSelect && serviceSelect.value !== "other") serviceSelect.value = "delivery";
+  const serviceType = serviceSelect?.value || "taxi";
+  const other = serviceType === "other";
   const bikeOption = vehicleSelect?.querySelector('option[value="دراجة"]');
   if (bikeOption) bikeOption.disabled = serviceType === "taxi";
   if (serviceType === "taxi" && vehicleSelect?.value === "دراجة") vehicleSelect.value = "اقتصادي";
@@ -519,10 +522,20 @@ byId("captainAddMeal")?.addEventListener("click",()=>{
   state.restaurantMeals.push({name,description,price:Math.round(price)});["captainMealName","captainMealDescription","captainMealPrice"].forEach(id=>byId(id).value="");renderCaptainRestaurantMeals();
 });
 
+function normalizedApplicationServiceType(data = {}) {
+  const raw = String(data.serviceType || "").trim();
+  const lower = raw.toLowerCase();
+  const isBike = String(data.vehicleType || "").includes("دراجة");
+  if (lower === "other") return "other";
+  if (isBike || ["delivery", "parcel", "food", "servicedelivery"].includes(lower) || raw.includes("توصيل")) return "delivery";
+  if (["taxi", "ride"].includes(lower) || raw.includes("تكسي")) return "taxi";
+  return "taxi";
+}
+
 function fillApplication(data = {}) {
   byId("driverName").value = data.name || state.userData?.name || state.user?.displayName || "";
   byId("driverPhone").value = data.phone || "";
-  byId("serviceType").value = data.serviceType || "taxi";
+  byId("serviceType").value = normalizedApplicationServiceType(data);
   byId("vehicleType").value = data.vehicleType || "اقتصادي";
   byId("vehicleMake").value = data.vehicleMake || "";
   byId("vehicleModel").value = data.vehicleModel || "";
@@ -600,9 +613,10 @@ byId("applicationForm").addEventListener("submit", async event => {
     return;
   }
 
-  const selectedServiceType = byId("serviceType").value;
-  const isRestaurant = selectedServiceType === "other";
+  const rawServiceType = byId("serviceType").value;
   const isBike = byId("vehicleType").value === "دراجة";
+  const selectedServiceType = isBike && rawServiceType !== "other" ? "delivery" : rawServiceType;
+  const isRestaurant = selectedServiceType === "other";
   if (selectedServiceType === "taxi" && isBike) { toast("الدراجة مخصصة لخدمة التوصيل فقط. اختر «توصيل» أو اختر سيارة للتكسي."); return; }
   if (!isRestaurant && !["taxi", "delivery"].includes(selectedServiceType)) { toast("اختر نوع خدمة صحيحًا"); return; }
   if (!isRestaurant && !isBike && (!byId("vehicleMake").value.trim() || !byId("vehicleModel").value.trim())) { toast("أدخل نوع/ماركة السيارة وموديلها"); return; }

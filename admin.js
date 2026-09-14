@@ -56,6 +56,33 @@ const state = {
 };
 
 const money = value => Number(value || 0).toLocaleString("ar-IQ") + " د.ع";
+
+function isBikeVehicle(record = {}) {
+  return String(record.vehicleType || "").trim().includes("دراجة");
+}
+
+function normalizeCaptainServiceType(record = {}) {
+  const raw = String(record.serviceType || "").trim();
+  const lower = raw.toLowerCase();
+  if (lower === "other") return "other";
+  if (isBikeVehicle(record)) return "delivery";
+  if (["delivery", "parcel", "food", "servicedelivery"].includes(lower) || raw.includes("توصيل")) return "delivery";
+  if (["taxi", "ride"].includes(lower) || raw.includes("تكسي")) return "taxi";
+  return "";
+}
+
+function captainServiceLabel(record = {}) {
+  const type = normalizeCaptainServiceType(record);
+  if (type === "delivery") return "توصيل أغراض وطعام";
+  if (type === "taxi") return "تكسي — نقل ركاب";
+  if (type === "other") return "خدمات أخرى";
+  return "غير محدد";
+}
+
+function captainServiceIcon(record = {}) {
+  return normalizeCaptainServiceType(record) === "delivery" ? "🛵" : "🚕";
+}
+
 const escapeHtml = value => String(value ?? "").replace(/[&<>'"]/g, char => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
 })[char]);
@@ -124,9 +151,9 @@ function renderMetrics() {
   byId("serviceProvidersCount").textContent = state.users.filter(user => user.role === "serviceProvider").length;
   byId("blockedCount").textContent = state.drivers.filter(driver => driver.blocked === true).length;
   byId("pendingCount").textContent =
-    state.applications.filter(item => item.status === "pending" && item.serviceType !== "other").length +
+    state.applications.filter(item => item.status === "pending" && normalizeCaptainServiceType(item) !== "other").length +
     state.serviceApplications.filter(item => item.status === "pending").length +
-    state.applications.filter(item => item.status === "pending" && item.serviceType === "other").length;
+    state.applications.filter(item => item.status === "pending" && normalizeCaptainServiceType(item) === "other").length;
   byId("ordersCount").textContent = state.orders.length;
   byId("liveTripsCount").textContent = state.orders.filter(o => !o.cancelled && Number(o.statusIndex||0) > 0 && Number(o.statusIndex||0) < 4).length;
   byId("cancelledTripsCount").textContent = state.orders.filter(o => o.cancelled).length;
@@ -199,17 +226,17 @@ function driverCard(driver) {
   return `
     <article class="order-card driver-management-card captain-account-card">
       <div class="order-top">
-        <h3>🚕 ${escapeHtml(driver.name || "كابتن كروة")}</h3>
+        <h3>${captainServiceIcon(driver)} ${escapeHtml(driver.name || "كابتن كروة")}</h3>
         <span class="status-chip ${statusClass}">${status}</span>
       </div>
       <div class="captain-profile-grid">
         <span><small>رقم الهاتف</small><b>${escapeHtml(driver.phone || "بدون هاتف")}</b></span>
         <span><small>البريد</small><b>${escapeHtml(driver.email || "-")}</b></span>
         <span><small>المدينة</small><b>${escapeHtml(driver.city || "-")}</b></span>
-        <span><small>نوع الخدمة</small><b>${driver.serviceType === "delivery" ? "توصيل" : "تكسي"}</b></span>
+        <span><small>نوع الخدمة</small><b>${captainServiceLabel(driver)}</b></span>
         <span><small>المركبة</small><b>${escapeHtml(driver.vehicleType || "-")}</b></span>
         <span><small>رقم اللوحة</small><b>${escapeHtml(driver.plate || "-")}</b></span>
-        ${driver.vehicleType !== "دراجة" ? `<span><small>السيارة / الموديل</small><b>${escapeHtml(driver.vehicleMake || "-")} ${escapeHtml(driver.vehicleModel || "")}</b></span><span><small>حالة السيارة</small><b>${escapeHtml(driver.vehicleCondition || "غير محددة")}</b></span>` : `<span><small>نطاق العمل</small><b>توصيل أغراض وطعام</b></span>`}
+        ${!isBikeVehicle(driver) ? `<span><small>السيارة / الموديل</small><b>${escapeHtml(driver.vehicleMake || "-")} ${escapeHtml(driver.vehicleModel || "")}</b></span><span><small>حالة السيارة</small><b>${escapeHtml(driver.vehicleCondition || "غير محددة")}</b></span>` : `<span><small>نطاق العمل</small><b>توصيل أغراض وطعام</b></span>`}
       </div>
       <div class="captain-balance"><small>رصيد الكابتن من الرحلات المكتملة</small><strong>${money(captainBalance)}</strong></div>
       <div class="order-meta driver-trip-stats">
@@ -261,10 +288,10 @@ function applicationCard(application) {
   const labels = { pending: "قيد المراجعة", approved: "مقبول", rejected: "مرفوض" };
   const complete = application.profileComplete !== false;
   const actions = status === "pending" ? `<div class="order-actions"><button class="primary" data-action="approve" data-id="${application.firestoreId}" ${complete ? "" : 'disabled title="بانتظار إكمال بيانات الكابتن"'}>${complete ? "قبول وتفعيل" : "بانتظار إكمال البيانات"}</button><button class="danger" data-action="reject" data-id="${application.firestoreId}">رفض</button></div>` : "";
-  return `<article class="order-card"><div class="order-top"><h3>🚘 ${escapeHtml(application.name)}</h3><span class="status-chip ${status}">${labels[status] || escapeHtml(status)}</span></div><p class="order-route">${escapeHtml(application.city)} • ${escapeHtml(application.vehicleType)} • ${escapeHtml(application.plate)}</p><div class="order-meta"><span>الخدمة: ${application.serviceType === "delivery" ? "توصيل" : "تكسي"}</span></div>${application.vehicleType !== "دراجة" ? `<div class="order-meta"><span>السيارة: ${escapeHtml(application.vehicleMake || "-")} ${escapeHtml(application.vehicleModel || "")}</span><span>الحالة: ${escapeHtml(application.vehicleCondition || "غير محددة")}</span></div>` : `<div class="order-meta"><span>دراجة — توصيل أغراض وطعام فقط</span></div>`}<div class="order-meta"><span>${escapeHtml(application.phone)}</span><span>${escapeHtml(application.email)}</span></div>${actions}</article>`;
+  return `<article class="order-card"><div class="order-top"><h3>${captainServiceIcon(application)} ${escapeHtml(application.name)}</h3><span class="status-chip ${status}">${labels[status] || escapeHtml(status)}</span></div><p class="order-route">${escapeHtml(application.city)} • ${escapeHtml(application.vehicleType)} • ${escapeHtml(application.plate)}</p><div class="order-meta"><span>الخدمة: <b>${captainServiceLabel(application)}</b></span></div>${!isBikeVehicle(application) ? `<div class="order-meta"><span>السيارة: ${escapeHtml(application.vehicleMake || "-")} ${escapeHtml(application.vehicleModel || "")}</span><span>الحالة: ${escapeHtml(application.vehicleCondition || "غير محددة")}</span></div>` : `<div class="order-meta"><span>دراجة — توصيل أغراض وطعام فقط</span></div>`}<div class="order-meta"><span>${escapeHtml(application.phone)}</span><span>${escapeHtml(application.email)}</span></div>${actions}</article>`;
 }
 function renderApplications() {
-  const sorted = state.applications.filter(item => item.serviceType !== "other").sort((a, b) => {
+  const sorted = state.applications.filter(item => normalizeCaptainServiceType(item) !== "other").sort((a, b) => {
     if (a.status === "pending" && b.status !== "pending") return -1;
     if (b.status === "pending" && a.status !== "pending") return 1;
     return String(b.submittedAt?.seconds || "").localeCompare(String(a.submittedAt?.seconds || ""));
@@ -368,6 +395,16 @@ function renderOrders() {
     ? sorted.map(orderCard).join("")
     : `<div class="empty"><span>✅</span>لا توجد طلبات بانتظار كابتن حالياً.</div>`;
 }
+function repairLegacyCaptainService(collectionName, record) {
+  const normalized = normalizeCaptainServiceType(record);
+  if (!["taxi", "delivery"].includes(normalized) || record.serviceType === normalized) return;
+  // تصحيح آمن للسجلات القديمة: الدراجة/قيم التوصيل الوصفية تصبح delivery بدل أن تبقى محسوبة كتكسي.
+  updateDoc(doc(db, collectionName, record.firestoreId), {
+    serviceType: normalized,
+    updatedAt: serverTimestamp()
+  }).catch(error => console.warn("تعذر تصحيح نوع خدمة الكابتن القديم", record.firestoreId, error));
+}
+
 function openDashboard() {
   clearDashboardListeners();
   showView("dashboard");
@@ -377,6 +414,7 @@ function openDashboard() {
   });
   const applicationsUnsubscribe = onSnapshot(collection(db, "driverApplications"), snapshot => {
     state.applications = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
+    state.applications.forEach(item => repairLegacyCaptainService("driverApplications", item));
     renderApplications();
     renderServiceApplications();
     renderMetrics();
@@ -403,6 +441,7 @@ function openDashboard() {
   });
   const driversUnsubscribe = onSnapshot(collection(db, "drivers"), snapshot => {
     state.drivers = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
+    state.drivers.forEach(item => repairLegacyCaptainService("drivers", item));
     renderDrivers();
     renderMetrics();
   });
@@ -432,7 +471,7 @@ document.addEventListener("click", async event => {
     if (button.dataset.action === "approve-service") {
       const legacy = button.dataset.source === "legacy";
       const application = legacy
-        ? state.applications.find(item => item.firestoreId === id && item.serviceType === "other")
+        ? state.applications.find(item => item.firestoreId === id && normalizeCaptainServiceType(item) === "other")
         : state.serviceApplications.find(item => item.firestoreId === id);
       if (!application) throw new Error("NOT_FOUND");
       const existingProfile = state.serviceProfiles.find(item => item.firestoreId === id || item.ownerId === id);
@@ -498,7 +537,7 @@ document.addEventListener("click", async event => {
       if (!note) return;
       const legacy = button.dataset.source === "legacy";
       const application = legacy
-        ? state.applications.find(item => item.firestoreId === id && item.serviceType === "other")
+        ? state.applications.find(item => item.firestoreId === id && normalizeCaptainServiceType(item) === "other")
         : state.serviceApplications.find(item => item.firestoreId === id);
       if (!application) throw new Error("NOT_FOUND");
       if (application.profileComplete === false) { toast("لا يمكن اعتماد الكابتن قبل إكمال بيانات الطلب"); return; }
@@ -523,16 +562,15 @@ document.addEventListener("click", async event => {
     } else if (button.dataset.action === "approve") {
       const application = state.applications.find(item => item.firestoreId === id);
       if (!application) throw new Error("NOT_FOUND");
-      if (application.serviceType === "taxi" && application.vehicleType === "دراجة") {
-        toast("لا يمكن اعتماد الدراجة كتكسي. غيّر نوع الخدمة إلى توصيل أو اطلب من الكابتن تعديل المركبة.");
+      const normalizedServiceType = normalizeCaptainServiceType(application);
+      if (!["taxi", "delivery"].includes(normalizedServiceType)) {
+        toast("نوع خدمة الكابتن غير صالح للاعتماد. اختر تكسي أو توصيل.");
         return;
       }
-      if (!["taxi", "delivery"].includes(application.serviceType)) {
-        toast("نوع خدمة الكابتن غير صالح للاعتماد.");
-        return;
-      }
+      // الدراجة تُعامل دائمًا كتوصيل، كما يتم توحيد أي قيمة قديمة مثل «توصيل أغراض وطعام» إلى delivery.
       const batch = writeBatch(db);
       batch.update(doc(db, "driverApplications", id), {
+        serviceType: normalizedServiceType,
         status: "approved",
         reviewedBy: state.user.uid,
         reviewedAt: serverTimestamp(),
@@ -544,7 +582,7 @@ document.addEventListener("click", async event => {
       }, { merge: true });
       batch.set(doc(db, "drivers", id), {
         userId: id, name: application.name, email: application.email, phone: application.phone,
-        serviceType: application.serviceType || "taxi", vehicleType: application.vehicleType,
+        serviceType: normalizedServiceType, vehicleType: application.vehicleType,
         vehicleMake: application.vehicleMake || "", vehicleModel: application.vehicleModel || "",
         vehicleCondition: application.vehicleCondition || "", plate: application.plate, city: application.city,
         online: false, blocked: false, warningCount: 0, warningMessage: "",
