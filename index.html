@@ -2081,8 +2081,8 @@ body{color:#12243f;background:radial-gradient(circle at 85% 0,rgba(27,174,158,.1
                 <div class="meal-detail-backdrop" id="mealDetailBackdrop" hidden>
                   <div class="meal-detail-card" role="dialog" aria-modal="true" aria-labelledby="mealDetailTitle">
                     <button class="meal-detail-close" id="closeMealDetail" type="button" aria-label="إغلاق">×</button>
-                    <div class="meal-detail-icon">🍽️</div><small id="mealDetailRestaurant"></small><h3 id="mealDetailTitle"></h3><p id="mealDetailDescription"></p>
-                    <div class="meal-detail-price" id="mealDetailPrice"></div><button class="primary-button" id="addDetailedMeal" type="button">إضافة إلى الطلب</button>
+                    <img id="mealDetailImage" alt="صورة الوجبة" hidden style="width:100%;max-height:220px;object-fit:cover;border-radius:18px;margin-bottom:12px"><div class="meal-detail-icon">🍽️</div><small id="mealDetailRestaurant"></small><h3 id="mealDetailTitle"></h3><p id="mealDetailDescription"></p><p id="mealDetailUnit" style="font-weight:700"></p>
+                    <label id="mealDeliveryOption" style="display:flex;align-items:center;gap:8px;margin:12px 0"><input id="mealWithDelivery" type="checkbox"> <span>أريد التوصيل <b id="mealDeliveryFee"></b></span></label><div class="meal-detail-price" id="mealDetailPrice"></div><button class="primary-button" id="addDetailedMeal" type="button">إضافة إلى الطلب</button>
                   </div>
                 </div>
 

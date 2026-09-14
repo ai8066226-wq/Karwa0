@@ -894,7 +894,7 @@ function renderRestaurants() {
   host.innerHTML = state.restaurants.map(restaurant => {
     const meals = Array.isArray(restaurant.meals) ? restaurant.meals : [];
     const gps = restaurant.location && Number.isFinite(Number(restaurant.location.latitude)) ? `${Number(restaurant.location.latitude).toFixed(5)}, ${Number(restaurant.location.longitude).toFixed(5)}` : "غير محدد";
-    return `<article class="restaurant-card"><header class="restaurant-card-head"><h3>🍴 ${restaurantSafeText(restaurant.name)}</h3><div class="restaurant-card-meta"><span>📍 ${restaurantSafeText(restaurant.address)}</span><span>• ${meals.length} وجبة</span></div></header><div class="restaurant-card-contact"><span>☎️ ${restaurantSafeText(restaurant.phone)}</span><span>GPS: ${restaurantSafeText(gps)}</span></div><div class="restaurant-meals">${meals.map((meal, index) => `<button type="button" class="restaurant-meal-card" data-restaurant-id="${restaurantSafeText(restaurant.firestoreId)}" data-meal-index="${index}"><span class="restaurant-meal-icon">🍽️</span><span><strong>${restaurantSafeText(meal.name)}</strong><small>${restaurantSafeText(meal.description || "اضغط لعرض تفاصيل الوجبة")}</small></span><span class="restaurant-meal-price">${formatMoney(meal.price)}</span></button>`).join("") || '<small>لا توجد وجبات متاحة حاليًا</small>'}</div></article>`;
+    return `<article class="restaurant-card"><header class="restaurant-card-head"><h3>🍴 ${restaurantSafeText(restaurant.name)}</h3><div class="restaurant-card-meta"><span>📍 ${restaurantSafeText(restaurant.address)}</span><span>• ${meals.length} وجبة</span></div></header><div class="restaurant-card-contact"><span>☎️ ${restaurantSafeText(restaurant.phone)}</span><span>GPS: ${restaurantSafeText(gps)}</span></div><div class="restaurant-meals">${meals.map((meal, index) => `<button type="button" class="restaurant-meal-card" data-restaurant-id="${restaurantSafeText(restaurant.firestoreId)}" data-meal-index="${index}">${meal.imageUrl ? `<img src="${restaurantSafeText(meal.imageUrl)}" alt="" class="restaurant-meal-icon" style="object-fit:cover">` : `<span class="restaurant-meal-icon">🍽️</span>`}<span><strong>${restaurantSafeText(meal.name)}</strong><small>${restaurantSafeText(meal.description || "اضغط لعرض تفاصيل الوجبة")}</small><small>${restaurantSafeText(meal.unit || "")}</small></span><span class="restaurant-meal-price">${formatMoney(meal.price)}</span></button>`).join("") || '<small>لا توجد وجبات متاحة حاليًا</small>'}</div></article>`;
   }).join("");
   host.querySelectorAll(".restaurant-meal-card").forEach(button => button.addEventListener("click", () => {
     const restaurant = state.restaurants.find(item => item.firestoreId === button.dataset.restaurantId);
@@ -903,6 +903,11 @@ function renderRestaurants() {
     byId("mealDetailRestaurant").textContent = restaurant.name;
     byId("mealDetailTitle").textContent = meal.name;
     byId("mealDetailDescription").textContent = meal.description || "لا توجد تفاصيل إضافية لهذه الوجبة.";
+    byId("mealDetailUnit").textContent = meal.unit ? `الكمية/الحجم: ${meal.unit}` : "";
+    const deliveryFee = Number(meal.deliveryFee || 0);
+    byId("mealDeliveryFee").textContent = deliveryFee > 0 ? `(+ ${formatMoney(deliveryFee)})` : "(بدون رسوم إضافية)";
+    byId("mealWithDelivery").checked = false;
+    const detailImage = byId("mealDetailImage"); detailImage.hidden = !meal.imageUrl; if (meal.imageUrl) detailImage.src = meal.imageUrl;
     byId("mealDetailPrice").textContent = formatMoney(meal.price);
     byId("mealDetailBackdrop").hidden = false;
   }));
@@ -949,7 +954,7 @@ byId("publishRestaurant")?.addEventListener("click", async event => {
 byId("closeMealDetail")?.addEventListener("click",()=>byId("mealDetailBackdrop").hidden=true);
 byId("mealDetailBackdrop")?.addEventListener("click",event=>{if(event.target===event.currentTarget) event.currentTarget.hidden=true;});
 byId("addDetailedMeal")?.addEventListener("click",()=>{
-  const meal=state.selectedMeal; if(!meal)return; state.cart.push({name:meal.name,price:Number(meal.price),restaurantId:meal.restaurantId,restaurantName:meal.restaurantName,restaurantAddress:meal.restaurantAddress,restaurantPhone:meal.restaurantPhone,restaurantLocation:meal.restaurantLocation}); renderCart(); byId("mealDetailBackdrop").hidden=true; showToast("تمت إضافة الوجبة إلى الطلب");
+  const meal=state.selectedMeal; if(!meal)return; if(state.cart.length && state.cart[0].restaurantId && state.cart[0].restaurantId !== meal.restaurantId){showToast("أكمل طلب المطعم الحالي أولًا؛ كل طلب توصيل مرتبط بمطعم واحد.");return;} const withDelivery=byId("mealWithDelivery").checked; state.cart.push({name:meal.name,price:Number(meal.price),unit:meal.unit||"",imageUrl:meal.imageUrl||"",withDelivery,deliveryFee:withDelivery?Number(meal.deliveryFee||0):0,restaurantId:meal.restaurantId,restaurantName:meal.restaurantName,restaurantAddress:meal.restaurantAddress,restaurantPhone:meal.restaurantPhone,restaurantLocation:meal.restaurantLocation}); renderCart(); byId("mealDetailBackdrop").hidden=true; showToast(withDelivery?"تمت إضافة الوجبة مع التوصيل":"تمت إضافة الوجبة بدون توصيل");
 });
 
 const otherServiceCategories = {
@@ -1199,22 +1204,24 @@ document.querySelectorAll(".add-food-button").forEach(button => {
 });
 
 function renderCart() {
-  const cartTotal = state.cart.reduce((total, item) => total + item.price, 0);
+  const cartTotal = state.cart.reduce((total, item) => total + Number(item.price||0) + Number(item.deliveryFee||0), 0);
+  const hasDelivery = state.cart.some(item => item.withDelivery);
   byId("cartBar").classList.toggle("show", state.cart.length > 0);
   byId("cartCount").textContent = state.cart.length === 1 ? "عنصر واحد" : `${state.cart.length} عناصر`;
-  byId("cartPrice").textContent = formatMoney(cartTotal + 2000) + " شامل التوصيل";
+  byId("cartPrice").textContent = formatMoney(cartTotal) + (hasDelivery ? " حسب خيارات التوصيل" : " بدون توصيل");
 }
 
 byId("orderFood").addEventListener("click", async event => {
   if (!requireUser() || !state.cart.length) return;
-  const total = state.cart.reduce((sum, item) => sum + item.price, 0) + 2000;
+  const total = state.cart.reduce((sum, item) => sum + Number(item.price||0) + Number(item.deliveryFee||0), 0);
+  const deliveryRequested = state.cart.some(item => item.withDelivery);
   const title = state.cart.length === 1 ? state.cart[0].name : `طلب طعام (${state.cart.length} أصناف)`;
   const button = event.currentTarget;
   setButtonBusy(button, true, "جاري الطلب…");
   try {
     const restaurantNames = [...new Set(state.cart.map(item => item.restaurantName).filter(Boolean))];
     const firstRestaurant = state.cart.find(item => item.restaurantName);
-    const saved = await createOrder("food", title, restaurantNames.length === 1 ? `${restaurantNames[0]} ← موقعك الحالي` : "المطعم ← موقعك الحالي", total, { payment: "نقدًا", foodDetails: { items: state.cart.map(item => ({ name:item.name, price:item.price, restaurantId:item.restaurantId || null, restaurantName:item.restaurantName || "" })), restaurantName:firstRestaurant?.restaurantName || "", restaurantAddress:firstRestaurant?.restaurantAddress || "", restaurantPhone:firstRestaurant?.restaurantPhone || "", restaurantLocation:firstRestaurant?.restaurantLocation || null } });
+    const saved = await createOrder("food", title, deliveryRequested ? (restaurantNames.length === 1 ? `${restaurantNames[0]} ← موقعك الحالي` : "المطعم ← موقعك الحالي") : "استلام من المطعم بدون توصيل", total, { payment: "نقدًا", pickupLocation: deliveryRequested ? (firstRestaurant?.restaurantLocation || null) : null, destinationLocation: deliveryRequested ? (state.customerLocation ? {...state.customerLocation} : null) : null, foodDetails: { deliveryRequested, deliveryRadiusKm: 10, items: state.cart.map(item => ({ name:item.name, price:item.price, unit:item.unit||"", withDelivery:Boolean(item.withDelivery), deliveryFee:Number(item.deliveryFee||0), restaurantId:item.restaurantId || null, restaurantName:item.restaurantName || "" })), restaurantName:firstRestaurant?.restaurantName || "", restaurantAddress:firstRestaurant?.restaurantAddress || "", restaurantPhone:firstRestaurant?.restaurantPhone || "", restaurantLocation:firstRestaurant?.restaurantLocation || null } });
     if (saved) {
       state.cart = [];
       renderCart();

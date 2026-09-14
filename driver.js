@@ -628,6 +628,13 @@ function renderOrders() {
     // كابتن التوصيل (وكذلك الدراجة) لا يرى طلبات التكسي؛ كابتن التكسي يراها.
     const serviceType = state.driverData?.serviceType || "taxi";
     if((serviceType === "delivery" || state.driverData?.vehicleType === "دراجة") && order.type === "ride") return false;
+    if(order.type === "food") {
+      if(order.foodDetails?.deliveryRequested !== true) return false;
+      if(serviceType !== "delivery") return false;
+      const radius = Number(order.foodDetails?.deliveryRadiusKm || 10);
+      const distance = distanceToOrder(order);
+      if(!Number.isFinite(distance) || distance > radius) return false;
+    }
     const exp=order.dispatchExpiresAt?.seconds ? order.dispatchExpiresAt.seconds*1000 : new Date(order.dispatchExpiresAt||0).getTime();
     return !exp || exp<=now || !Array.isArray(order.dispatchCandidateIds) || !order.dispatchCandidateIds.length || order.dispatchCandidateIds.includes(state.user?.uid);
   }).sort((a,b) => distanceToOrder(a) - distanceToOrder(b));

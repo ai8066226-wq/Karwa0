@@ -23,6 +23,7 @@ import {
   where,
   writeBatch
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
+import { getDownloadURL, getStorage, ref, uploadBytes } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-storage.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyASl5jV5mLaDh8CoeeofV7ftVJ3gaog64E",
@@ -36,6 +37,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig, "karwa-services-portal-v4");
 const auth = getAuth(app);
 const db = getFirestore(app);
+const storage = getStorage(app);
 
 try {
   await setPersistence(auth, browserLocalPersistence);
@@ -419,7 +421,7 @@ function renderProviderItems() {
   byId("pItemList").innerHTML = providerItems.length
     ? providerItems.map((item, index) => `
         <div class="catalog-item">
-          <div><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.description || "بدون وصف")}</small></div>
+          <div style="display:flex;gap:10px;align-items:center">${item.imageUrl ? `<img src="${escapeHtml(item.imageUrl)}" alt="" style="width:58px;height:58px;object-fit:cover;border-radius:12px">` : ""}<div><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.description || "بدون وصف")}</small><small>${escapeHtml(item.unit || "")} ${Number(item.deliveryFee||0)>0 ? `• توصيل ${money(item.deliveryFee)}` : ""}</small></div></div>
           <span class="price">${money(item.price)}</span>
           <button class="button danger" type="button" data-remove-item="${index}">حذف</button>
         </div>`).join("")
@@ -433,17 +435,31 @@ function renderProviderItems() {
   renderPreview();
 }
 
-byId("pAddItem").addEventListener("click", () => {
+byId("pAddItem").addEventListener("click", async () => {
   const name = byId("pItemName").value.trim();
   const price = Number(byId("pItemPrice").value || 0);
+  const unit = byId("pItemUnit").value.trim();
+  const deliveryFee = Number(byId("pItemDeliveryFee").value || 0);
   const description = byId("pItemDescription").value.trim();
-  if (name.length < 2 || !Number.isFinite(price) || price < 0) return toast("أدخل اسمًا وسعرًا صحيحين.");
+  const image = byId("pItemImage").files?.[0] || null;
+  if (name.length < 2 || !Number.isFinite(price) || price < 0 || !Number.isFinite(deliveryFee) || deliveryFee < 0) return toast("أدخل الاسم والسعر ورسوم التوصيل بشكل صحيح.");
   if (providerItems.length >= 50) return toast("الحد الأقصى 50 عنصرًا.");
-  providerItems.push({ name, price: Math.round(price), description });
-  byId("pItemName").value = "";
-  byId("pItemPrice").value = "";
-  byId("pItemDescription").value = "";
-  renderProviderItems();
+  if (image && image.size > 100 * 1024) return toast("حجم صورة الوجبة يجب ألا يتجاوز 100 KB.");
+  if (image && !["image/jpeg","image/png","image/webp"].includes(image.type)) return toast("صيغة الصورة يجب أن تكون JPG أو PNG أو WebP.");
+  const button = byId("pAddItem"); setBusy(button, true, "جاري إضافة الوجبة…");
+  try {
+    let imageUrl = "";
+    if (image) {
+      const safeName = image.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const imageRef = ref(storage, `restaurant-meals/${currentUser.uid}/${Date.now()}-${safeName}`);
+      await uploadBytes(imageRef, image, { contentType: image.type });
+      imageUrl = await getDownloadURL(imageRef);
+    }
+    providerItems.push({ name, price: Math.round(price), unit, deliveryFee: Math.round(deliveryFee), description, imageUrl });
+    ["pItemName","pItemPrice","pItemUnit","pItemDeliveryFee","pItemDescription","pItemImage"].forEach(id => byId(id).value = "");
+    renderProviderItems();
+  } catch (error) { console.error(error); toast("تعذر رفع صورة الوجبة أو إضافتها."); }
+  finally { setBusy(button, false); }
 });
 
 function renderPreview() {
