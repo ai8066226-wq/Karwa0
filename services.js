@@ -54,6 +54,9 @@ const categories = {
   health: "صحة وعناية",
   other: "خدمة أخرى"
 };
+const categoryAliases = Object.fromEntries(Object.entries(categories).flatMap(([key,label]) => [[key,key],[label,key]]));
+function normalizeCategory(value) { const clean=String(value||"").trim().replace(/\s+/g," "); return categoryAliases[clean] || clean; }
+function categoryLabel(value) { return categories[value] || String(value || "مهنة غير محددة"); }
 
 let currentUser = null;
 let currentUserData = null;
@@ -182,7 +185,7 @@ function registrationData() {
   return {
     ownerName: byId("registerName").value.trim(),
     businessName: byId("registerBusinessName").value.trim(),
-    category: byId("registerCategory").value,
+    category: normalizeCategory(byId("registerCategory").value),
     phone: byId("registerPhone").value.trim(),
     city: byId("registerCity").value,
     address: byId("registerAddress").value.trim(),
@@ -194,7 +197,7 @@ function registrationData() {
 function validateApplication(data) {
   if (data.ownerName.length < 2) return "اكتب اسم صاحب الخدمة بشكل صحيح.";
   if (data.businessName.length < 2) return "اكتب اسم النشاط بشكل صحيح.";
-  if (!categories[data.category]) return "اختر تصنيف الخدمة.";
+  if (String(data.category || "").trim().length < 2) return "اكتب تصنيف المهنة بشكل واضح.";
   if (!validPhone(data.phone)) return "اكتب رقم هاتف صحيحًا.";
   if (!data.city) return "اختر المدينة.";
   if (data.address.length < 3) return "اكتب عنوان النشاط بشكل أوضح.";
@@ -286,7 +289,7 @@ function applicationSummary(data) {
   const values = [
     ["اسم النشاط", data.businessName || "—"],
     ["صاحب الخدمة", data.ownerName || currentUserData?.name || "—"],
-    ["التصنيف", categories[data.category] || "خدمة أخرى"],
+    ["التصنيف", categoryLabel(data.category)],
     ["الهاتف", data.phone || "—"],
     ["المدينة", data.city || "—"],
     ["العنوان", data.address || "—"],
@@ -300,7 +303,7 @@ function applicationSummary(data) {
 function fillResubmitForm(data = {}) {
   byId("editOwnerName").value = data.ownerName || currentUserData?.name || currentUser?.displayName || "";
   byId("editBusinessName").value = data.businessName || "";
-  byId("editCategory").value = categories[data.category] ? data.category : "restaurant";
+  byId("editCategory").value = categoryLabel(data.category);
   byId("editPhone").value = data.phone || "";
   byId("editCity").value = data.city || "الموصل";
   byId("editAddress").value = data.address || "";
@@ -381,7 +384,7 @@ byId("resubmitForm").addEventListener("submit", async event => {
   const data = {
     ownerName: byId("editOwnerName").value.trim(),
     businessName: byId("editBusinessName").value.trim(),
-    category: byId("editCategory").value,
+    category: normalizeCategory(byId("editCategory").value),
     phone: byId("editPhone").value.trim(),
     city: byId("editCity").value,
     address: byId("editAddress").value.trim(),
@@ -492,7 +495,7 @@ byId("pAddItem").addEventListener("click", event => {
 
 function renderPreview() {
   const category = currentProfile?.category || currentApplication?.category || "other";
-  byId("previewCategory").textContent = categories[category] || categories.other;
+  byId("previewCategory").textContent = categoryLabel(category);
   byId("previewName").textContent = byId("pBusinessName").value.trim() || "اسم النشاط";
   byId("previewDescription").textContent = byId("pDescription").value.trim() || "وصف النشاط";
   byId("previewAddress").textContent = `${byId("pCity").value.trim()} • ${byId("pAddress").value.trim()}`.replace(/^ • | • $/g, "") || "العنوان";
@@ -507,13 +510,13 @@ function fillProviderForm(data) {
   const category = data.category || currentApplication?.category || "other";
   byId("providerHeroName").textContent = data.businessName || currentApplication?.businessName || currentUserData?.name || "شريك كروة";
   byId("pBusinessName").value = data.businessName || currentApplication?.businessName || "";
-  byId("pCategory").value = categories[category] || categories.other;
+  byId("pCategory").value = categoryLabel(category);
   byId("pPhone").value = data.phone || currentApplication?.phone || "";
   byId("pCity").value = data.city || currentApplication?.city || "";
   byId("pAddress").value = data.address || currentApplication?.address || "";
   byId("pDescription").value = data.description || currentApplication?.description || "";
   byId("pActive").checked = data.active !== false;
-  byId("categoryMetric").textContent = categories[category] || categories.other;
+  byId("categoryMetric").textContent = categoryLabel(category);
   providerLocation = data.location || null;
   providerItems = Array.isArray(data.items) ? data.items.map(normalizedProviderItem) : [];
   byId("pGpsStatus").textContent = providerLocation?.latitude != null && providerLocation?.longitude != null

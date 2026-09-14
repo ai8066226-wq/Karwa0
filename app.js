@@ -676,13 +676,15 @@ document.querySelectorAll("[data-view]").forEach(button => {
   button.addEventListener("click", () => switchView(button.dataset.view));
 });
 
-document.querySelectorAll("[data-service]").forEach(button => {
-  button.addEventListener("click", () => {
-    document.querySelectorAll("[data-service]").forEach(item => item.classList.remove("active"));
-    document.querySelectorAll(".service-panel").forEach(panel => panel.classList.remove("active"));
-    button.classList.add("active");
-    byId(button.dataset.service + "Panel").classList.add("active");
-  });
+document.addEventListener("click", event => {
+  const button = event.target.closest("[data-service]");
+  if (!button) return;
+  document.querySelectorAll("[data-service]").forEach(item => item.classList.remove("active"));
+  document.querySelectorAll(".service-panel").forEach(panel => panel.classList.remove("active"));
+  button.classList.add("active");
+  const panelId = button.dataset.service === "profession" ? "otherPanel" : button.dataset.service + "Panel";
+  byId(panelId)?.classList.add("active");
+  if (button.dataset.service === "profession") { state.selectedProfession = button.dataset.profession || ""; renderOtherServices(); }
 });
 
 document.querySelectorAll(".vehicle-button").forEach(button => {
@@ -999,6 +1001,15 @@ function serviceLocationText(location) {
     : "غير محدد";
 }
 
+function professionLabel(profile = {}) { return (otherServiceCategories[profile.category] || ["🧰", String(profile.category || "مهنة")])[1]; }
+function professionIcon(profile = {}) { return (otherServiceCategories[profile.category] || ["🧰", ""])[0]; }
+function renderProfessionTabs() {
+  const host = byId("professionServiceTabs"); if (!host) return;
+  const professions = [...new Set(state.serviceProfiles.filter(p => p.category !== "restaurant").map(p => professionLabel(p)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"ar"));
+  host.innerHTML = professions.map(name => `<button class="service-button" data-service="profession" data-profession="${restaurantSafeText(name)}"><span>🧰</span>${restaurantSafeText(name)}</button>`).join("");
+  if (state.selectedProfession && !professions.includes(state.selectedProfession)) state.selectedProfession = "";
+}
+
 function renderOtherServices() {
   const host = byId("otherServicesMarketplace");
   if (!host) return;
@@ -1006,12 +1017,13 @@ function renderOtherServices() {
     host.innerHTML = '<div class="restaurant-empty">سجّل الدخول لعرض مزودي الخدمات المعتمدين.</div>';
     return;
   }
-  if (!state.serviceProfiles.length) {
-    host.innerHTML = '<div class="restaurant-empty">لا توجد خدمات معتمدة ومتاحة حاليًا.</div>';
+  const visibleProfiles = state.serviceProfiles.filter(profile => profile.category !== "restaurant" && (!state.selectedProfession || professionLabel(profile) === state.selectedProfession));
+  if (!visibleProfiles.length) {
+    host.innerHTML = '<div class="restaurant-empty">لا توجد أنشطة معتمدة ضمن هذا التصنيف حاليًا.</div>';
     return;
   }
-  host.innerHTML = state.serviceProfiles.map(profile => {
-    const [icon, category] = otherServiceCategories[profile.category] || otherServiceCategories.other;
+  host.innerHTML = visibleProfiles.map(profile => {
+    const icon = professionIcon(profile), category = professionLabel(profile);
     const items = Array.isArray(profile.items) ? profile.items.map(normalizedClientItem) : [];
     const locationAvailable = validServiceLocation(profile.location);
     return `<article class="other-service-card">
@@ -1112,6 +1124,7 @@ function subscribeServiceProfiles() {
     snapshot => {
       state.serviceProfiles = snapshot.docs.map(item => ({ firestoreId: item.id, ...item.data() }))
         .sort((a, b) => String(a.businessName || "").localeCompare(String(b.businessName || ""), "ar"));
+      renderProfessionTabs();
       renderOtherServices();
       if (state.selectedServiceProfile) {
         const freshProfile = state.serviceProfiles.find(item => item.firestoreId === state.selectedServiceProfile.firestoreId);
