@@ -238,7 +238,7 @@ async function drawPickupRoute(force=false) {
   if (!state.map) return;
   const activeOrder=state.orders.find(order=>order.driverId===state.user?.uid&&!order.cancelled&&Number(order.statusIndex||0)<4);
   const st=Number(activeOrder?.statusIndex||0),target=st>=3?activeOrder?.destinationLocation:activeOrder?.pickupLocation;if(!target)return;
-  const targetPoint=[Number(target.latitude),Number(target.longitude)];if(state.pickupMarker)state.pickupMarker.setLatLng(targetPoint);else state.pickupMarker=window.L.marker(targetPoint,{icon:mapIcon("pickup")}).addTo(state.map);state.pickupMarker.bindPopup(st>=3?"الوجهة":"موقع العميل");
+  const targetPoint=[Number(target.latitude),Number(target.longitude)];if(state.pickupMarker)state.pickupMarker.setLatLng(targetPoint);else state.pickupMarker=window.L.marker(targetPoint,{icon:mapIcon("pickup")}).addTo(state.map);state.pickupMarker.bindPopup(st>=3?"عنوان العميل":(activeOrder?.type==="serviceDelivery"?"عنوان المطعم":"موقع العميل"));
   if(!state.driverMarker)return;const pos=state.driverMarker.getLatLng(),now=Date.now(),current={latitude:pos.lat,longitude:pos.lng};const moved=state.lastRoutePoint?haversine(current,state.lastRoutePoint):Infinity;if(!force&&now-state.lastRouteAt<9000&&moved<.08)return;state.lastRouteAt=now;state.lastRoutePoint=current;
   let coords=[[pos.lat,pos.lng],targetPoint],km=haversine(current,target)*1.28,mins=km/28*60,provider="تقدير",maneuvers=[];
   try{const vr=await valhallaNavigate(current,target);coords=vr.coords;km=vr.km;mins=vr.mins;maneuvers=vr.maneuvers;provider="Valhalla";}catch(e){try{const u=`https://router.project-osrm.org/route/v1/driving/${pos.lng},${pos.lat};${target.longitude},${target.latitude}?overview=full&geometries=geojson`;const r=await fetch(u,{signal:AbortSignal.timeout(4500)}),x=await r.json(),route=x.routes?.[0];if(!route)throw 0;coords=route.geometry.coordinates.map(([lng,lat])=>[lat,lng]);km=route.distance/1000;mins=route.duration/60;provider="OSRM";}catch(_){}}
@@ -612,7 +612,7 @@ function orderCard(order, mode) {
         <span class="status-chip ${statusClass}">${escapeHtml(order.cancelled ? "ملغي" : statuses[statusIndex])}</span>
       </div>
       <p class="order-route">${escapeHtml(order.route)}</p>
-      ${order.type === "serviceDelivery" ? `<div class="order-meta"><span>🏪 عنوان المطعم: ${escapeHtml(String(order.route||"").split("←")[0].trim())}</span><span>🏠 عنوان العميل: ${escapeHtml(String(order.route||"").split("←")[1]?.trim() || "موقع العميل")}</span></div>` : ""}
+      ${order.type === "serviceDelivery" ? `<div class="order-meta delivery-addresses"><span>🏪 عنوان المطعم: ${escapeHtml(String(order.route||"").split(" ← ")[0]||"غير محدد")}</span><span>🏠 عنوان العميل: ${escapeHtml(String(order.route||"").split(" ← ")[1]||"غير محدد")}</span></div>` : ""}
       <div class="order-bottom">
         <div class="order-meta"><span>${escapeHtml(order.id)}</span><span>${escapeHtml(order.payment || "نقدًا")}</span>${mode === "available" ? `<span>🗓️ ${escapeHtml(formatOrderCreatedAt(order))}</span>` : ""}${mode === "available" && Number.isFinite(distanceToOrder(order)) ? `<span>يبعد ${distanceToOrder(order).toFixed(1)} كم</span>` : ""}</div>
         ${order.distanceKm ? `<div class="order-meta"><span>المشوار ${Number(order.distanceKm).toFixed(1)} كم</span><span>≈ ${Math.round(Number(order.durationMin||0))} دقيقة</span><span>صافي الكابتن ${money(order.driverEarnings)}</span></div>` : ""}
@@ -708,9 +708,15 @@ function openDriverDashboard() {
     renderOrders();
   });
 
+  let knownOrderIds = new Set();
   const ordersUnsubscribe = onSnapshot(query(collection(db, "orders")), snapshot => {
-    state.orders = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }))
-      .sort((a, b) => String(b.createdAtISO || "").localeCompare(String(a.createdAtISO || "")));
+    const incoming = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
+    if (knownOrderIds.size && state.driverData?.online) {
+      const fresh = incoming.find(o => !knownOrderIds.has(o.firestoreId) && !o.driverId && !o.cancelled && Number(o.statusIndex||0) < 4 && (o.type !== "serviceDelivery" || state.driverData?.serviceType === "delivery"));
+      if (fresh) { toast(fresh.type === "serviceDelivery" ? "طلب توصيل جديد من مطعم/مزود خدمة" : "طلب جديد متاح"); if ("Notification" in window && Notification.permission === "granted") new Notification("كروة — طلب جديد", { body: fresh.title || "لديك طلب متاح", icon: "./karwa-icon.svg" }); }
+    }
+    knownOrderIds = new Set(incoming.map(o=>o.firestoreId));
+    state.orders = incoming.sort((a, b) => String(b.createdAtISO || "").localeCompare(String(a.createdAtISO || "")));
     renderOrders();
   }, error => {
     console.error(error);
@@ -801,7 +807,7 @@ document.addEventListener("click", async event => {
       let otp = "";
       const otpStep = order.type === "serviceDelivery" ? 4 : 3;
       if (next === otpStep) {
-        otp = prompt(order.type === "serviceDelivery" ? "أدخل رمز التسليم من العميل لإكمال التوصيل:" : "أدخل رمز بدء الرحلة المكوّن من 4 أرقام:", "") || "";
+        otp = prompt(order.type === "serviceDelivery" ? "أدخل رمز التسليم المكوّن من 4 أرقام الذي يعطيك إياه العميل:" : "أدخل رمز بدء الرحلة المكوّن من 4 أرقام:", "") || "";
         if (!otp) throw new Error("OTP_REQUIRED");
       }
       if (next === otpStep && String(otp).trim() !== String(order.tripOtp || "").trim()) throw new Error("OTP_INVALID");
@@ -824,7 +830,7 @@ document.addEventListener("click", async event => {
     }
   } catch (error) {
     console.error(error);
-    toast(error.message === "OFFLINE" ? "فعّل حالة الاتصال أولًا" : error.message === "OTP_REQUIRED" ? "يجب إدخال رمز العميل" : error.message === "OTP_INVALID" ? "رمز العميل غير صحيح" : error.message === "ORDER_TAKEN" ? "سبق أن قبل كابتن آخر هذا الطلب" : error.message === "ORDER_NOT_FOUND" ? "الطلب غير موجود" : error.message === "ORDER_NOT_AVAILABLE" ? "الطلب لم يعد متاحًا" : error.message === "DRIVER_BUSY" ? "لديك رحلة نشطة بالفعل، أكملها أولًا" : error.message === "DRIVER_PROFILE_MISSING" ? "ملف الكابتن غير موجود. أعد تفعيل الحساب من الإدارة" : error.message === "DRIVER_BLOCKED" ? "الحساب موقوف من الإدارة" : error.message === "DELIVERY_DRIVER_ONLY" ? "هذا الطلب مخصص لكابتن مسجل في خدمة التوصيل" : error.message === "OUTSIDE_DRIVER_AREA" ? "هذا الطلب خارج نطاق المدينة المسجلة لحسابك" : driverCallableMessage(error, button.dataset.action === "accept" ? "قبول الطلب" : "تحديث حالة الرحلة"));
+    toast(error.message === "OFFLINE" ? "فعّل حالة الاتصال أولًا" : error.message === "OTP_REQUIRED" ? "يجب إدخال الرمز" : error.message === "OTP_INVALID" ? "الرمز غير صحيح" : error.message === "ORDER_TAKEN" ? "سبق أن قبل كابتن آخر هذا الطلب" : error.message === "ORDER_NOT_FOUND" ? "الطلب غير موجود" : error.message === "ORDER_NOT_AVAILABLE" ? "الطلب لم يعد متاحًا" : error.message === "DRIVER_BUSY" ? "لديك رحلة نشطة بالفعل، أكملها أولًا" : error.message === "DRIVER_PROFILE_MISSING" ? "ملف الكابتن غير موجود. أعد تفعيل الحساب من الإدارة" : error.message === "DRIVER_BLOCKED" ? "الحساب موقوف من الإدارة" : error.message === "DELIVERY_DRIVER_ONLY" ? "هذا الطلب مخصص لكابتن مسجل في خدمة التوصيل" : error.message === "OUTSIDE_DRIVER_AREA" ? "هذا الطلب خارج نطاق المدينة المسجلة لحسابك" : driverCallableMessage(error, button.dataset.action === "accept" ? "قبول الطلب" : "تحديث حالة الرحلة"));
   } finally {
     busy(button, false);
   }

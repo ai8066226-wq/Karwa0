@@ -1552,6 +1552,7 @@
     .meal-detail-backdrop{position:fixed;inset:0;z-index:3000;background:rgba(2,6,23,.62);display:grid;place-items:center;padding:18px}.meal-detail-backdrop[hidden]{display:none}.meal-detail-card{position:relative;width:min(440px,100%);background:#fff;border-radius:26px;padding:28px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,.25)}.meal-detail-close{position:absolute;top:12px;left:12px;width:36px;height:36px;border:0;border-radius:50%;background:#f1f5f9;font-size:24px;cursor:pointer}.meal-detail-icon{width:68px;height:68px;margin:0 auto 12px;display:grid;place-items:center;border-radius:20px;background:#f0fdfa;font-size:34px}.meal-detail-card h3{font-size:24px;margin:5px 0 8px}.meal-detail-card p{color:#64748b;line-height:1.8}.meal-detail-price{font-size:24px;font-weight:950;color:#0f766e;margin:18px 0}.meal-detail-card .primary-button{width:100%}
     @media(max-width:760px){.restaurant-marketplace,.restaurant-form-grid{grid-template-columns:1fr}.meal-fields{grid-template-columns:1fr}.restaurant-address-field{grid-column:auto}.restaurant-creator{padding:15px}.restaurant-creator-head{align-items:flex-start}.panel-heading:has(.restaurant-create-toggle){align-items:flex-start;gap:10px}.restaurant-create-toggle{font-size:12px;padding-inline:12px}}
 
+.food-flow-note{display:flex;align-items:center;gap:12px;margin:4px 0 14px;padding:14px 16px;border:1px solid #cce8e4;border-radius:17px;background:#f0fdfa;color:#115e59}.food-flow-note strong{font-size:18px}.food-flow-note span{color:#52637a;font-size:12px}.restaurant-card-head{cursor:pointer}.restaurant-card-head:after{content:"اضغط لعرض الأكلات";display:block;margin-top:8px;font-size:11px;opacity:.82}.restaurant-card.open .restaurant-card-head:after{content:"اضغط لإخفاء الأكلات"}.restaurant-card .restaurant-card-contact,.restaurant-card .restaurant-meals{display:none}.restaurant-card.open .restaurant-card-contact,.restaurant-card.open .restaurant-meals{display:grid}.food-delivery-fields{display:grid;grid-template-columns:minmax(180px,1fr) auto;gap:7px;align-items:center}.food-delivery-fields input{min-height:42px;padding:9px 11px;border:1px solid #d5dfe8;border-radius:12px;font:inherit}.food-delivery-fields small{grid-column:1/-1;color:#64748b}.cart-bar{gap:12px;flex-wrap:wrap}.food-checkout-copy{min-width:140px}@media(max-width:700px){.food-delivery-fields{grid-template-columns:1fr;width:100%}.food-delivery-fields small{grid-column:auto}.cart-bar .primary-button{width:100%}}
 </style>
   <link rel="manifest" href="./manifest.webmanifest">
   <meta name="theme-color" content="#0b6f75">
@@ -1873,8 +1874,8 @@ body{color:#12243f;background:radial-gradient(circle at 85% 0,rgba(27,174,158,.1
             </div>
             <p class="trip-stage-hint" id="tripStageHint">نبحث عن كابتن قريب</p>
             <div id="tripOtpBox" class="hidden" style="margin-top:14px;padding:14px;border-radius:16px;background:rgba(255,107,53,.08)">
-              <strong>رمز بدء الرحلة: <span id="tripOtp" style="font-size:1.35rem;letter-spacing:4px">—</span></strong>
-              <small style="display:block;margin-top:6px">أعطِ هذا الرمز للكابتن فقط بعد وصوله إليك. • حالة الدفع: <span id="paymentTripStatus">—</span></small>
+              <strong>رمز التحقق: <span id="tripOtp" style="font-size:1.35rem;letter-spacing:4px">—</span></strong>
+              <small style="display:block;margin-top:6px">أعطِ هذا الرمز للكابتن فقط في خطوة التحقق المطلوبة. • حالة الدفع: <span id="paymentTripStatus">—</span></small>
             </div>
 
             <div class="tracking-actions">
@@ -2032,23 +2033,76 @@ body{color:#12243f;background:radial-gradient(circle at 85% 0,rgba(27,174,158,.1
               </div>
 
               <div class="service-panel" id="foodPanel">
-                <div class="panel-heading"><div><h2>طلب الطعام</h2><small>اختر «طعام»، ثم المطعم المعلن، ثم الوجبة لعرض تفاصيلها وإرسال الطلب للمطعم.</small></div></div>
-                <div class="food-flow" id="foodFlow">
-                  <button type="button" class="food-category-card" id="openFoodRestaurants"><span class="food-category-icon">🍽️</span><span><strong>طعام</strong><small>عرض المطاعم المعتمدة والمعلنة</small></span><span class="food-category-arrow">‹</span></button>
-                  <div id="foodRestaurantsStep" hidden>
-                    <div class="food-step-head"><button type="button" class="text-button" id="backToFoodCategory">رجوع</button><div><strong>المطاعم المعلنة</strong><small>اختر مطعمًا لعرض قائمة الأكلات</small></div></div>
-                    <div class="restaurant-marketplace" id="restaurantMarketplace"><div class="restaurant-empty">جاري تحميل المطاعم…</div></div>
+                <div class="panel-heading">
+                  <div><h2>مطاعم ووجبات</h2><small>اختر مطعمًا ثم اضغط على الوجبة لعرض التفاصيل والسعر</small></div>
+                  
+                </div>
+
+                <div class="food-flow-note"><strong>🍽️ طعام</strong><span>اختر المطعم أولًا، ثم اختر الأكلة وشاهد التفاصيل قبل إرسال الطلب.</span></div>
+                <div class="restaurant-marketplace" id="restaurantMarketplace"><div class="restaurant-empty">جاري تحميل المطاعم…</div></div>
+
+                <div class="panel-heading food-legacy-heading" hidden><h2>وجبات كروة السريعة</h2><button class="text-button" id="foodFilter">الأسرع توصيلًا</button></div>
+                <div class="food-list" hidden>
+                  <article class="food-item">
+                    <div class="food-icon">🍔</div>
+                    <h3>برغر بغداد</h3>
+                    <p>برغر لحم مع بطاطا • 25 دقيقة</p>
+                    <div class="food-bottom">
+                      <strong>9,500 د.ع</strong>
+                      <button class="add-food-button" data-food="برغر بغداد" data-price="9500">+</button>
+                    </div>
+                  </article>
+
+                  <article class="food-item">
+                    <div class="food-icon">🥙</div>
+                    <h3>شاورما الدار</h3>
+                    <p>وجبة شاورما عربي • 20 دقيقة</p>
+                    <div class="food-bottom">
+                      <strong>7,000 د.ع</strong>
+                      <button class="add-food-button" data-food="شاورما الدار" data-price="7000">+</button>
+                    </div>
+                  </article>
+
+                  <article class="food-item">
+                    <div class="food-icon">🍕</div>
+                    <h3>بيتزا التنور</h3>
+                    <p>بيتزا جبن وسط • 30 دقيقة</p>
+                    <div class="food-bottom">
+                      <strong>12,000 د.ع</strong>
+                      <button class="add-food-button" data-food="بيتزا التنور" data-price="12000">+</button>
+                    </div>
+                  </article>
+
+                  <article class="food-item">
+                    <div class="food-icon">🍗</div>
+                    <h3>دجاج الكرخ</h3>
+                    <p>نصف دجاجة مع رز • 28 دقيقة</p>
+                    <div class="food-bottom">
+                      <strong>10,500 د.ع</strong>
+                      <button class="add-food-button" data-food="دجاج الكرخ" data-price="10500">+</button>
+                    </div>
+                  </article>
+                </div>
+
+                <div class="meal-detail-backdrop" id="mealDetailBackdrop" hidden>
+                  <div class="meal-detail-card" role="dialog" aria-modal="true" aria-labelledby="mealDetailTitle">
+                    <button class="meal-detail-close" id="closeMealDetail" type="button" aria-label="إغلاق">×</button>
+                    <div class="meal-detail-icon" id="mealDetailIcon">🍽️</div><small id="mealDetailRestaurant"></small><h3 id="mealDetailTitle"></h3><p id="mealDetailDescription"></p>
+                    <div class="meal-detail-price" id="mealDetailPrice"></div><button class="primary-button" id="addDetailedMeal" type="button">إضافة إلى الطلب</button>
                   </div>
-                  <div id="foodMealsStep" hidden>
-                    <div class="food-step-head"><button type="button" class="text-button" id="backToRestaurants">رجوع للمطاعم</button><div><strong id="selectedRestaurantTitle">المطعم</strong><small id="selectedRestaurantMeta"></small></div></div>
-                    <div class="restaurant-meals" id="selectedRestaurantMeals"></div>
+                </div>
+
+                <div class="cart-bar" id="cartBar">
+                  <div class="food-checkout-copy">
+                    <strong id="cartCount"></strong>
+                    <small id="cartPrice"></small>
                   </div>
-                  <div class="field food-delivery-address" id="foodDeliveryAddress" hidden>
-                    <label for="foodCustomerAddress">عنوان توصيل الطلب</label>
-                    <input id="foodCustomerAddress" maxlength="180" placeholder="اكتب عنوان العميل بشكل واضح">
-                    <button class="text-button" id="useFoodLocation" type="button">📍 تحديد موقعي للتوصيل</button>
-                    <small id="foodLocationStatus">يجب تحديد GPS حتى يظهر موقع العميل للكابتن.</small>
+                  <div class="food-delivery-fields">
+                    <input id="foodCustomerAddress" maxlength="180" placeholder="عنوان العميل: الحي، الشارع، أقرب نقطة دالة">
+                    <button class="secondary-button" id="useFoodCustomerLocation" type="button">📍 تحديد موقعي للتوصيل</button>
+                    <small id="foodLocationStatus">يجب تحديد موقعك قبل إرسال الطلب للمطعم.</small>
                   </div>
+                  <button class="primary-button" id="orderFood">إرسال الطلب إلى المطعم</button>
                 </div>
               </div>
 
@@ -2424,8 +2478,8 @@ body{color:#12243f;background:radial-gradient(circle at 85% 0,rgba(27,174,158,.1
   <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
   <script>try{if(window.maplibregl&&maplibregl.setRTLTextPlugin&&(!maplibregl.getRTLTextPluginStatus||maplibregl.getRTLTextPluginStatus()==="unavailable")){maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",true).catch(()=>{});}}catch(e){}</script>
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
-  <script type="module" src="./app.js?v=39"></script>
-  <script src="./pwa.js?v=39"></script>
+  <script type="module" src="./app.js?v=37"></script>
+  <script src="./pwa.js?v=37"></script>
 
 <script id="phase20-map-first-js">
 window.addEventListener("DOMContentLoaded",()=>{

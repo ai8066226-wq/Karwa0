@@ -92,7 +92,6 @@ const state = {
   user: null,
   role: "customer",
   authMode: "login",
-  registrationInProgressUid: null,
   vehicle: "اقتصادي",
   ridePrice: 6500,
   payment: "نقدًا",
@@ -624,10 +623,6 @@ byId("authForm").addEventListener("submit", async event => {
   try {
     if (state.authMode === "register") {
       const credential = await createUserWithEmailAndPassword(auth, email, password);
-      // Firebase fires onAuthStateChanged immediately after account creation.
-      // Mark this UID so the auth observer does not race the initial Firestore profile write.
-      state.registrationInProgressUid = credential.user.uid;
-      state.user = credential.user;
       await updateProfile(credential.user, { displayName: name });
       await setDoc(doc(db, "users", credential.user.uid), {
         name,
@@ -645,21 +640,14 @@ byId("authForm").addEventListener("submit", async event => {
       renderProfile();
       renderBalance();
       renderNotificationSwitch();
-      state.registrationInProgressUid = null;
       if (selectedRole === "driverApplicant") { window.location.replace("./driver.html"); return; }
       if (selectedRole === "serviceApplicant") { window.location.replace("./services.html"); return; }
-      // Enter the customer page immediately after successful registration instead of
-      // waiting for a second auth-state event that may already have fired.
-      closeAuthModal();
-      switchView("home");
-      await startVerifiedCustomerSession(credential.user);
       showToast("تم إنشاء حساب العميل بنجاح");
     } else {
       await signInWithEmailAndPassword(auth, email, password);
       showToast("مرحبًا بعودتك");
     }
   } catch (error) {
-    state.registrationInProgressUid = null;
     console.error(error);
     byId("authMessage").textContent = authErrorMessage(error);
   } finally {
@@ -900,45 +888,33 @@ function renderRestaurantDraftMeals() {
   }));
 }
 
-function openMealDetails(restaurant, meal, index) {
-  if (!restaurant || !meal) return;
-  const normalizedMeal = normalizedClientItem(meal);
-  state.selectedMeal = { ...normalizedMeal, mealIndex:index, restaurantId:restaurant.firestoreId, restaurantName:restaurant.name, restaurantAddress:restaurant.address, restaurantPhone:restaurant.phone, restaurantLocation:restaurant.location || null, restaurantCity:restaurant.city || "" };
-  byId("mealDetailRestaurant").textContent = restaurant.name;
-  byId("mealDetailTitle").textContent = normalizedMeal.name;
-  byId("mealDetailIcon").textContent = "🍽️";
-  byId("mealDetailDescription").textContent = `${normalizedMeal.description || "لا توجد تفاصيل إضافية لهذه الوجبة."} • السعر ${formatMoney(normalizedMeal.price)} • الطلب يرسل أولًا للمطعم للموافقة، وبعد الموافقة يُرسل التوصيل للكباتن.`;
-  byId("mealDetailPrice").textContent = formatMoney(normalizedMeal.price);
-  byId("mealDetailBackdrop").hidden = false;
-}
-function showRestaurantMeals(restaurant) {
-  if (!restaurant) return;
-  byId("foodRestaurantsStep").hidden = true; byId("foodMealsStep").hidden = false; byId("foodDeliveryAddress").hidden = false;
-  byId("selectedRestaurantTitle").textContent = restaurant.name || "المطعم";
-  byId("selectedRestaurantMeta").textContent = `${restaurant.address || "العنوان غير محدد"} • ${(restaurant.meals || []).length} وجبة`;
-  const host=byId("selectedRestaurantMeals");
-  host.innerHTML=(restaurant.meals||[]).map((meal,index)=>{const m=normalizedClientItem(meal);return `<button type="button" class="restaurant-meal-card" data-meal-index="${index}"><span class="restaurant-meal-icon">🍽️</span><span><strong>${restaurantSafeText(m.name)}</strong><small>${restaurantSafeText(m.description||"اضغط لعرض التفاصيل")}</small></span><span class="restaurant-meal-price">${formatMoney(m.price)}</span></button>`}).join("")||'<div class="restaurant-empty">لا توجد أكلات منشورة لهذا المطعم.</div>';
-  host.querySelectorAll(".restaurant-meal-card").forEach(btn=>btn.addEventListener("click",()=>openMealDetails(restaurant,restaurant.meals[Number(btn.dataset.mealIndex)],Number(btn.dataset.mealIndex))));
-}
 function renderRestaurants() {
   const host = byId("restaurantMarketplace"); if (!host) return;
-  if (!state.restaurants.length) { host.innerHTML = '<div class="restaurant-empty">لا توجد مطاعم معلنة ومعتمدة حاليًا.</div>'; return; }
-  host.innerHTML = state.restaurants.map(restaurant => `<article class="restaurant-card restaurant-choice" data-open-restaurant="${restaurantSafeText(restaurant.firestoreId)}"><header class="restaurant-card-head"><h3>🍴 ${restaurantSafeText(restaurant.name)}</h3><div class="restaurant-card-meta"><span>📍 ${restaurantSafeText(restaurant.address||"العنوان غير محدد")}</span><span>• ${(restaurant.meals||[]).length} وجبة</span></div></header><div class="restaurant-card-contact"><span>☎️ ${restaurantSafeText(restaurant.phone||"")}</span><strong>عرض الأكلات ←</strong></div></article>`).join("");
-  host.querySelectorAll("[data-open-restaurant]").forEach(card=>card.addEventListener("click",()=>showRestaurantMeals(state.restaurants.find(r=>r.firestoreId===card.dataset.openRestaurant))));
+  const restaurants = state.restaurants.filter(r => r.active === true && r.approvalStatus === "approved");
+  if (!restaurants.length) { host.innerHTML = '<div class="restaurant-empty">لا توجد مطاعم معلنة ومعتمدة حاليًا.</div>'; return; }
+  host.innerHTML = restaurants.map(restaurant => {
+    const meals = Array.isArray(restaurant.meals) ? restaurant.meals : [];
+    const gps = restaurant.location && Number.isFinite(Number(restaurant.location.latitude)) ? `${Number(restaurant.location.latitude).toFixed(5)}, ${Number(restaurant.location.longitude).toFixed(5)}` : "غير محدد";
+    return `<article class="restaurant-card" data-restaurant-card="${restaurantSafeText(restaurant.firestoreId)}"><header class="restaurant-card-head" role="button" tabindex="0" aria-expanded="false"><h3>🍴 ${restaurantSafeText(restaurant.name)}</h3><div class="restaurant-card-meta"><span>📍 ${restaurantSafeText(restaurant.address)}</span><span>• ${meals.length} أكلة</span></div></header><div class="restaurant-card-contact"><span>☎️ ${restaurantSafeText(restaurant.phone)}</span><span>GPS: ${restaurantSafeText(gps)}</span></div><div class="restaurant-meals">${meals.map((meal, index) => { const normalized = normalizedClientItem(meal); return `<button type="button" class="restaurant-meal-card" data-restaurant-id="${restaurantSafeText(restaurant.firestoreId)}" data-meal-index="${index}"><span class="restaurant-meal-icon">🍽️</span><span><strong>${restaurantSafeText(normalized.name)}</strong><small>${restaurantSafeText(normalized.description || `السعر لكل ${otherItemUnitLabels[normalized.unit]}`)}</small></span><span class="restaurant-meal-price">${formatMoney(normalized.price)}<small>/${restaurantSafeText(otherItemUnitLabels[normalized.unit])}</small></span></button>`; }).join("") || '<small>لا توجد أكلات متاحة حاليًا</small>'}</div></article>`;
+  }).join("");
+  host.querySelectorAll(".restaurant-card-head").forEach(head => {
+    const toggle=()=>{ const card=head.closest(".restaurant-card"); const open=!card.classList.contains("open"); host.querySelectorAll(".restaurant-card.open").forEach(c=>{c.classList.remove("open");c.querySelector(".restaurant-card-head")?.setAttribute("aria-expanded","false")}); card.classList.toggle("open",open); head.setAttribute("aria-expanded",String(open)); };
+    head.addEventListener("click", toggle); head.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();toggle();}});
+  });
+  host.querySelectorAll(".restaurant-meal-card").forEach(button => button.addEventListener("click", () => {
+    const restaurant = state.restaurants.find(item => item.firestoreId === button.dataset.restaurantId);
+    const mealIndex=Number(button.dataset.mealIndex); const meal = restaurant?.meals?.[mealIndex]; if (!restaurant || !meal) return;
+    state.selectedMeal = { ...meal, mealIndex, restaurantId: restaurant.firestoreId, restaurantName: restaurant.name, restaurantAddress: restaurant.address, restaurantPhone: restaurant.phone, restaurantLocation: restaurant.location || null };
+    byId("mealDetailRestaurant").textContent = restaurant.name; byId("mealDetailTitle").textContent = meal.name;
+    const normalizedMeal = normalizedClientItem(meal); byId("mealDetailIcon").textContent = "🍽️";
+    byId("mealDetailDescription").textContent = `${normalizedMeal.description || "لا توجد تفاصيل إضافية لهذه الأكلة."} • السعر لكل ${otherItemUnitLabels[normalizedMeal.unit]}${normalizedMeal.deliveryAvailable ? ` • التوصيل ${formatMoney(normalizedMeal.deliveryFee)}` : " • التوصيل غير مفعّل لهذه الأكلة"}`;
+    byId("mealDetailPrice").textContent = formatMoney(normalizedMeal.price); byId("addDetailedMeal").disabled = !normalizedMeal.deliveryAvailable; byId("addDetailedMeal").textContent = normalizedMeal.deliveryAvailable ? "اختيار هذه الأكلة" : "التوصيل غير متاح"; byId("mealDetailBackdrop").hidden = false;
+  }));
 }
-
 function subscribeRestaurants() {
   state.unsubscribeRestaurants?.();
-  state.unsubscribeRestaurants = onSnapshot(query(collection(db, "restaurants"), where("active", "==", true)), async snapshot => {
-    const rows = await Promise.all(snapshot.docs.map(async item => {
-      const restaurant={ firestoreId:item.id, ...item.data() };
-      try {
-        const profileSnap=await getDoc(doc(db,"serviceProfiles",item.id));
-        if(profileSnap.exists()) { const profile=profileSnap.data(); restaurant.city=profile.city||""; restaurant.meals=Array.isArray(profile.items)?profile.items:restaurant.meals; restaurant.name=profile.businessName||restaurant.name; restaurant.address=profile.address||restaurant.address; restaurant.location=profile.location||restaurant.location; }
-      } catch(error){ console.warn("تعذر مزامنة ملف المطعم",item.id,error); }
-      return restaurant;
-    }));
-    state.restaurants = rows.filter(item => item.active !== false).sort((a,b) => String(a.name||"").localeCompare(String(b.name||""), "ar"));
+  state.unsubscribeRestaurants = onSnapshot(query(collection(db, "restaurants"), where("active", "==", true)), snapshot => {
+    state.restaurants = snapshot.docs.map(item => ({ firestoreId: item.id, ...item.data() })).filter(item => item.active !== false).sort((a,b) => String(a.name||"").localeCompare(String(b.name||""), "ar"));
     renderRestaurants();
   }, error => { console.error(error); const host=byId("restaurantMarketplace"); if(host) host.innerHTML='<div class="restaurant-empty">تعذر تحميل المطاعم. تأكد من نشر قواعد Firestore الجديدة.</div>'; });
 }
@@ -976,16 +952,7 @@ byId("publishRestaurant")?.addEventListener("click", async event => {
 byId("closeMealDetail")?.addEventListener("click",()=>byId("mealDetailBackdrop").hidden=true);
 byId("mealDetailBackdrop")?.addEventListener("click",event=>{if(event.target===event.currentTarget) event.currentTarget.hidden=true;});
 byId("addDetailedMeal")?.addEventListener("click",()=>{
-  const meal=state.selectedMeal; if(!meal)return;
-  state.cart=[{...meal,name:meal.name,price:Number(meal.price)}]; renderCart(); byId("mealDetailBackdrop").hidden=true; showToast("تم اختيار الوجبة. أكمل عنوان التوصيل ثم أرسل الطلب للمطعم.");
-});
-byId("openFoodRestaurants")?.addEventListener("click",()=>{byId("openFoodRestaurants").hidden=true;byId("foodRestaurantsStep").hidden=false;byId("foodMealsStep").hidden=true;});
-byId("backToFoodCategory")?.addEventListener("click",()=>{byId("openFoodRestaurants").hidden=false;byId("foodRestaurantsStep").hidden=true;byId("foodMealsStep").hidden=true;byId("foodDeliveryAddress").hidden=true;});
-byId("backToRestaurants")?.addEventListener("click",()=>{byId("foodMealsStep").hidden=true;byId("foodRestaurantsStep").hidden=false;byId("foodDeliveryAddress").hidden=true;});
-byId("useFoodLocation")?.addEventListener("click",()=>{
-  if(!navigator.geolocation)return showToast("GPS غير مدعوم في هذا الجهاز");
-  const b=byId("useFoodLocation");b.disabled=true;b.textContent="جاري تحديد الموقع…";
-  navigator.geolocation.getCurrentPosition(pos=>{state.customerLocation={latitude:pos.coords.latitude,longitude:pos.coords.longitude,accuracy:pos.coords.accuracy};byId("foodLocationStatus").textContent=`تم تحديد موقع العميل ✓ (${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)})`;b.disabled=false;b.textContent="📍 تحديث موقعي للتوصيل";},()=>{b.disabled=false;b.textContent="📍 تحديد موقعي للتوصيل";showToast("تعذر تحديد موقع العميل");},{enableHighAccuracy:true,timeout:12000});
+  const meal=state.selectedMeal; if(!meal)return; const normalized=normalizedClientItem(meal); if(!normalized.deliveryAvailable)return showToast("هذا المطعم لم يفعّل التوصيل لهذه الأكلة"); state.cart=[{name:meal.name,price:Number(meal.price),description:meal.description||"",unit:normalized.unit,deliveryFee:normalized.deliveryFee,mealIndex:meal.mealIndex,restaurantId:meal.restaurantId,restaurantName:meal.restaurantName,restaurantAddress:meal.restaurantAddress,restaurantPhone:meal.restaurantPhone,restaurantLocation:meal.restaurantLocation}]; renderCart(); byId("mealDetailBackdrop").hidden=true; showToast("تم اختيار الأكلة — أكمل عنوان التوصيل");
 });
 
 const otherServiceCategories = {
@@ -1321,33 +1288,30 @@ document.querySelectorAll(".add-food-button").forEach(button => {
 });
 
 function renderCart() {
-  const cartTotal = state.cart.reduce((total, item) => total + item.price, 0);
-  byId("cartBar").classList.toggle("show", state.cart.length > 0);
-  byId("cartCount").textContent = state.cart.length === 1 ? "عنصر واحد" : `${state.cart.length} عناصر`;
-  byId("cartPrice").textContent = formatMoney(cartTotal + 2000) + " شامل التوصيل";
+  const item=state.cart[0]; const total=item ? Number(item.price)+Number(item.deliveryFee||0) : 0;
+  byId("cartBar").classList.toggle("show", Boolean(item));
+  byId("cartCount").textContent = item ? `${item.name} — ${item.restaurantName}` : "";
+  byId("cartPrice").textContent = item ? `${formatMoney(total)} شامل التوصيل` : "";
 }
 
-byId("orderFood").addEventListener("click", async event => {
-  if (!requireUser() || !state.cart.length) return;
-  const meal=state.cart[0];
-  if(!meal.restaurantId) return showToast("اختر وجبة من مطعم معلن.");
-  const restaurant=state.restaurants.find(r=>r.firestoreId===meal.restaurantId);
-  if(!restaurant) return showToast("المطعم لم يعد متاحًا.");
-  const itemIndex=Number(meal.mealIndex); const item=normalizedClientItem(restaurant.meals?.[itemIndex]);
-  const address=byId("foodCustomerAddress")?.value.trim()||"";
-  if(address.length<3) return showToast("اكتب عنوان العميل للتوصيل.");
-  if(!validServiceLocation(state.customerLocation)) return showToast("حدد موقع العميل GPS قبل إرسال الطلب.");
-  if(!item.deliveryAvailable) return showToast("هذه الوجبة محددة للاستلام من المطعم فقط. اطلب من المطعم تفعيل التوصيل لها.");
-  const deliveryFee=Math.max(0,Number(item.deliveryFee||0));
-  const button=event.currentTarget; setButtonBusy(button,true,"جاري إرسال الطلب للمطعم…");
-  try {
-    await addDoc(collection(db,"serviceRequests"),{customerId:state.user.uid,customerName:state.name,providerId:restaurant.firestoreId,providerName:restaurant.name,providerCategory:"restaurant",providerCity:restaurant.city||"",providerAddress:restaurant.address||"غير محدد",providerLocation:validServiceLocation(restaurant.location)?{...restaurant.location}:null,itemIndex,itemName:item.name,itemUnit:item.unit,quantity:1,unitPrice:item.price,itemPrice:item.price,subtotal:item.price,deliveryRequested:true,deliveryFee,totalPrice:item.price+deliveryFee,deliveryStatus:"pendingProvider",deliveryOrderId:"",requestText:`طلب وجبة: ${item.name}`,customerAddress:address,customerLocation:{...state.customerLocation},status:"pending",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
-    state.cart=[];renderCart();showToast("تم إرسال الطلب للمطعم. بعد موافقته سيصل تلقائيًا إلى كابتن التوصيل.");switchView("orders");
-  } catch(error){console.error(error);showToast("تعذر إرسال طلب الطعام. تأكد أن المطعم معتمد وأن الوجبة منشورة للتوصيل.");}
-  finally{setButtonBusy(button,false);}
+byId("useFoodCustomerLocation")?.addEventListener("click",()=>{
+  if(!navigator.geolocation)return showToast("GPS غير مدعوم في هذا الجهاز"); const btn=byId("useFoodCustomerLocation"); setButtonBusy(btn,true,"جارٍ تحديد الموقع…");
+  navigator.geolocation.getCurrentPosition(pos=>{setCustomerLocation(pos.coords.latitude,pos.coords.longitude);byId("foodLocationStatus").textContent=`تم تحديد موقع العميل ✓ (${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)})`;setButtonBusy(btn,false);},()=>{setButtonBusy(btn,false);showToast("تعذر تحديد موقعك. اسمح للموقع باستخدام GPS.");},{enableHighAccuracy:true,timeout:12000,maximumAge:30000});
 });
 
-byId("foodFilter")?.addEventListener("click", () => showToast("المطاعم مرتبة حسب وقت التوصيل"));
+byId("orderFood").addEventListener("click", async event => {
+  if (!requireUser() || !state.cart.length) return; const item=state.cart[0];
+  const address=byId("foodCustomerAddress").value.trim(); if(address.length<3)return showToast("اكتب عنوان العميل بالتفصيل"); if(!validServiceLocation(state.customerLocation))return showToast("حدد موقع العميل GPS قبل إرسال الطلب");
+  const restaurant=state.restaurants.find(r=>r.firestoreId===item.restaurantId); const profile=state.serviceProfiles.find(p=>p.firestoreId===item.restaurantId && p.category==="restaurant" && p.active===true && p.approvalStatus==="approved"); if(!restaurant||!profile)return showToast("المطعم لم يعد متاحًا أو غير معتمد");
+  const normalized=normalizedClientItem(profile.items?.[item.mealIndex]); if(!normalized.deliveryAvailable)return showToast("التوصيل غير متاح لهذه الأكلة");
+  const button=event.currentTarget; setButtonBusy(button,true,"جاري الإرسال للمطعم…");
+  try {
+    await addDoc(collection(db,"serviceRequests"),{customerId:state.user.uid,customerName:state.name,providerId:item.restaurantId,providerName:profile.businessName,providerCategory:"restaurant",providerCity:profile.city||"",providerAddress:profile.address,providerLocation:{...profile.location},itemIndex:item.mealIndex,itemName:normalized.name,itemUnit:normalized.unit,quantity:1,unitPrice:normalized.price,itemPrice:normalized.price,subtotal:normalized.price,deliveryRequested:true,deliveryFee:normalized.deliveryFee,totalPrice:normalized.price+normalized.deliveryFee,deliveryStatus:"pendingProvider",deliveryOrderId:"",requestText:`طلب طعام: ${normalized.name}`,customerAddress:address,customerLocation:{...state.customerLocation},status:"pending",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
+    state.cart=[]; renderCart(); byId("foodCustomerAddress").value=""; byId("foodLocationStatus").textContent="يجب تحديد موقعك قبل إرسال الطلب للمطعم."; showToast("تم إرسال الطلب للمطعم. بعد موافقته سيصل تلقائيًا إلى كابتن التوصيل.");
+  } catch(error){console.error(error);showToast("تعذر إرسال الطلب. تأكد أن بيانات المطعم منشورة من بوابة الخدمات ومعتمدة.");} finally {setButtonBusy(button,false);}
+});
+
+byId("foodFilter").addEventListener("click", () => showToast("المطاعم مرتبة حسب وقت التوصيل"));
 
 function renderTracking() {
   const card = byId("trackingCard");
@@ -1371,10 +1335,10 @@ function renderTracking() {
   byId("trackingCode").textContent = "رقم الطلب: " + order.id;
   byId("trackingDriver").textContent = order.driverName ? ` • الكابتن: ${order.driverName}` : " • بانتظار قبول كابتن";
   const call=byId("callDriver"); if(call){call.classList.toggle("hidden",!order.driverPhone);call.href=order.driverPhone?`tel:${String(order.driverPhone).replace(/[^+\d]/g,"")}`:"#";}
-  const stageHint=byId("tripStageHint"); if(stageHint)stageHint.textContent=statusIndex===0?"نبحث عن كابتن قريب":statusIndex===1?"الكابتن في الطريق إلى نقطة الانطلاق":statusIndex===2?"الكابتن وصل — تحقق من السيارة ثم أعطه رمز الرحلة":statusIndex===3?"الرحلة جارية نحو الوجهة":"وصلت بالسلامة";
+  const stageHint=byId("tripStageHint"); if(stageHint)stageHint.textContent=order.type==="serviceDelivery"?(statusIndex===0?"بانتظار كابتن توصيل":statusIndex===1?"الكابتن في الطريق إلى المطعم":statusIndex===2?"الكابتن وصل إلى المطعم لاستلام الطلب":statusIndex===3?"الطلب في الطريق إليك — أعطِ رمز التسليم للكابتن فقط عند وصوله":"تم تسليم الطلب"):(statusIndex===0?"نبحث عن كابتن قريب":statusIndex===1?"الكابتن في الطريق إلى نقطة الانطلاق":statusIndex===2?"الكابتن وصل — تحقق من السيارة ثم أعطه رمز الرحلة":statusIndex===3?"الرحلة جارية نحو الوجهة":"وصلت بالسلامة");
   if(order.driverId && state.driverMarker) drawLiveRoute(true);
   byId("trackingStatus").textContent = orderStatuses[statusIndex] || "قيد المتابعة";
-  byId("tripOtpBox").classList.toggle("hidden", !(order.driverId && statusIndex < 3));
+  byId("tripOtpBox").classList.toggle("hidden", !(order.driverId && (order.type === "serviceDelivery" ? statusIndex < 4 : statusIndex < 3)));
   byId("tripOtp").textContent = order.tripOtp || "—";
   byId("paymentTripStatus").textContent = order.paymentStatus === "paid" ? "مدفوع" : "الدفع عند الإكمال";
   byId("progressBar").style.width = `${((statusIndex + 1) / orderStatuses.length) * 100}%`;
@@ -2022,10 +1986,6 @@ onAuthStateChanged(auth, async user => {
     openAuthModal();
     return;
   }
-
-  // During registration the submit handler owns the first profile write and routing.
-  // Returning here prevents a create/update race on users/{uid}.
-  if (state.registrationInProgressUid === user.uid) return;
 
   closeAuthModal();
   if (state.profileRetryTimer) clearTimeout(state.profileRetryTimer);
