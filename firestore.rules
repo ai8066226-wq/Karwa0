@@ -11,6 +11,7 @@ service cloud.firestore { match /databases/{database}/documents {
  function serviceApplicant(){return signed()&&role()=='serviceApplicant';}
  function serviceProvider(){return signed()&&role()=='serviceProvider';}
  function validServiceCategory(value){return value in ['restaurant','grocery','retail','maintenance','home','health','other'];}
+ function validDriverApplication(data){return data.serviceType in ['taxi','delivery','other']&&((data.serviceType=='taxi'&&data.vehicleType!='دراجة')||data.serviceType=='delivery'||data.serviceType=='other');}
  match /users/{uid}{
    allow create:if own(uid)&&(request.resource.data.role=='customer'||request.resource.data.role=='driverApplicant'||request.resource.data.role=='serviceApplicant');
    allow read:if own(uid)||admin();
@@ -23,7 +24,7 @@ service cloud.firestore { match /databases/{database}/documents {
    allow delete:if admin();
    match /pushTokens/{id}{allow read:if own(uid)||admin();allow write:if own(uid);}
  }
- match /driverApplications/{uid}{allow create:if own(uid)&&request.resource.data.userId==request.auth.uid&&request.resource.data.status=='pending';allow read:if own(uid)||admin();allow update:if admin()||(own(uid)&&resource.data.status!='approved'&&request.resource.data.userId==request.auth.uid&&request.resource.data.status=='pending'&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','email','phone','serviceType','vehicleType','vehicleMake','vehicleModel','vehicleCondition','plate','city','status','profileComplete','submittedAt','updatedAt']));allow delete:if admin();}
+ match /driverApplications/{uid}{allow create:if own(uid)&&request.resource.data.userId==request.auth.uid&&request.resource.data.status=='pending'&&validDriverApplication(request.resource.data);allow read:if own(uid)||admin();allow update:if admin()||(own(uid)&&resource.data.status!='approved'&&request.resource.data.userId==request.auth.uid&&request.resource.data.status=='pending'&&validDriverApplication(request.resource.data)&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','email','phone','serviceType','vehicleType','vehicleMake','vehicleModel','vehicleCondition','plate','city','status','profileComplete','submittedAt','updatedAt']));allow delete:if admin();}
  match /drivers/{uid}{
    allow read:if admin()||driver()||own(uid);
    allow create,delete:if admin();
@@ -76,7 +77,10 @@ service cloud.firestore { match /databases/{database}/documents {
  }
  match /orders/{id}{
    function linkedServiceRequest(){return getAfter(/databases/$(database)/documents/serviceRequests/$(request.resource.data.serviceRequestId)).data;}
-   allow read:if signed()&&(resource.data.userId==request.auth.uid||resource.data.driverId==request.auth.uid||driver()||admin()||(serviceProvider()&&resource.data.get('providerId','')==request.auth.uid));
+   function currentDriver(){return get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data;}
+   function taxiOrderVisible(){return driver()&&currentDriver().get('serviceType','')=='taxi'&&currentDriver().get('vehicleType','')!='دراجة'&&resource.data.type=='ride';}
+   function deliveryOrderVisible(){return driver()&&currentDriver().get('serviceType','')=='delivery'&&currentDriver().get('vehicleType','') in ['اقتصادي','تكسي','عائلي','دراجة']&&resource.data.type in ['parcel','food','serviceDelivery'];}
+   allow read:if signed()&&(resource.data.userId==request.auth.uid||resource.data.driverId==request.auth.uid||taxiOrderVisible()||deliveryOrderVisible()||admin()||(serviceProvider()&&resource.data.get('providerId','')==request.auth.uid));
    allow create:if admin()||(customer()&&request.resource.data.userId==request.auth.uid&&request.resource.data.driverId==null&&request.resource.data.statusIndex==0&&request.resource.data.cancelled==false)
      || (serviceProvider()
        && request.resource.data.type=='serviceDelivery'
@@ -105,7 +109,10 @@ service cloud.firestore { match /databases/{database}/documents {
    allow update:if admin()
      || (customer()&&resource.data.userId==request.auth.uid&&resource.data.cancelled==false&&request.resource.data.cancelled==true&&request.resource.data.cancelledBy=='customer'&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cancelled','cancellationReason','cancelledBy','cancelledAt','updatedAt']))
      || (driver() && (
-       (resource.data.driverId==null && resource.data.cancelled==false && resource.data.statusIndex==0 && request.resource.data.driverId==request.auth.uid && request.resource.data.statusIndex==resource.data.statusIndex && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['driverId','driverName','driverPhone','assignmentStatus','acceptedAt','updatedAt']) && (resource.data.type!='ride' || (get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.get('serviceType','taxi')=='taxi' && get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.vehicleType!='دراجة')) && (resource.data.type!='serviceDelivery' || (get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.get('serviceType','taxi')=='delivery' && get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.get('city','')==resource.data.get('serviceCity',''))) && get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.get('activeOrderId','')=='' && getAfter(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.activeOrderId==id)
+       (resource.data.driverId==null && resource.data.cancelled==false && resource.data.statusIndex==0 && request.resource.data.driverId==request.auth.uid && request.resource.data.statusIndex==resource.data.statusIndex && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['driverId','driverName','driverPhone','assignmentStatus','acceptedAt','updatedAt'])
+         && ((resource.data.type=='ride' && currentDriver().get('serviceType','')=='taxi' && currentDriver().get('vehicleType','')!='دراجة')
+           || (resource.data.type in ['parcel','food','serviceDelivery'] && currentDriver().get('serviceType','')=='delivery' && currentDriver().get('vehicleType','') in ['اقتصادي','تكسي','عائلي','دراجة'] && (resource.data.type!='serviceDelivery' || currentDriver().get('city','')==resource.data.get('serviceCity',''))))
+         && currentDriver().get('activeOrderId','')=='' && getAfter(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.activeOrderId==id)
        || (resource.data.driverId==request.auth.uid && request.resource.data.driverId==request.auth.uid && request.resource.data.statusIndex==resource.data.statusIndex+1 && request.resource.data.statusIndex<=4 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['statusIndex','arrivedAt','startedAt','completedAt','paymentStatus','updatedAt']))
        || (resource.data.driverId==request.auth.uid && request.resource.data.driverId==request.auth.uid && resource.data.cancelled==false && request.resource.data.cancelled==true && request.resource.data.cancelledBy=='driver' && request.resource.data.statusIndex==resource.data.statusIndex && resource.data.statusIndex<4 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cancelled','cancelledBy','cancellationReason','cancelledAt','assignmentStatus','updatedAt']))
      ));

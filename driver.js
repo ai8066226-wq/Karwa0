@@ -77,6 +77,21 @@ try {
 const byId = id => document.getElementById(id);
 const statuses = ["بانتظار كابتن", "الكابتن في الطريق", "وصلت إلى العميل", "بدأت الرحلة", "تم الوصول"];
 const icons = { ride: "🚕", parcel: "📦", food: "🍽️", serviceDelivery: "🛵" };
+const DELIVERY_ORDER_TYPES = new Set(["parcel", "food", "serviceDelivery"]);
+
+function driverOrderMode(driver = state.driverData) {
+  if (!driver) return "none";
+  if (driver.serviceType === "taxi" && driver.vehicleType !== "دراجة") return "taxi";
+  if (driver.serviceType === "delivery" && ["اقتصادي", "تكسي", "عائلي", "دراجة"].includes(driver.vehicleType)) return "delivery";
+  return "none";
+}
+
+function canDriverHandleOrder(order, driver = state.driverData) {
+  const mode = driverOrderMode(driver);
+  if (mode === "taxi") return order?.type === "ride";
+  if (mode === "delivery") return DELIVERY_ORDER_TYPES.has(order?.type);
+  return false;
+}
 const DRIVER_MAP_STYLES = {
   day: "https://tiles.openfreemap.org/styles/positron",
   night: "https://tiles.openfreemap.org/styles/dark"
@@ -477,8 +492,13 @@ function renderCaptainRestaurantMeals() {
   host.querySelectorAll("[data-remove-captain-meal]").forEach(btn=>btn.addEventListener("click",()=>{state.restaurantMeals.splice(Number(btn.dataset.removeCaptainMeal),1);renderCaptainRestaurantMeals();}));
 }
 function updateVehicleApplicationFields() {
-  const other = byId("serviceType")?.value === "other";
-  const isBike = byId("vehicleType")?.value === "دراجة";
+  const serviceType = byId("serviceType")?.value || "taxi";
+  const other = serviceType === "other";
+  const vehicleSelect = byId("vehicleType");
+  const bikeOption = vehicleSelect?.querySelector('option[value="دراجة"]');
+  if (bikeOption) bikeOption.disabled = serviceType === "taxi";
+  if (serviceType === "taxi" && vehicleSelect?.value === "دراجة") vehicleSelect.value = "اقتصادي";
+  const isBike = vehicleSelect?.value === "دراجة";
   document.querySelectorAll(".vehicle-service-field").forEach(el => el.classList.toggle("hidden", other));
   document.querySelectorAll(".car-only-field").forEach(el => el.classList.toggle("hidden", other || isBike));
   byId("restaurantApplicationFields")?.classList.toggle("hidden", !other);
@@ -580,8 +600,11 @@ byId("applicationForm").addEventListener("submit", async event => {
     return;
   }
 
-  const isRestaurant = byId("serviceType").value === "other";
+  const selectedServiceType = byId("serviceType").value;
+  const isRestaurant = selectedServiceType === "other";
   const isBike = byId("vehicleType").value === "دراجة";
+  if (selectedServiceType === "taxi" && isBike) { toast("الدراجة مخصصة لخدمة التوصيل فقط. اختر «توصيل» أو اختر سيارة للتكسي."); return; }
+  if (!isRestaurant && !["taxi", "delivery"].includes(selectedServiceType)) { toast("اختر نوع خدمة صحيحًا"); return; }
   if (!isRestaurant && !isBike && (!byId("vehicleMake").value.trim() || !byId("vehicleModel").value.trim())) { toast("أدخل نوع/ماركة السيارة وموديلها"); return; }
   if (isRestaurant) {
     const rName=byId("captainRestaurantName").value.trim(), rPhone=byId("captainRestaurantPhone").value.trim(), rAddress=byId("captainRestaurantAddress").value.trim();
@@ -609,7 +632,7 @@ byId("applicationForm").addEventListener("submit", async event => {
       name,
       email: accountUser.email || registerEmail || "",
       phone,
-      serviceType: byId("serviceType").value,
+      serviceType: selectedServiceType,
       vehicleType: isRestaurant ? "" : byId("vehicleType").value,
       vehicleMake: (isRestaurant || byId("vehicleType").value === "دراجة") ? "" : byId("vehicleMake").value.trim(),
       vehicleModel: (isRestaurant || byId("vehicleType").value === "دراجة") ? "" : byId("vehicleModel").value.trim(),
@@ -688,10 +711,8 @@ function renderOrders() {
   const now=Date.now();
   const available = state.orders.filter(order => {
     if(order.cancelled || Number(order.statusIndex || 0) >= 4 || order.driverId) return false;
-    // كابتن التوصيل (وكذلك الدراجة) لا يرى طلبات التكسي؛ كابتن التكسي يراها.
-    const serviceType = state.driverData?.serviceType || "taxi";
-    if((serviceType === "delivery" || state.driverData?.vehicleType === "دراجة") && order.type === "ride") return false;
-    if(order.type === "serviceDelivery" && serviceType !== "delivery") return false;
+    // فصل صارم: التكسي يرى الركوب فقط، والتوصيل يرى طلبات التوصيل فقط.
+    if (!canDriverHandleOrder(order)) return false;
     if(order.type === "serviceDelivery" && order.serviceCity && String(order.serviceCity).trim() !== String(state.driverData?.city || "").trim()) return false;
     const exp=order.dispatchExpiresAt?.seconds ? order.dispatchExpiresAt.seconds*1000 : new Date(order.dispatchExpiresAt||0).getTime();
     return !exp || exp<=now || !Array.isArray(order.dispatchCandidateIds) || !order.dispatchCandidateIds.length || order.dispatchCandidateIds.includes(state.user?.uid);
@@ -767,23 +788,43 @@ function openDriverDashboard() {
     updateDriverSettingsInfo();
     if (state.driverData.online) startLocationSharing();
     else stopLocationSharing();
+    subscribeToAllowedOrders();
     renderOrders();
   });
 
   let knownOrderIds = new Set();
-  const ordersUnsubscribe = onSnapshot(query(collection(db, "orders")), snapshot => {
-    const incoming = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
-    if (knownOrderIds.size && state.driverData?.online) {
-      const fresh = incoming.find(o => !knownOrderIds.has(o.firestoreId) && !o.driverId && !o.cancelled && Number(o.statusIndex||0) < 4 && (o.type !== "serviceDelivery" || state.driverData?.serviceType === "delivery"));
-      if (fresh) { toast(fresh.type === "serviceDelivery" ? "طلب توصيل جديد من مطعم/مزود خدمة" : "طلب جديد متاح"); if ("Notification" in window && Notification.permission === "granted") new Notification("كروة — طلب جديد", { body: fresh.title || "لديك طلب متاح", icon: "./karwa-icon.svg" }); }
-    }
-    knownOrderIds = new Set(incoming.map(o=>o.firestoreId));
-    state.orders = incoming.sort((a, b) => String(b.createdAtISO || "").localeCompare(String(a.createdAtISO || "")));
+  let ordersUnsubscribe = null;
+  let subscribedOrderMode = "";
+  const subscribeToAllowedOrders = () => {
+    const mode = driverOrderMode(state.driverData);
+    if (mode === subscribedOrderMode) return;
+    if (ordersUnsubscribe) ordersUnsubscribe();
+    ordersUnsubscribe = null;
+    subscribedOrderMode = mode;
+    knownOrderIds = new Set();
+    state.orders = [];
     renderOrders();
-  }, error => {
-    console.error(error);
-    toast("تعذر تحميل الطلبات. انشر قواعد Firestore الجديدة.");
-  });
+    if (mode === "none") return;
+    const ordersQuery = mode === "taxi"
+      ? query(collection(db, "orders"), where("type", "==", "ride"))
+      : query(collection(db, "orders"), where("type", "in", ["parcel", "food", "serviceDelivery"]));
+    ordersUnsubscribe = onSnapshot(ordersQuery, snapshot => {
+      const incoming = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
+      if (knownOrderIds.size && state.driverData?.online) {
+        const fresh = incoming.find(o => !knownOrderIds.has(o.firestoreId) && !o.driverId && !o.cancelled && Number(o.statusIndex||0) < 4 && canDriverHandleOrder(o));
+        if (fresh) {
+          toast(fresh.type === "ride" ? "طلب تكسي جديد متاح" : "طلب توصيل جديد متاح");
+          if ("Notification" in window && Notification.permission === "granted") new Notification("كروة — طلب جديد", { body: fresh.title || "لديك طلب متاح", icon: "./karwa-icon.svg" });
+        }
+      }
+      knownOrderIds = new Set(incoming.map(o=>o.firestoreId));
+      state.orders = incoming.filter(o => canDriverHandleOrder(o) || o.driverId === state.user?.uid).sort((a, b) => String(b.createdAtISO || "").localeCompare(String(a.createdAtISO || "")));
+      renderOrders();
+    }, error => {
+      console.error(error);
+      toast("تعذر تحميل الطلبات المسموح بها لهذا الحساب. انشر قواعد Firestore الجديدة.");
+    });
+  };
   const ratingsUnsubscribe = onSnapshot(
     query(collection(db, "ratings"), where("driverId", "==", state.user.uid)),
     snapshot => {
@@ -795,7 +836,7 @@ function openDriverDashboard() {
       toast("تعذر تحميل التقييمات");
     }
   );
-  state.viewUnsubscribes.push(driverUnsubscribe, ordersUnsubscribe, ratingsUnsubscribe);
+  state.viewUnsubscribes.push(driverUnsubscribe, () => { if (ordersUnsubscribe) ordersUnsubscribe(); }, ratingsUnsubscribe);
 }
 
 byId("onlineSwitch").addEventListener("click", async () => {
@@ -843,7 +884,7 @@ document.addEventListener("click", async event => {
         if (driver.activeOrderId) throw new Error("DRIVER_BUSY");
         if (order.cancelled || Number(order.statusIndex || 0) >= 4) throw new Error("ORDER_NOT_AVAILABLE");
         if (order.driverId && order.driverId !== state.user.uid) throw new Error("ORDER_TAKEN");
-        if (order.type === "serviceDelivery" && driver.serviceType !== "delivery") throw new Error("DELIVERY_DRIVER_ONLY");
+        if (!canDriverHandleOrder(order, driver)) throw new Error(order.type === "ride" ? "TAXI_DRIVER_ONLY" : "DELIVERY_DRIVER_ONLY");
         if (order.type === "serviceDelivery" && order.serviceCity && String(order.serviceCity).trim() !== String(driver.city || "").trim()) throw new Error("OUTSIDE_DRIVER_AREA");
         transaction.update(orderRef, {
           driverId: state.user.uid,
@@ -867,9 +908,9 @@ document.addEventListener("click", async event => {
       if (!order) throw new Error("ORDER_NOT_FOUND");
       const next = Number(order.statusIndex || 0) + 1;
       let otp = "";
-      const otpStep = order.type === "serviceDelivery" ? 4 : 3;
+      const otpStep = DELIVERY_ORDER_TYPES.has(order.type) ? 4 : 3;
       if (next === otpStep) {
-        otp = prompt(order.type === "serviceDelivery" ? "أدخل رمز التسليم المكوّن من 4 أرقام الذي يعطيك إياه العميل:" : "أدخل رمز بدء الرحلة المكوّن من 4 أرقام:", "") || "";
+        otp = prompt(DELIVERY_ORDER_TYPES.has(order.type) ? "أدخل رمز التسليم المكوّن من 4 أرقام الذي يعطيك إياه العميل عند الوصول:" : "أدخل رمز بدء الرحلة المكوّن من 4 أرقام:", "") || "";
         if (!otp) throw new Error("OTP_REQUIRED");
       }
       if (next === otpStep && String(otp).trim() !== String(order.tripOtp || "").trim()) throw new Error("OTP_INVALID");
@@ -892,7 +933,7 @@ document.addEventListener("click", async event => {
     }
   } catch (error) {
     console.error(error);
-    toast(error.message === "OFFLINE" ? "فعّل حالة الاتصال أولًا" : error.message === "OTP_REQUIRED" ? "يجب إدخال الرمز" : error.message === "OTP_INVALID" ? "الرمز غير صحيح" : error.message === "ORDER_TAKEN" ? "سبق أن قبل كابتن آخر هذا الطلب" : error.message === "ORDER_NOT_FOUND" ? "الطلب غير موجود" : error.message === "ORDER_NOT_AVAILABLE" ? "الطلب لم يعد متاحًا" : error.message === "DRIVER_BUSY" ? "لديك رحلة نشطة بالفعل، أكملها أولًا" : error.message === "DRIVER_PROFILE_MISSING" ? "ملف الكابتن غير موجود. أعد تفعيل الحساب من الإدارة" : error.message === "DRIVER_BLOCKED" ? "الحساب موقوف من الإدارة" : error.message === "DELIVERY_DRIVER_ONLY" ? "هذا الطلب مخصص لكابتن مسجل في خدمة التوصيل" : error.message === "OUTSIDE_DRIVER_AREA" ? "هذا الطلب خارج نطاق المدينة المسجلة لحسابك" : driverCallableMessage(error, button.dataset.action === "accept" ? "قبول الطلب" : "تحديث حالة الرحلة"));
+    toast(error.message === "OFFLINE" ? "فعّل حالة الاتصال أولًا" : error.message === "OTP_REQUIRED" ? "يجب إدخال الرمز" : error.message === "OTP_INVALID" ? "الرمز غير صحيح" : error.message === "ORDER_TAKEN" ? "سبق أن قبل كابتن آخر هذا الطلب" : error.message === "ORDER_NOT_FOUND" ? "الطلب غير موجود" : error.message === "ORDER_NOT_AVAILABLE" ? "الطلب لم يعد متاحًا" : error.message === "DRIVER_BUSY" ? "لديك رحلة نشطة بالفعل، أكملها أولًا" : error.message === "DRIVER_PROFILE_MISSING" ? "ملف الكابتن غير موجود. أعد تفعيل الحساب من الإدارة" : error.message === "DRIVER_BLOCKED" ? "الحساب موقوف من الإدارة" : error.message === "DELIVERY_DRIVER_ONLY" ? "هذا الطلب مخصص لكابتن مسجل في خدمة التوصيل" : error.message === "TAXI_DRIVER_ONLY" ? "هذا الطلب مخصص لكابتن تكسي مسجل لخدمة الركوب" : error.message === "OUTSIDE_DRIVER_AREA" ? "هذا الطلب خارج نطاق المدينة المسجلة لحسابك" : driverCallableMessage(error, button.dataset.action === "accept" ? "قبول الطلب" : "تحديث حالة الرحلة"));
   } finally {
     busy(button, false);
   }

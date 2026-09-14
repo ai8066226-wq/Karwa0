@@ -771,6 +771,7 @@ async function createOrder(type, title, route, price, options = {}) {
     id: "KW-" + String(Date.now()).slice(-6),
     userId: state.user.uid,
     type,
+    requiredDriverService: type === "ride" ? "taxi" : (["parcel", "food", "serviceDelivery"].includes(type) ? "delivery" : ""),
     title,
     route,
     price: Number(price),

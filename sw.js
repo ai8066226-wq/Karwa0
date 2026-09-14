@@ -1,5 +1,5 @@
-const CACHE='karwa-phase37-no-service-images-v1';
-const CORE=['./','./index.html','./driver.html','./admin.html','./services.html','./portal.css?v=35','./app.js?v=37','./driver.js?v=36','./admin.js?v=36','./services.js?v=7','./pwa.js?v=37','./manifest.webmanifest','./karwa-icon.svg'];
+const CACHE='karwa-phase44-driver-service-separation-v1';
+const CORE=['./','./index.html','./driver.html','./admin.html','./services.html','./portal.css?v=35','./app.js?v=44','./driver.js?v=44','./admin.js?v=44','./services.js?v=7','./pwa.js?v=44','./manifest.webmanifest','./karwa-icon.svg'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(CORE.map(url=>new Request(url,{cache:'reload'})))).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener('message',e=>{if(e.data?.type==='SKIP_WAITING')self.skipWaiting()});

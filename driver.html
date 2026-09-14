@@ -247,11 +247,11 @@ body.driver-map-mode #driverView{height:100dvh!important}
             <div class="field">
               <label for="serviceType">نوع الخدمة</label>
               <select id="serviceType" required>
-                <option value="taxi">تكسي — استقبال طلبات الركوب والتوصيل</option>
-                <option value="delivery">توصيل — أغراض وطعام فقط</option>
+                <option value="taxi">تكسي — طلبات الركوب فقط</option>
+                <option value="delivery">توصيل — طلبات التوصيل فقط (دراجة أو سيارة)</option>
                 <option value="other">خدمات أخرى — إعلان مطعم</option>
               </select>
-              <small class="muted">اختر «خدمات أخرى» إذا كنت تريد تسجيل مطعم وعرض وجباته للعملاء.</small>
+              <small class="muted">كابتن التكسي يرى طلبات التكسي فقط. كابتن التوصيل يرى طلبات التوصيل فقط. اختر «خدمات أخرى» إذا كنت تريد تسجيل مطعم وعرض وجباته للعملاء.</small>
             </div>
             <div class="field vehicle-service-field">
               <label for="vehicleType">نوع المركبة</label>
@@ -462,8 +462,8 @@ body.driver-map-mode #driverView{height:100dvh!important}
   <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
   <script>try{if(window.maplibregl&&maplibregl.setRTLTextPlugin&&(!maplibregl.getRTLTextPluginStatus||maplibregl.getRTLTextPluginStatus()==="unavailable")){maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",true).catch(()=>{});}}catch(e){}</script>
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
-  <script type="module" src="./driver.js?v=43"></script>
-  <script src="./pwa.js?v=37"></script>
+  <script type="module" src="./driver.js?v=44"></script>
+  <script src="./pwa.js?v=44"></script>
 <script id="phase20-driver-map-first-js">
 window.addEventListener("DOMContentLoaded",()=>{
   const view=document.getElementById("driverView");

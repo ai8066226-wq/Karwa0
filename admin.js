@@ -523,6 +523,14 @@ document.addEventListener("click", async event => {
     } else if (button.dataset.action === "approve") {
       const application = state.applications.find(item => item.firestoreId === id);
       if (!application) throw new Error("NOT_FOUND");
+      if (application.serviceType === "taxi" && application.vehicleType === "دراجة") {
+        toast("لا يمكن اعتماد الدراجة كتكسي. غيّر نوع الخدمة إلى توصيل أو اطلب من الكابتن تعديل المركبة.");
+        return;
+      }
+      if (!["taxi", "delivery"].includes(application.serviceType)) {
+        toast("نوع خدمة الكابتن غير صالح للاعتماد.");
+        return;
+      }
       const batch = writeBatch(db);
       batch.update(doc(db, "driverApplications", id), {
         status: "approved",
