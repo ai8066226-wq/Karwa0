@@ -6,14 +6,14 @@
   <meta name="theme-color" content="#0b6f75">
   <meta name="description" content="لوحة إدارة تطبيق كروة">
   <title>كروة | لوحة الإدارة</title>
-  <link rel="stylesheet" href="./portal.css?v=35">
+  <link rel="stylesheet" href="./portal.css?v=51">
   <link rel="manifest" href="./manifest.webmanifest">
   <meta name="theme-color" content="#0b6f75">
   <link rel="icon" href="./karwa-icon.svg" type="image/svg+xml">
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="./index.html">
+    <a class="brand" href="./admin.html">
       <span class="logo">ك</span>
       <span><strong>كروة</strong><small>لوحة الإدارة</small></span>
     </a>
@@ -98,6 +98,13 @@
           <div class="orders" id="driversList"></div>
         </div>
 
+
+        <div class="card admin-panel">
+          <div class="card-heading"><h2>إدارة الحسابات</h2><span class="status-chip rejected">حذف نهائي</span></div>
+          <p class="muted">الحذف من هنا يمسح حساب Firebase Authentication وبياناته المرتبطة من النظام. حسابات الإدارة محمية من الحذف.</p>
+          <div class="orders" id="accountsList"><div class="empty">جارٍ تحميل الحسابات…</div></div>
+        </div>
+
         <div class="card admin-panel">
           <div class="card-heading"><h2>طلبات العملاء في الانتظار</h2><span class="status-chip pending">بانتظار كابتن</span></div>
           <div class="orders" id="ordersList"></div>
@@ -124,7 +131,7 @@
   </main>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./admin.js?v=44"></script>
-  <script src="./pwa.js?v=48"></script>
+  <script type="module" src="./admin.js?v=51"></script>
+  <script src="./pwa.js?v=51"></script>
 </body>
 </html>

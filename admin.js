@@ -1,4 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
+import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-functions.js";
 import {
   browserLocalPersistence,
   getAuth,
@@ -30,6 +31,8 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig, "karwa-admin-portal");
 const auth = getAuth(app);
 const db = getFirestore(app);
+const functions = getFunctions(app);
+const deleteAccountCompletely = httpsCallable(functions, "deleteAccountCompletely");
 
 try {
   await setPersistence(auth, browserLocalPersistence);
@@ -144,6 +147,25 @@ byId("loginForm").addEventListener("submit", async event => {
 
 byId("logoutButton").addEventListener("click", () => signOut(auth));
 byId("deniedLogout").addEventListener("click", () => signOut(auth));
+
+
+function accountRoleLabel(role) {
+  return ({customer:"عميل",driverApplicant:"طلب كابتن",driver:"كابتن",serviceApplicant:"طلب خدمة",serviceProvider:"مزود خدمة",admin:"إدارة"})[role] || role || "عميل";
+}
+
+function renderAccounts() {
+  const host = byId("accountsList");
+  if (!host) return;
+  const sorted = [...state.users].sort((a,b) => String(a.name || a.email || "").localeCompare(String(b.name || b.email || ""), "ar"));
+  host.innerHTML = sorted.length ? sorted.map(account => {
+    const protectedAccount = account.role === "admin" || account.firestoreId === state.user?.uid;
+    return `<div class="order-card">
+      <div class="order-top"><span class="order-icon">${account.role === "driver" ? "🚕" : account.role === "serviceProvider" ? "🧰" : account.role === "admin" ? "🔐" : "👤"}</span><div><strong>${escapeHtml(account.name || "حساب كروة")}</strong><small>${escapeHtml(account.email || "بدون بريد محفوظ")}</small></div><span class="status-chip ${protectedAccount ? "approved" : "pending"}">${escapeHtml(accountRoleLabel(account.role))}</span></div>
+      <div class="order-meta"><span>UID: <b>${escapeHtml(account.firestoreId)}</b></span>${account.createdAt?.seconds ? `<span>الإنشاء: ${new Date(account.createdAt.seconds*1000).toLocaleDateString("ar-IQ")}</span>` : ""}</div>
+      <div class="order-actions">${protectedAccount ? `<span class="notice success" style="margin:0;flex:1">حساب محمي من الحذف</span>` : `<button class="danger" data-action="delete-account" data-id="${escapeHtml(account.firestoreId)}">حذف الحساب ومحتوياته بالكامل</button>`}</div>
+    </div>`;
+  }).join("") : `<div class="empty"><span>👤</span>لا توجد حسابات.</div>`;
+}
 
 function renderMetrics() {
   byId("usersCount").textContent = state.users.filter(user => !user.role || user.role === "customer").length;
@@ -410,6 +432,7 @@ function openDashboard() {
   showView("dashboard");
   const usersUnsubscribe = onSnapshot(collection(db, "users"), snapshot => {
     state.users = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
+    renderAccounts();
     renderMetrics();
   });
   const applicationsUnsubscribe = onSnapshot(collection(db, "driverApplications"), snapshot => {
@@ -468,7 +491,17 @@ document.addEventListener("click", async event => {
   const id = button.dataset.id;
   busy(button, true);
   try {
-    if (button.dataset.action === "approve-service") {
+    if (button.dataset.action === "delete-account") {
+      const account = state.users.find(item => item.firestoreId === id);
+      if (!account) throw new Error("NOT_FOUND");
+      if (account.role === "admin" || id === state.user.uid) { toast("حساب الإدارة محمي من الحذف"); return; }
+      const name = account.name || account.email || "هذا الحساب";
+      const confirmation = prompt(`سيتم حذف ${name} نهائيًا من Authentication وجميع بياناته المرتبطة.\n\nاكتب كلمة حذف للتأكيد:`)?.trim();
+      if (confirmation !== "حذف") { toast("تم إلغاء الحذف"); return; }
+      button.textContent = "جاري الحذف الشامل…";
+      const result = await deleteAccountCompletely({ uid: id, confirmation: "DELETE_COMPLETELY" });
+      toast(`تم حذف الحساب بالكامل${result?.data?.deletedDocuments != null ? ` • ${result.data.deletedDocuments} سجل` : ""}`);
+    } else if (button.dataset.action === "approve-service") {
       const legacy = button.dataset.source === "legacy";
       const application = legacy
         ? state.applications.find(item => item.firestoreId === id && normalizeCaptainServiceType(item) === "other")
