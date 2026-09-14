@@ -45,6 +45,7 @@ const state = {
   user: null,
   users: [],
   applications: [],
+  restaurants: [],
   drivers: [],
   ratings: [],
   orders: [],
@@ -252,25 +253,12 @@ function renderRatings() {
 function applicationCard(application) {
   const status = application.status || "pending";
   const labels = { pending: "قيد المراجعة", approved: "مقبول", rejected: "مرفوض" };
-  const actions = status === "pending" ? `
-    <div class="order-actions">
-      <button class="primary" data-action="approve" data-id="${application.firestoreId}">قبول وتفعيل</button>
-      <button class="danger" data-action="reject" data-id="${application.firestoreId}">رفض</button>
-    </div>` : "";
-  return `
-    <article class="order-card">
-      <div class="order-top">
-        <h3>🚘 ${escapeHtml(application.name)}</h3>
-        <span class="status-chip ${status}">${labels[status] || escapeHtml(status)}</span>
-      </div>
-      <p class="order-route">${escapeHtml(application.city)} • ${escapeHtml(application.vehicleType)} • ${escapeHtml(application.plate)}</p>
-      <div class="order-meta"><span>الخدمة: ${application.serviceType === "delivery" ? "توصيل" : "تكسي"}</span></div>
-      ${application.vehicleType !== "دراجة" ? `<div class="order-meta"><span>السيارة: ${escapeHtml(application.vehicleMake || "-")} ${escapeHtml(application.vehicleModel || "")}</span><span>الحالة: ${escapeHtml(application.vehicleCondition || "غير محددة")}</span></div>` : `<div class="order-meta"><span>دراجة — توصيل أغراض وطعام فقط</span></div>`}
-      <div class="order-meta"><span>${escapeHtml(application.phone)}</span><span>${escapeHtml(application.email)}</span></div>
-      ${actions}
-    </article>`;
+  const isService = application.serviceType === "other";
+  const restaurant = state.restaurants?.find?.(r => r.ownerId === application.userId || r.firestoreId === application.userId);
+  const actions = status === "pending" ? `<div class="order-actions"><button class="primary" data-action="approve" data-id="${application.firestoreId}">قبول وتفعيل</button><button class="danger" data-action="reject" data-id="${application.firestoreId}">رفض</button></div>` : "";
+  if (isService) return `<article class="order-card"><div class="order-top"><h3>🍽️ ${escapeHtml(restaurant?.name || application.name || "طلب خدمة أخرى")}</h3><span class="status-chip ${status}">${labels[status] || escapeHtml(status)}</span></div><p class="order-route">مزود الخدمة: ${escapeHtml(application.name || "-")} • ${escapeHtml(application.city || "-")}</p><div class="order-meta"><span>الهاتف: ${escapeHtml(application.phone || restaurant?.phone || "-")}</span><span>البريد: ${escapeHtml(application.email || "-")}</span></div>${restaurant ? `<div class="order-meta"><span>عنوان المطعم: ${escapeHtml(restaurant.address || "-")}</span><span>وجبات: ${Array.isArray(restaurant.meals)?restaurant.meals.length:0}</span></div>` : ""}${actions}</article>`;
+  return `<article class="order-card"><div class="order-top"><h3>🚘 ${escapeHtml(application.name)}</h3><span class="status-chip ${status}">${labels[status] || escapeHtml(status)}</span></div><p class="order-route">${escapeHtml(application.city)} • ${escapeHtml(application.vehicleType)} • ${escapeHtml(application.plate)}</p><div class="order-meta"><span>الخدمة: ${application.serviceType === "delivery" ? "توصيل" : "تكسي"}</span></div>${application.vehicleType !== "دراجة" ? `<div class="order-meta"><span>السيارة: ${escapeHtml(application.vehicleMake || "-")} ${escapeHtml(application.vehicleModel || "")}</span><span>الحالة: ${escapeHtml(application.vehicleCondition || "غير محددة")}</span></div>` : `<div class="order-meta"><span>دراجة — توصيل أغراض وطعام فقط</span></div>`}<div class="order-meta"><span>${escapeHtml(application.phone)}</span><span>${escapeHtml(application.email)}</span></div>${actions}</article>`;
 }
-
 function renderApplications() {
   const sorted = [...state.applications].sort((a, b) => {
     if (a.status === "pending" && b.status !== "pending") return -1;
@@ -355,6 +343,7 @@ function openDashboard() {
   state.dashboardUnsubscribes.push(
     usersUnsubscribe,
     applicationsUnsubscribe,
+    restaurantsUnsubscribe,
     ordersUnsubscribe,
     driversUnsubscribe,
     ratingsUnsubscribe
