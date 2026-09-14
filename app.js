@@ -92,6 +92,7 @@ const state = {
   user: null,
   role: "customer",
   authMode: "login",
+  registrationInProgressUid: null,
   vehicle: "اقتصادي",
   ridePrice: 6500,
   payment: "نقدًا",
@@ -623,6 +624,10 @@ byId("authForm").addEventListener("submit", async event => {
   try {
     if (state.authMode === "register") {
       const credential = await createUserWithEmailAndPassword(auth, email, password);
+      // Firebase fires onAuthStateChanged immediately after account creation.
+      // Mark this UID so the auth observer does not race the initial Firestore profile write.
+      state.registrationInProgressUid = credential.user.uid;
+      state.user = credential.user;
       await updateProfile(credential.user, { displayName: name });
       await setDoc(doc(db, "users", credential.user.uid), {
         name,
@@ -640,14 +645,21 @@ byId("authForm").addEventListener("submit", async event => {
       renderProfile();
       renderBalance();
       renderNotificationSwitch();
+      state.registrationInProgressUid = null;
       if (selectedRole === "driverApplicant") { window.location.replace("./driver.html"); return; }
       if (selectedRole === "serviceApplicant") { window.location.replace("./services.html"); return; }
+      // Enter the customer page immediately after successful registration instead of
+      // waiting for a second auth-state event that may already have fired.
+      closeAuthModal();
+      switchView("home");
+      await startVerifiedCustomerSession(credential.user);
       showToast("تم إنشاء حساب العميل بنجاح");
     } else {
       await signInWithEmailAndPassword(auth, email, password);
       showToast("مرحبًا بعودتك");
     }
   } catch (error) {
+    state.registrationInProgressUid = null;
     console.error(error);
     byId("authMessage").textContent = authErrorMessage(error);
   } finally {
@@ -2010,6 +2022,10 @@ onAuthStateChanged(auth, async user => {
     openAuthModal();
     return;
   }
+
+  // During registration the submit handler owns the first profile write and routing.
+  // Returning here prevents a create/update race on users/{uid}.
+  if (state.registrationInProgressUid === user.uid) return;
 
   closeAuthModal();
   if (state.profileRetryTimer) clearTimeout(state.profileRetryTimer);
