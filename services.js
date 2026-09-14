@@ -23,7 +23,6 @@ import {
   where,
   writeBatch
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
-import { getDownloadURL, getStorage, ref, uploadBytes } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-storage.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyASl5jV5mLaDh8CoeeofV7ftVJ3gaog64E",
@@ -37,7 +36,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig, "karwa-services-portal-v4");
 const auth = getAuth(app);
 const db = getFirestore(app);
-const storage = getStorage(app);
 
 try {
   await setPersistence(auth, browserLocalPersistence);
@@ -420,10 +418,11 @@ function renderProviderItems() {
   byId("itemsMetric").textContent = providerItems.length;
   byId("pItemList").innerHTML = providerItems.length
     ? providerItems.map((item, index) => `
-        <div class="catalog-item">
-          <div style="display:flex;gap:10px;align-items:center">${item.imageUrl ? `<img src="${escapeHtml(item.imageUrl)}" alt="" style="width:58px;height:58px;object-fit:cover;border-radius:12px">` : ""}<div><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.description || "بدون وصف")}</small><small>${escapeHtml(item.unit || "")} ${Number(item.deliveryFee||0)>0 ? `• توصيل ${money(item.deliveryFee)}` : ""}</small></div></div>
+        <div class="catalog-item pro-item">
+          <div class="item-symbol">${String(item.name||"خ").trim().charAt(0)}</div>
+          <div class="item-copy"><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.description || "بدون وصف")}</small><div class="item-tags">${item.unit ? `<span>${escapeHtml(item.unit)}</span>` : ""}${Number(item.deliveryFee||0)>0 ? `<span>توصيل ${money(item.deliveryFee)}</span>` : `<span>بدون رسوم توصيل</span>`}</div></div>
           <span class="price">${money(item.price)}</span>
-          <div style="display:flex;gap:6px"><button class="button" type="button" data-edit-item="${index}">تعديل</button><button class="button danger" type="button" data-remove-item="${index}">حذف</button></div>
+          <div class="item-actions"><button class="button" type="button" data-edit-item="${index}">تعديل</button><button class="button danger" type="button" data-remove-item="${index}">حذف</button></div>
         </div>`).join("")
     : `<div class="empty">لم تضف خدمات أو منتجات بعد.</div>`;
   byId("pItemList").querySelectorAll("[data-edit-item]").forEach(button => button.addEventListener("click", () => {
@@ -440,89 +439,22 @@ function renderProviderItems() {
   renderPreview();
 }
 
-async function compressMealImage(file, maxBytes = 92 * 1024) {
-  if (!file || !file.type.startsWith("image/")) throw new Error("INVALID_IMAGE");
-  let bitmap;
-  try { bitmap = await createImageBitmap(file); }
-  catch (_) {
-    bitmap = await new Promise((resolve, reject) => { const img = new Image(); img.onload=()=>resolve(img); img.onerror=reject; img.src=URL.createObjectURL(file); });
-  }
-  let width = bitmap.width;
-  let height = bitmap.height;
-  const maxDimension = 1600;
-  if (Math.max(width, height) > maxDimension) {
-    const scale = maxDimension / Math.max(width, height);
-    width = Math.max(1, Math.round(width * scale));
-    height = Math.max(1, Math.round(height * scale));
-  }
-
-  const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d", { alpha: false });
-  let quality = 0.9;
-  let blob = null;
-
-  for (let attempt = 0; attempt < 14; attempt++) {
-    canvas.width = width;
-    canvas.height = height;
-    ctx.fillStyle = "#fff";
-    ctx.fillRect(0, 0, width, height);
-    ctx.drawImage(bitmap, 0, 0, width, height);
-    blob = await new Promise(resolve => canvas.toBlob(resolve, "image/webp", quality));
-    if (blob && blob.size <= maxBytes) break;
-    if (quality > 0.42) quality -= 0.1;
-    else {
-      width = Math.max(320, Math.round(width * 0.82));
-      height = Math.max(320, Math.round(height * 0.82));
-      quality = 0.72;
-    }
-  }
-  bitmap.close?.();
-  if (bitmap.src?.startsWith?.("blob:")) URL.revokeObjectURL(bitmap.src);
-  if (!blob || blob.size > maxBytes) throw new Error("IMAGE_TOO_LARGE");
-  const baseName = (file.name || "meal").replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9._-]/g, "_");
-  return new File([blob], `${baseName}.webp`, { type: "image/webp", lastModified: Date.now() });
-}
-
 let editingItemIndex = -1;
-let preparedMealImage = null;
-function withTimeout(promise, ms, code = "TIMEOUT") { return Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error(code)), ms))]); }
-byId("pItemImage")?.addEventListener("change", async event => {
-  const file = event.target.files?.[0] || null; preparedMealImage = null;
-  if (!file) return;
-  const button = byId("pAddItem"); setBusy(button, true, "جاري تجهيز الصورة…");
-  try { preparedMealImage = await withTimeout(compressMealImage(file), 12000, "COMPRESS_TIMEOUT"); toast(`تم تجهيز الصورة (${Math.ceil(preparedMealImage.size/1024)} KB)`); }
-  catch (e) { console.error(e); event.target.value=""; toast("تعذر تجهيز الصورة. اختر صورة أخرى أو أصغر."); }
-  finally { setBusy(button, false); }
-});
 
-byId("pAddItem").addEventListener("click", async () => {
+byId("pAddItem").addEventListener("click", () => {
   const name = byId("pItemName").value.trim();
   const price = Number(byId("pItemPrice").value || 0);
   const unit = byId("pItemUnit").value.trim();
   const deliveryFee = Number(byId("pItemDeliveryFee").value || 0);
   const description = byId("pItemDescription").value.trim();
-  const image = byId("pItemImage").files?.[0] || null;
   if (name.length < 2 || !Number.isFinite(price) || price < 0 || !Number.isFinite(deliveryFee) || deliveryFee < 0) return toast("أدخل الاسم والسعر ورسوم التوصيل بشكل صحيح.");
-  if (providerItems.length >= 50) return toast("الحد الأقصى 50 عنصرًا.");
-  if (image && !image.type.startsWith("image/")) return toast("الملف المختار يجب أن يكون صورة.");
-  const button = byId("pAddItem"); setBusy(button, true, "جاري إضافة الوجبة…");
-  try {
-    let imageUrl = "";
-    if (image) {
-      const compressedImage = preparedMealImage || await withTimeout(compressMealImage(image), 12000, "COMPRESS_TIMEOUT");
-      const safeName = compressedImage.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const imageRef = ref(storage, `restaurant-meals/${currentUser.uid}/${Date.now()}-${safeName}`);
-      await withTimeout(uploadBytes(imageRef, compressedImage, { contentType: compressedImage.type, cacheControl: "public,max-age=31536000" }), 15000, "UPLOAD_TIMEOUT");
-      imageUrl = await withTimeout(getDownloadURL(imageRef), 8000, "URL_TIMEOUT");
-    }
-    const previous = editingItemIndex >= 0 ? providerItems[editingItemIndex] : null;
-    const nextItem = { name, price: Math.round(price), unit, deliveryFee: Math.round(deliveryFee), description, imageUrl: imageUrl || previous?.imageUrl || "" };
-    if (editingItemIndex >= 0) providerItems[editingItemIndex] = nextItem; else providerItems.push(nextItem);
-    editingItemIndex = -1; preparedMealImage = null; byId("pAddItem").textContent = "إضافة";
-    ["pItemName","pItemPrice","pItemUnit","pItemDeliveryFee","pItemDescription","pItemImage"].forEach(id => byId(id).value = "");
-    renderProviderItems();
-  } catch (error) { console.error(error); toast("تعذر رفع صورة الوجبة أو إضافتها."); }
-  finally { setBusy(button, false); }
+  if (providerItems.length >= 50 && editingItemIndex < 0) return toast("الحد الأقصى 50 عنصرًا.");
+  const nextItem = { name, price: Math.round(price), unit, deliveryFee: Math.round(deliveryFee), description };
+  if (editingItemIndex >= 0) providerItems[editingItemIndex] = nextItem; else providerItems.push(nextItem);
+  editingItemIndex = -1; byId("pAddItem").textContent = "＋ إضافة";
+  ["pItemName","pItemPrice","pItemUnit","pItemDeliveryFee","pItemDescription"].forEach(id => byId(id).value = "");
+  renderProviderItems();
+  toast("تم حفظ العنصر");
 });
 
 function renderPreview() {

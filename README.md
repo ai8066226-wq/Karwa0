@@ -233,3 +233,8 @@ firebase deploy --only hosting
 - Admin can block/unblock approved service providers; blocked profiles are hidden from customers and cannot receive new service requests.
 - Customers can rate a completed service/product from 1–5 stars; marketplace cards show provider rating averages.
 - Deploy both `firestore.rules` and `storage.rules` with this release.
+
+
+## Phase 39
+- تم إلغاء رفع صور الخدمات والمنتجات بالكامل لتسريع الإضافة.
+- تم تحديث بطاقات الخدمات والمنتجات بتصميم احترافي يعتمد على الأيقونات والمعلومات والسعر وأزرار الإدارة.
