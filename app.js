@@ -1032,7 +1032,10 @@ function updateSelectedServicePrice() {
   const profile = state.selectedServiceProfile;
   if (!select || !profile) return;
   const item = Array.isArray(profile.items) ? profile.items[Number(select.value)] : null;
-  byId("selectedServicePrice").textContent = item ? formatMoney(item.price) : "السعر حسب الاتفاق";
+  const deliveryRequested = Boolean(byId("otherServiceWithDelivery")?.checked);
+  if (!item) { byId("selectedServicePrice").textContent = "اختر منتجًا مسعّرًا"; return; }
+  const price = Number(item.price || 0), fee = deliveryRequested ? Number(item.deliveryFee || 0) : 0;
+  byId("selectedServicePrice").innerHTML = `سعر المنتج: ${formatMoney(price)}${deliveryRequested ? ` + التوصيل: ${formatMoney(fee)} = الإجمالي: ${formatMoney(price + fee)}` : ` — الإجمالي: ${formatMoney(price)}`}`;
 }
 
 function selectServiceProfile(profile) {
@@ -1046,8 +1049,8 @@ function selectServiceProfile(profile) {
   byId("locateSelectedService").disabled = !validServiceLocation(profile.location);
   const items = Array.isArray(profile.items) ? profile.items : [];
   byId("otherServiceItem").innerHTML = items.map((item, index) =>
-    `<option value="${index}">${restaurantSafeText(item.name || "خدمة")} — ${restaurantSafeText(Number(item.price || 0) > 0 ? formatMoney(item.price) : "حسب الاتفاق")}</option>`
-  ).join("") + '<option value="custom">طلب مخصص — السعر حسب الاتفاق</option>';
+    `<option value="${index}">${restaurantSafeText(item.name || "خدمة")} — ${restaurantSafeText(formatMoney(Number(item.price || 0)))}</option>`
+  ).join("");
   byId("selectedServiceBox").hidden = false;
   updateSelectedServicePrice();
   byId("selectedServiceBox").scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -1113,7 +1116,7 @@ function renderMyServiceRequests() {
     return `<article class="my-service-request-card">
       <div class="service-request-head"><div><small>${restaurantSafeText(request.itemName || "طلب خدمة")}</small><h3>${restaurantSafeText(request.providerName || "مزود خدمة")}</h3></div><span class="service-request-status ${statusClass}">${statusLabel}</span></div>
       <p>${restaurantSafeText(request.requestText || "")}</p>
-      <div class="service-request-meta"><span>📍 ${restaurantSafeText(request.providerAddress || "العنوان غير محدد")}</span><span>التوصيل إلى: ${restaurantSafeText(request.customerAddress || "غير محدد")}</span><span>${Number(request.itemPrice || 0) > 0 ? formatMoney(request.itemPrice) : "السعر حسب الاتفاق"}</span>${date ? `<span>${date.toLocaleDateString("ar-IQ")}</span>` : ""}</div>
+      <div class="service-request-meta"><span>📍 ${restaurantSafeText(request.providerAddress || "العنوان غير محدد")}</span><span>التوصيل إلى: ${restaurantSafeText(request.customerAddress || "غير محدد")}</span><span>المنتج: ${formatMoney(Number(request.itemPrice || 0))}</span><span>${request.deliveryRequested ? `التوصيل: ${formatMoney(Number(request.deliveryFee || 0))}` : "بدون توصيل"}</span><span>الإجمالي: ${formatMoney(Number(request.totalPrice ?? request.itemPrice ?? 0))}</span>${date ? `<span>${date.toLocaleDateString("ar-IQ")}</span>` : ""}</div>
       ${request.providerNote ? `<div class="service-provider-note">ملاحظة المزود: ${restaurantSafeText(request.providerNote)}</div>` : ""}
       ${request.status === "pending" ? `<button class="secondary-button danger-button" type="button" data-cancel-service-request="${restaurantSafeText(request.firestoreId)}">إلغاء الطلب</button>` : ""}
       ${request.status === "completed" ? (state.serviceRatings.some(r=>r.requestId===request.firestoreId) ? `<span class="rating-result">تم التقييم ★ ${state.serviceRatings.find(r=>r.requestId===request.firestoreId)?.score}</span>` : `<div class="service-rating-actions"><small>قيّم الخدمة/المنتج:</small>${[1,2,3,4,5].map(n=>`<button type="button" class="text-button" data-rate-service="${restaurantSafeText(request.firestoreId)}" data-score="${n}">${n}★</button>`).join("")}</div>`) : ""}
@@ -1146,6 +1149,7 @@ byId("otherServicesMarketplace")?.addEventListener("click", event => {
   if (locationButton) focusServiceLocation(profile);
 });
 byId("otherServiceItem")?.addEventListener("change", updateSelectedServicePrice);
+byId("otherServiceWithDelivery")?.addEventListener("change", updateSelectedServicePrice);
 byId("closeSelectedService")?.addEventListener("click", () => {
   state.selectedServiceProfile = null;
   byId("selectedServiceBox").hidden = true;
@@ -1157,8 +1161,13 @@ byId("bookOtherService")?.addEventListener("click", async event => {
   const profile = state.selectedServiceProfile;
   if (!profile) return showToast("اختر مزود خدمة أولًا");
   const selectedValue = byId("otherServiceItem").value;
-  const item = selectedValue === "custom" ? null : profile.items?.[Number(selectedValue)];
-  const itemName = item?.name || "طلب مخصص";
+  const item = profile.items?.[Number(selectedValue)];
+  if (!item || Number(item.price || 0) <= 0) return showToast("هذا المنتج غير مسعّر. اختر منتجًا له سعر محدد.");
+  const itemName = item.name;
+  const deliveryRequested = Boolean(byId("otherServiceWithDelivery")?.checked);
+  const itemPrice = Number(item.price || 0);
+  const deliveryFee = deliveryRequested ? Number(item.deliveryFee || 0) : 0;
+  const totalPrice = itemPrice + deliveryFee;
   const requestText = byId("otherServiceRequest").value.trim();
   const customerAddress = byId("otherCustomerAddress").value.trim();
   if (requestText.length < 3) return showToast("اكتب تفاصيل الطلب بوضوح");
@@ -1180,7 +1189,10 @@ byId("bookOtherService")?.addEventListener("click", async event => {
       providerAddress: profile.address || profile.city || "غير محدد",
       providerLocation: validServiceLocation(profile.location) ? { ...profile.location } : null,
       itemName,
-      itemPrice: Number(item?.price || 0),
+      itemPrice,
+      deliveryRequested,
+      deliveryFee,
+      totalPrice,
       requestText,
       customerAddress,
       customerLocation: state.customerLocation ? { ...state.customerLocation } : null,

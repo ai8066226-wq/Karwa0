@@ -176,9 +176,13 @@ service cloud.firestore { match /databases/{database}/documents {
      && request.resource.data.providerAddress==providerProfile().address
      && request.resource.data.status=='pending'
      && request.resource.data.itemName is string && request.resource.data.itemName.size()>=2 && request.resource.data.itemName.size()<=80
+     && request.resource.data.itemPrice is number && request.resource.data.itemPrice>0
+     && request.resource.data.deliveryRequested is bool
+     && request.resource.data.deliveryFee is number && request.resource.data.deliveryFee>=0
+     && request.resource.data.totalPrice is number && request.resource.data.totalPrice==request.resource.data.itemPrice+request.resource.data.deliveryFee
      && request.resource.data.requestText is string && request.resource.data.requestText.size()>=3 && request.resource.data.requestText.size()<=500
      && request.resource.data.customerAddress is string && request.resource.data.customerAddress.size()>=3 && request.resource.data.customerAddress.size()<=180
-     && request.resource.data.keys().hasOnly(['customerId','customerName','customerPhone','providerId','providerName','providerCategory','providerAddress','providerLocation','itemName','itemPrice','requestText','customerAddress','customerLocation','status','createdAt','updatedAt']);
+     && request.resource.data.keys().hasOnly(['customerId','customerName','customerPhone','providerId','providerName','providerCategory','providerAddress','providerLocation','itemName','itemPrice','deliveryRequested','deliveryFee','totalPrice','requestText','customerAddress','customerLocation','status','createdAt','updatedAt']);
    allow read:if admin()||(signed()&&resource.data.customerId==request.auth.uid)||(signed()&&resource.data.providerId==request.auth.uid);
    allow update:if admin()
      || (customer()&&resource.data.customerId==request.auth.uid&&resource.data.status=='pending'&&request.resource.data.status=='cancelled'&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','cancelledAt','updatedAt']))

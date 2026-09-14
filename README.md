@@ -245,3 +245,12 @@ firebase deploy --only hosting
 - Provider can read its own serviceRequests by providerId identity even during role/profile refresh.
 - Customer name/phone are refreshed from users/{uid} immediately before creating the request.
 - Added clearer permission diagnostics in customer and provider portals.
+
+
+## Phase 42 — Fixed pricing + optional delivery
+- Every service/product must have a price greater than zero.
+- Removed custom / “price by agreement” ordering from the customer marketplace.
+- Customer explicitly chooses delivery or no delivery.
+- Delivery fee is shown separately and added to the product price before order submission.
+- serviceRequests stores itemPrice, deliveryRequested, deliveryFee and totalPrice.
+- A captain delivery order is created only when the customer selected delivery.
