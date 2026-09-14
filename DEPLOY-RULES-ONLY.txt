@@ -1,6 +1,6 @@
 هذه النسخة لا تحتوي على Firebase Functions.
 
-لتفعيل صور الوجبات وتسعير الوحدات وتحويل التوصيل إلى كابتن داخل النطاق: انشر firestore.rules وstorage.rules أولًا، ثم ارفع ملفات الواجهة إلى الاستضافة.
+لتفعيل تسعير الوحدات وتحويل التوصيل إلى كابتن داخل النطاق: انشر firestore.rules أولًا، ثم ارفع ملفات الواجهة إلى الاستضافة. رفع صور الوجبات غير موجود في هذه النسخة.
 
 الأمر لنشر القواعد فقط:
-firebase deploy --only firestore:rules,storage
+firebase deploy --only firestore:rules

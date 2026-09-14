@@ -23,13 +23,6 @@ import {
   where,
   writeBatch
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
-import {
-  deleteObject,
-  getDownloadURL,
-  getStorage,
-  ref,
-  uploadBytes
-} from "https://www.gstatic.com/firebasejs/12.18.0/firebase-storage.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyASl5jV5mLaDh8CoeeofV7ftVJ3gaog64E",
@@ -43,7 +36,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig, "karwa-services-portal-v4");
 const auth = getAuth(app);
 const db = getFirestore(app);
-const storage = getStorage(app);
 
 try {
   await setPersistence(auth, browserLocalPersistence);
@@ -69,7 +61,6 @@ let currentApplication = null;
 let currentProfile = null;
 let providerItems = [];
 let providerRequests = [];
-let pendingDeletedImagePaths = new Set();
 let providerLocation = null;
 let registrationLocation = null;
 let editApplicationLocation = null;
@@ -433,9 +424,7 @@ function normalizedProviderItem(item = {}) {
     description: String(item.description || "").slice(0, 300),
     unit,
     deliveryAvailable: item.deliveryAvailable === true,
-    deliveryFee: item.deliveryAvailable === true ? Math.max(0, Math.round(Number(item.deliveryFee || 0))) : 0,
-    imageUrl: String(item.imageUrl || "").slice(0, 1000),
-    imagePath: String(item.imagePath || "").slice(0, 300)
+    deliveryFee: item.deliveryAvailable === true ? Math.max(0, Math.round(Number(item.deliveryFee || 0))) : 0
   };
 }
 
@@ -445,7 +434,6 @@ function renderProviderItems() {
   byId("pItemList").innerHTML = providerItems.length
     ? providerItems.map((item, index) => `
         <div class="catalog-item catalog-item-rich">
-          <div class="catalog-item-image">${item.imageUrl ? `<img src="${escapeHtml(item.imageUrl)}" alt="${escapeHtml(item.name)}" loading="lazy">` : "🍽️"}</div>
           <div><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.description || "بدون وصف")}</small><div class="catalog-item-tags"><span>السعر لكل ${escapeHtml(itemUnitLabels[item.unit] || itemUnitLabels.item)}</span><span>${item.deliveryAvailable ? `توصيل ${money(item.deliveryFee)}` : "استلام فقط"}</span></div></div>
           <span class="price">${money(item.price)}</span>
           <button class="button danger" type="button" data-remove-item="${index}">حذف</button>
@@ -456,7 +444,6 @@ function renderProviderItems() {
       const index = Number(button.dataset.removeItem);
       const item = providerItems[index];
       if (!item || !confirm(`حذف ${item.name} من القائمة؟`)) return;
-      if (item.imagePath) pendingDeletedImagePaths.add(item.imagePath);
       providerItems.splice(index, 1);
       renderProviderItems();
       toast("تم حذف العنصر من المسودة. احفظ التغييرات للتأكيد.");
@@ -470,41 +457,22 @@ byId("pDeliveryAvailable").addEventListener("change", event => {
   if (!event.target.checked) byId("pDeliveryFee").value = "0";
 });
 
-byId("pItemImage").addEventListener("change", event => {
-  const file = event.target.files?.[0];
-  byId("pItemImageStatus").textContent = file
-    ? `${file.name} • ${(file.size / 1024).toFixed(1)}KB${file.size <= 100 * 1024 ? " ✓" : " — يتجاوز الحد"}`
-    : "الصورة اختيارية ويجب ألا تتجاوز 100KB.";
-});
-
-byId("pAddItem").addEventListener("click", async event => {
+byId("pAddItem").addEventListener("click", event => {
   const name = byId("pItemName").value.trim();
   const price = Number(byId("pItemPrice").value || 0);
   const description = byId("pItemDescription").value.trim();
   const unit = byId("pItemUnit").value;
   const deliveryAvailable = byId("pDeliveryAvailable").checked;
   const deliveryFee = deliveryAvailable ? Number(byId("pDeliveryFee").value || 0) : 0;
-  const imageFile = byId("pItemImage").files?.[0] || null;
   if (name.length < 2 || !Number.isFinite(price) || price <= 0) return toast("أدخل اسمًا وسعر وحدة أكبر من صفر.");
   if (!itemUnitLabels[unit]) return toast("اختر وحدة تسعير صحيحة.");
   if (!Number.isFinite(deliveryFee) || deliveryFee < 0) return toast("أدخل أجرة توصيل صحيحة.");
   if (providerItems.length >= 50) return toast("الحد الأقصى 50 عنصرًا.");
-  if (imageFile && !["image/jpeg", "image/png", "image/webp"].includes(imageFile.type)) return toast("صيغة الصورة يجب أن تكون JPG أو PNG أو WebP.");
-  if (imageFile && imageFile.size > 100 * 1024) return toast("حجم الصورة يتجاوز 100KB. اختر صورة أصغر.");
 
   const button = event.currentTarget;
-  setBusy(button, true, imageFile ? "جارٍ رفع الصورة…" : "جارٍ الإضافة…");
-  let imageUrl = "";
-  let imagePath = "";
+  setBusy(button, true, "جارٍ الإضافة…");
   try {
-    if (imageFile) {
-      const extension = imageFile.type === "image/png" ? "png" : imageFile.type === "image/webp" ? "webp" : "jpg";
-      imagePath = `service-items/${currentUser.uid}/${Date.now()}-${crypto.randomUUID?.() || Math.random().toString(36).slice(2)}.${extension}`;
-      const imageRef = ref(storage, imagePath);
-      await uploadBytes(imageRef, imageFile, { contentType: imageFile.type, customMetadata: { ownerId: currentUser.uid } });
-      imageUrl = await getDownloadURL(imageRef);
-    }
-    providerItems.push(normalizedProviderItem({ name, price, description, unit, deliveryAvailable, deliveryFee, imageUrl, imagePath }));
+    providerItems.push(normalizedProviderItem({ name, price, description, unit, deliveryAvailable, deliveryFee }));
     byId("pItemName").value = "";
     byId("pItemPrice").value = "";
     byId("pItemDescription").value = "";
@@ -512,14 +480,11 @@ byId("pAddItem").addEventListener("click", async event => {
     byId("pDeliveryAvailable").checked = false;
     byId("pDeliveryFee").value = "0";
     byId("pDeliveryFee").disabled = true;
-    byId("pItemImage").value = "";
-    byId("pItemImageStatus").textContent = "الصورة اختيارية ويجب ألا تتجاوز 100KB.";
     renderProviderItems();
     toast("تمت إضافة العنصر. احفظ التغييرات لنشره للعملاء.");
   } catch (error) {
     console.error(error);
-    if (imagePath) await deleteObject(ref(storage, imagePath)).catch(() => {});
-    toast("تعذر رفع الصورة. تأكد من نشر قواعد Storage الجديدة.");
+    toast("تعذر إضافة العنصر.");
   } finally {
     setBusy(button, false);
   }
@@ -533,7 +498,7 @@ function renderPreview() {
   byId("previewAddress").textContent = `${byId("pCity").value.trim()} • ${byId("pAddress").value.trim()}`.replace(/^ • | • $/g, "") || "العنوان";
   byId("previewPhone").textContent = byId("pPhone").value.trim() || "الهاتف";
   byId("previewItems").innerHTML = providerItems.slice(0, 4).map(item => `
-    <div class="catalog-item catalog-item-rich"><div class="catalog-item-image">${item.imageUrl ? `<img src="${escapeHtml(item.imageUrl)}" alt="${escapeHtml(item.name)}" loading="lazy">` : "🍽️"}</div><div><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.description || "")}</small><div class="catalog-item-tags"><span>لكل ${escapeHtml(itemUnitLabels[item.unit] || itemUnitLabels.item)}</span><span>${item.deliveryAvailable ? `توصيل ${money(item.deliveryFee)}` : "استلام"}</span></div></div><span class="price">${money(item.price)}</span></div>
+    <div class="catalog-item catalog-item-rich"><div><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.description || "")}</small><div class="catalog-item-tags"><span>لكل ${escapeHtml(itemUnitLabels[item.unit] || itemUnitLabels.item)}</span><span>${item.deliveryAvailable ? `توصيل ${money(item.deliveryFee)}` : "استلام"}</span></div></div><span class="price">${money(item.price)}</span></div>
   `).join("") || `<div class="empty">ستظهر عناصر خدمتك هنا.</div>`;
   byId("activeMetric").textContent = byId("pActive").checked ? "نشط" : "متوقف مؤقتًا";
 }
@@ -550,7 +515,6 @@ function fillProviderForm(data) {
   byId("pActive").checked = data.active !== false;
   byId("categoryMetric").textContent = categories[category] || categories.other;
   providerLocation = data.location || null;
-  pendingDeletedImagePaths.clear();
   providerItems = Array.isArray(data.items) ? data.items.map(normalizedProviderItem) : [];
   byId("pGpsStatus").textContent = providerLocation?.latitude != null && providerLocation?.longitude != null
     ? `محفوظ ✓ ${Number(providerLocation.latitude).toFixed(5)}, ${Number(providerLocation.longitude).toFixed(5)}`
@@ -791,9 +755,6 @@ byId("providerForm").addEventListener("submit", async event => {
       }, { merge: true });
     }
     await batch.commit();
-    const deletedImages = [...pendingDeletedImagePaths];
-    pendingDeletedImagePaths.clear();
-    await Promise.allSettled(deletedImages.map(path => deleteObject(ref(storage, path))));
     currentProfile = { ...currentProfile, businessName, category, phone, city, address, description, location: providerLocation, items: providerItems, active };
     byId("providerHeroName").textContent = businessName;
     renderPreview();

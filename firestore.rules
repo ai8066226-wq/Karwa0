@@ -204,7 +204,6 @@ service cloud.firestore { match /databases/{database}/documents {
      && request.resource.data.itemIndex is int && request.resource.data.itemIndex>=0 && request.resource.data.itemIndex<providerProfile().items.size()
      && request.resource.data.itemName is string && request.resource.data.itemName.size()>=2 && request.resource.data.itemName.size()<=80
      && request.resource.data.itemName==providerItem().name
-     && request.resource.data.itemImageUrl==providerItem().get('imageUrl','')
      && request.resource.data.itemUnit==providerItem().get('unit','item')
      && request.resource.data.unitPrice is number && request.resource.data.unitPrice>0 && request.resource.data.unitPrice==providerItem().price
      && request.resource.data.itemPrice==request.resource.data.unitPrice
@@ -218,7 +217,7 @@ service cloud.firestore { match /databases/{database}/documents {
      && request.resource.data.totalPrice==request.resource.data.subtotal+request.resource.data.deliveryFee
      && request.resource.data.requestText is string && request.resource.data.requestText.size()>=3 && request.resource.data.requestText.size()<=500
      && request.resource.data.customerAddress is string && request.resource.data.customerAddress.size()>=3 && request.resource.data.customerAddress.size()<=180
-     && request.resource.data.keys().hasOnly(['customerId','customerName','providerId','providerName','providerCategory','providerCity','providerAddress','providerLocation','itemIndex','itemName','itemImageUrl','itemUnit','quantity','unitPrice','itemPrice','subtotal','deliveryRequested','deliveryFee','totalPrice','deliveryStatus','deliveryOrderId','requestText','customerAddress','customerLocation','status','createdAt','updatedAt']);
+     && request.resource.data.keys().hasOnly(['customerId','customerName','providerId','providerName','providerCategory','providerCity','providerAddress','providerLocation','itemIndex','itemName','itemUnit','quantity','unitPrice','itemPrice','subtotal','deliveryRequested','deliveryFee','totalPrice','deliveryStatus','deliveryOrderId','requestText','customerAddress','customerLocation','status','createdAt','updatedAt']);
    allow read:if admin()||(customer()&&resource.data.customerId==request.auth.uid)||(serviceProvider()&&resource.data.providerId==request.auth.uid);
    allow update:if admin()
      || (customer()&&resource.data.customerId==request.auth.uid&&resource.data.status=='pending'&&request.resource.data.status=='cancelled'&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','cancelledAt','updatedAt']))

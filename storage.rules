@@ -2,10 +2,4 @@ rules_version = '2';
 service firebase.storage { match /b/{bucket}/o {
  function signed(){return request.auth!=null;} function admin(){return signed()&&firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role=='admin';}
  match /driver-documents/{uid}/{file}{allow read:if signed()&&(request.auth.uid==uid||admin());allow write:if signed()&&request.auth.uid==uid&&request.resource.size<5*1024*1024&&request.resource.contentType.matches('image/.*|application/pdf');}
- match /service-items/{uid}/{file}{
-   function provider(){return signed()&&firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role=='serviceProvider';}
-   allow read:if signed();
-   allow create,update:if signed()&&request.auth.uid==uid&&provider()&&request.resource.size<=100*1024&&request.resource.contentType.matches('image/(jpeg|png|webp)');
-   allow delete:if signed()&&request.auth.uid==uid&&provider();
- }
 }}

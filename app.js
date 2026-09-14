@@ -894,7 +894,7 @@ function renderRestaurants() {
   host.innerHTML = state.restaurants.map(restaurant => {
     const meals = Array.isArray(restaurant.meals) ? restaurant.meals : [];
     const gps = restaurant.location && Number.isFinite(Number(restaurant.location.latitude)) ? `${Number(restaurant.location.latitude).toFixed(5)}, ${Number(restaurant.location.longitude).toFixed(5)}` : "غير محدد";
-    return `<article class="restaurant-card"><header class="restaurant-card-head"><h3>🍴 ${restaurantSafeText(restaurant.name)}</h3><div class="restaurant-card-meta"><span>📍 ${restaurantSafeText(restaurant.address)}</span><span>• ${meals.length} وجبة</span></div></header><div class="restaurant-card-contact"><span>☎️ ${restaurantSafeText(restaurant.phone)}</span><span>GPS: ${restaurantSafeText(gps)}</span></div><div class="restaurant-meals">${meals.map((meal, index) => { const normalized = normalizedClientItem(meal); return `<button type="button" class="restaurant-meal-card" data-restaurant-id="${restaurantSafeText(restaurant.firestoreId)}" data-meal-index="${index}"><span class="restaurant-meal-icon">${normalized.imageUrl ? `<img src="${restaurantSafeText(normalized.imageUrl)}" alt="${restaurantSafeText(normalized.name)}" loading="lazy">` : "🍽️"}</span><span><strong>${restaurantSafeText(normalized.name)}</strong><small>${restaurantSafeText(normalized.description || `السعر لكل ${otherItemUnitLabels[normalized.unit]}`)}</small></span><span class="restaurant-meal-price">${formatMoney(normalized.price)}<small>/${restaurantSafeText(otherItemUnitLabels[normalized.unit])}</small></span></button>`; }).join("") || '<small>لا توجد وجبات متاحة حاليًا</small>'}</div></article>`;
+    return `<article class="restaurant-card"><header class="restaurant-card-head"><h3>🍴 ${restaurantSafeText(restaurant.name)}</h3><div class="restaurant-card-meta"><span>📍 ${restaurantSafeText(restaurant.address)}</span><span>• ${meals.length} وجبة</span></div></header><div class="restaurant-card-contact"><span>☎️ ${restaurantSafeText(restaurant.phone)}</span><span>GPS: ${restaurantSafeText(gps)}</span></div><div class="restaurant-meals">${meals.map((meal, index) => { const normalized = normalizedClientItem(meal); return `<button type="button" class="restaurant-meal-card" data-restaurant-id="${restaurantSafeText(restaurant.firestoreId)}" data-meal-index="${index}"><span class="restaurant-meal-icon">🍽️</span><span><strong>${restaurantSafeText(normalized.name)}</strong><small>${restaurantSafeText(normalized.description || `السعر لكل ${otherItemUnitLabels[normalized.unit]}`)}</small></span><span class="restaurant-meal-price">${formatMoney(normalized.price)}<small>/${restaurantSafeText(otherItemUnitLabels[normalized.unit])}</small></span></button>`; }).join("") || '<small>لا توجد وجبات متاحة حاليًا</small>'}</div></article>`;
   }).join("");
   host.querySelectorAll(".restaurant-meal-card").forEach(button => button.addEventListener("click", () => {
     const restaurant = state.restaurants.find(item => item.firestoreId === button.dataset.restaurantId);
@@ -903,7 +903,7 @@ function renderRestaurants() {
     byId("mealDetailRestaurant").textContent = restaurant.name;
     byId("mealDetailTitle").textContent = meal.name;
     const normalizedMeal = normalizedClientItem(meal);
-    byId("mealDetailIcon").innerHTML = normalizedMeal.imageUrl ? `<img src="${restaurantSafeText(normalizedMeal.imageUrl)}" alt="${restaurantSafeText(normalizedMeal.name)}">` : "🍽️";
+    byId("mealDetailIcon").textContent = "🍽️";
     byId("mealDetailDescription").textContent = `${normalizedMeal.description || "لا توجد تفاصيل إضافية لهذه الوجبة."} • السعر لكل ${otherItemUnitLabels[normalizedMeal.unit]}${normalizedMeal.deliveryAvailable ? ` • التوصيل ${formatMoney(normalizedMeal.deliveryFee)}` : " • استلام من المطعم"}`;
     byId("mealDetailPrice").textContent = formatMoney(normalizedMeal.price);
     byId("mealDetailBackdrop").hidden = false;
@@ -981,8 +981,7 @@ function normalizedClientItem(item = {}) {
     description: String(item.description || ""),
     unit,
     deliveryAvailable: item.deliveryAvailable === true,
-    deliveryFee: item.deliveryAvailable === true ? Math.max(0, Number(item.deliveryFee || 0)) : 0,
-    imageUrl: String(item.imageUrl || "")
+    deliveryFee: item.deliveryAvailable === true ? Math.max(0, Number(item.deliveryFee || 0)) : 0
   };
 }
 
@@ -1022,7 +1021,7 @@ function renderOtherServices() {
         <p>${restaurantSafeText(profile.description || "خدمة موثقة ومتاحة للطلب عبر كروة.")}</p>
         <div class="other-service-location"><span>📍 ${restaurantSafeText(profile.address || profile.city || "العنوان غير محدد")}</span><span>GPS: ${restaurantSafeText(serviceLocationText(profile.location))}</span></div>
         <div class="other-service-actions"><button class="secondary-button" type="button" data-show-service-location="${restaurantSafeText(profile.firestoreId)}" ${locationAvailable ? "" : "disabled"}>عرض موقع النشاط</button><span>${items.length ? `${items.length} خدمة/منتج` : "لا توجد عناصر منشورة"}</span></div>
-        <div class="other-item-grid">${items.map((item, index) => `<article class="other-item-card"><div class="other-item-picture">${item.imageUrl ? `<img src="${restaurantSafeText(item.imageUrl)}" alt="${restaurantSafeText(item.name)}" loading="lazy">` : icon}</div><div class="other-item-body"><h4>${restaurantSafeText(item.name)}</h4><p>${restaurantSafeText(item.description || "لا توجد تفاصيل إضافية.")}</p><div class="other-item-price"><strong>${formatMoney(item.price)}</strong><small>لكل ${restaurantSafeText(otherItemUnitLabels[item.unit])}</small></div><small>${item.deliveryAvailable ? `التوصيل متاح مقابل ${formatMoney(item.deliveryFee)}` : "استلام من النشاط"}</small><button type="button" data-select-service="${restaurantSafeText(profile.firestoreId)}" data-item-index="${index}">اختيار وحساب السعر</button></div></article>`).join("") || '<div class="restaurant-empty">لم ينشر صاحب النشاط خدمات أو وجبات بعد.</div>'}</div>
+        <div class="other-item-grid">${items.map((item, index) => `<article class="other-item-card"><div class="other-item-picture">${icon}</div><div class="other-item-body"><h4>${restaurantSafeText(item.name)}</h4><p>${restaurantSafeText(item.description || "لا توجد تفاصيل إضافية.")}</p><div class="other-item-price"><strong>${formatMoney(item.price)}</strong><small>لكل ${restaurantSafeText(otherItemUnitLabels[item.unit])}</small></div><small>${item.deliveryAvailable ? `التوصيل متاح مقابل ${formatMoney(item.deliveryFee)}` : "استلام من النشاط"}</small><button type="button" data-select-service="${restaurantSafeText(profile.firestoreId)}" data-item-index="${index}">اختيار وحساب السعر</button></div></article>`).join("") || '<div class="restaurant-empty">لم ينشر صاحب النشاط خدمات أو وجبات بعد.</div>'}</div>
       </div>
     </article>`;
   }).join("");
@@ -1047,7 +1046,7 @@ function updateSelectedServicePrice() {
     byId("bookOtherService").disabled = true;
     return;
   }
-  byId("selectedItemImage").innerHTML = item.imageUrl ? `<img src="${restaurantSafeText(item.imageUrl)}" alt="${restaurantSafeText(item.name)}">` : "🍽️";
+  byId("selectedItemImage").textContent = "🍽️";
   byId("selectedItemName").textContent = item.name;
   byId("selectedItemDescription").textContent = item.description || "لا توجد تفاصيل إضافية.";
   byId("selectedServicePrice").textContent = `${formatMoney(item.price)} لكل ${otherItemUnitLabels[item.unit]}`;
@@ -1234,7 +1233,6 @@ byId("bookOtherService")?.addEventListener("click", async event => {
       providerLocation: validServiceLocation(profile.location) ? { ...profile.location } : null,
       itemIndex,
       itemName: item.name,
-      itemImageUrl: item.imageUrl || "",
       itemUnit: item.unit,
       quantity,
       unitPrice,
