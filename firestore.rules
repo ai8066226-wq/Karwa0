@@ -166,7 +166,7 @@ service cloud.firestore { match /databases/{database}/documents {
    function providerProfile(){return get(/databases/$(database)/documents/serviceProfiles/$(request.resource.data.providerId)).data;}
    allow create:if customer()
      && request.resource.data.customerId==request.auth.uid
-     && request.resource.data.customerName==userDoc().get('name','')
+     && request.resource.data.customerName is string && request.resource.data.customerName.size()>=2 && request.resource.data.customerName.size()<=80
      && request.resource.data.providerId is string
      && request.resource.data.providerId.size()>0
      && providerProfile().active==true
@@ -179,10 +179,10 @@ service cloud.firestore { match /databases/{database}/documents {
      && request.resource.data.requestText is string && request.resource.data.requestText.size()>=3 && request.resource.data.requestText.size()<=500
      && request.resource.data.customerAddress is string && request.resource.data.customerAddress.size()>=3 && request.resource.data.customerAddress.size()<=180
      && request.resource.data.keys().hasOnly(['customerId','customerName','customerPhone','providerId','providerName','providerCategory','providerAddress','providerLocation','itemName','itemPrice','requestText','customerAddress','customerLocation','status','createdAt','updatedAt']);
-   allow read:if admin()||(customer()&&resource.data.customerId==request.auth.uid)||(serviceProvider()&&resource.data.providerId==request.auth.uid);
+   allow read:if admin()||(signed()&&resource.data.customerId==request.auth.uid)||(signed()&&resource.data.providerId==request.auth.uid);
    allow update:if admin()
      || (customer()&&resource.data.customerId==request.auth.uid&&resource.data.status=='pending'&&request.resource.data.status=='cancelled'&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','cancelledAt','updatedAt']))
-     || (serviceProvider()
+     || (signed()
        && resource.data.providerId==request.auth.uid
        && request.resource.data.providerId==request.auth.uid
        && ((resource.data.status=='pending'&&request.resource.data.status in ['accepted','rejected'])||(resource.data.status=='accepted'&&request.resource.data.status=='completed'))

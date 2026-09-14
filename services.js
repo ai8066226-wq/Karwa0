@@ -601,8 +601,9 @@ async function openProvider() {
       renderProviderRequests(requests);
     },
     error => {
-      console.error(error);
-      byId("providerRequestsList").innerHTML = `<div class="empty">تعذر تحميل طلبات العملاء.</div>`;
+      console.error("provider serviceRequests subscription failed", error);
+      const code = String(error?.code || "");
+      byId("providerRequestsList").innerHTML = `<div class="empty">${code.includes("permission-denied") ? "تعذر فتح الطلبات بسبب صلاحيات Firestore. انشر قواعد Phase 41." : "تعذر تحميل طلبات العملاء. تحقق من الاتصال."}</div>`;
     }
   );
 }

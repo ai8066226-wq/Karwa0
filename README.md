@@ -238,3 +238,10 @@ firebase deploy --only hosting
 ## Phase 40
 - تم إلغاء رفع صور الخدمات والمنتجات بالكامل لتسريع الإضافة.
 - تم تحديث بطاقات الخدمات والمنتجات بتصميم احترافي يعتمد على الأيقونات والمعلومات والسعر وأزرار الإدارة.
+
+
+## Phase 41 - Service request delivery fix
+- Fixed customer serviceRequests creation rule that could reject valid requests when the local display name differed from users/{uid}.name.
+- Provider can read its own serviceRequests by providerId identity even during role/profile refresh.
+- Customer name/phone are refreshed from users/{uid} immediately before creating the request.
+- Added clearer permission diagnostics in customer and provider portals.

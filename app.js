@@ -1166,10 +1166,14 @@ byId("bookOtherService")?.addEventListener("click", async event => {
   const button = event.currentTarget;
   setButtonBusy(button, true, "جاري إرسال الطلب…");
   try {
-    await addDoc(collection(db, "serviceRequests"), {
+    const freshUserSnap = await getDoc(doc(db, "users", state.user.uid));
+    const freshUser = freshUserSnap.exists() ? freshUserSnap.data() : {};
+    const customerName = String(freshUser.name || state.name || state.user.displayName || "عميل كروة").trim();
+    const customerPhone = String(freshUser.phone || state.user.phoneNumber || "غير متوفر").trim();
+    const requestRef = await addDoc(collection(db, "serviceRequests"), {
       customerId: state.user.uid,
-      customerName: state.name,
-      customerPhone: state.user.phoneNumber || "غير متوفر",
+      customerName,
+      customerPhone,
       providerId: profile.firestoreId,
       providerName: profile.businessName,
       providerCategory: profile.category || "other",
@@ -1185,10 +1189,12 @@ byId("bookOtherService")?.addEventListener("click", async event => {
       updatedAt: serverTimestamp()
     });
     byId("otherServiceRequest").value = "";
-    showToast(`تم إرسال الطلب إلى ${profile.businessName}`);
+    console.info("Service request created", requestRef.id, "for provider", profile.firestoreId);
+    showToast(`تم إرسال الطلب إلى ${profile.businessName} بنجاح`);
   } catch (error) {
     console.error(error);
-    showToast("تعذر إرسال الطلب. تأكد من نشر قواعد Firestore الجديدة.");
+    const code = String(error?.code || "");
+    showToast(code.includes("permission-denied") ? "تعذر إرسال الطلب بسبب صلاحيات Firestore. انشر قواعد Phase 41." : "تعذر إرسال الطلب. تحقق من الاتصال وحاول مرة أخرى.");
   } finally {
     setButtonBusy(button, false);
   }
