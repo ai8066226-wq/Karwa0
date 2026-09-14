@@ -496,9 +496,11 @@ function showApplicationStatus(data) {
   if (data.status === "pending") {
     chip.textContent = "قيد المراجعة";
     notice.className = "notice";
-    notice.textContent = "وصل طلبك إلى الإدارة. سنفعّل حساب الكابتن بعد الموافقة.";
-    button.disabled = true;
-    button.textContent = "الطلب قيد المراجعة";
+    notice.textContent = data.profileComplete === false
+      ? "تم إنشاء طلب الكابتن وإرساله إلى الإدارة. أكمل بيانات الكابتن أدناه ليصبح الطلب جاهزًا للموافقة. لوحة الكابتن لن تُفتح قبل اعتماد الإدارة."
+      : "وصل طلبك الكامل إلى الإدارة وهو قيد المراجعة. لوحة الكابتن لن تصبح متاحة إلا بعد موافقة الإدارة.";
+    button.disabled = data.profileComplete !== false;
+    button.textContent = data.profileComplete === false ? "إكمال وإرسال بيانات الطلب" : "الطلب قيد المراجعة";
   } else if (data.status === "rejected") {
     chip.className = "status-chip rejected";
     chip.textContent = "يحتاج تعديلًا";
@@ -560,6 +562,7 @@ byId("applicationForm").addEventListener("submit", async event => {
       plate: isRestaurant ? "" : byId("plate").value.trim(),
       city: byId("driverCity").value,
       status: "pending",
+      profileComplete: true,
       submittedAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     }, { merge: true });

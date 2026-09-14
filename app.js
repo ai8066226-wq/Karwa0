@@ -633,6 +633,27 @@ byId("authForm").addEventListener("submit", async event => {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
+      // Phase 42: إنشاء طلب موافقة إداري فور إنشاء حساب الكابتن.
+      // يبقى الحساب بوضع طالب كابتن ولا تُفتح لوحة التشغيل إلا بعد موافقة الإدارة.
+      if (selectedRole === "driverApplicant") {
+        await setDoc(doc(db, "driverApplications", credential.user.uid), {
+          userId: credential.user.uid,
+          name,
+          email,
+          phone: "",
+          serviceType: "taxi",
+          vehicleType: "",
+          vehicleMake: "",
+          vehicleModel: "",
+          vehicleCondition: "",
+          plate: "",
+          city: "",
+          status: "pending",
+          profileComplete: false,
+          submittedAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      }
       state.name = name;
       state.role = selectedRole;
       state.balance = selectedRole === "customer" ? 25000 : 0;

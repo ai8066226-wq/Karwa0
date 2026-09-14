@@ -23,7 +23,7 @@ service cloud.firestore { match /databases/{database}/documents {
    allow delete:if admin();
    match /pushTokens/{id}{allow read:if own(uid)||admin();allow write:if own(uid);}
  }
- match /driverApplications/{uid}{allow create:if own(uid)&&request.resource.data.userId==request.auth.uid&&request.resource.data.status=='pending';allow read:if own(uid)||admin();allow update:if admin()||(own(uid)&&resource.data.status!='approved'&&request.resource.data.userId==request.auth.uid&&request.resource.data.status=='pending'&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','email','phone','serviceType','vehicleType','vehicleMake','vehicleModel','vehicleCondition','plate','city','status','submittedAt','updatedAt']));allow delete:if admin();}
+ match /driverApplications/{uid}{allow create:if own(uid)&&request.resource.data.userId==request.auth.uid&&request.resource.data.status=='pending';allow read:if own(uid)||admin();allow update:if admin()||(own(uid)&&resource.data.status!='approved'&&request.resource.data.userId==request.auth.uid&&request.resource.data.status=='pending'&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','email','phone','serviceType','vehicleType','vehicleMake','vehicleModel','vehicleCondition','plate','city','status','profileComplete','submittedAt','updatedAt']));allow delete:if admin();}
  match /drivers/{uid}{
    allow read:if admin()||driver()||own(uid);
    allow create,delete:if admin();

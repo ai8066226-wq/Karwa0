@@ -259,7 +259,8 @@ function renderRatings() {
 function applicationCard(application) {
   const status = application.status || "pending";
   const labels = { pending: "قيد المراجعة", approved: "مقبول", rejected: "مرفوض" };
-  const actions = status === "pending" ? `<div class="order-actions"><button class="primary" data-action="approve" data-id="${application.firestoreId}">قبول وتفعيل</button><button class="danger" data-action="reject" data-id="${application.firestoreId}">رفض</button></div>` : "";
+  const complete = application.profileComplete !== false;
+  const actions = status === "pending" ? `<div class="order-actions"><button class="primary" data-action="approve" data-id="${application.firestoreId}" ${complete ? "" : 'disabled title="بانتظار إكمال بيانات الكابتن"'}>${complete ? "قبول وتفعيل" : "بانتظار إكمال البيانات"}</button><button class="danger" data-action="reject" data-id="${application.firestoreId}">رفض</button></div>` : "";
   return `<article class="order-card"><div class="order-top"><h3>🚘 ${escapeHtml(application.name)}</h3><span class="status-chip ${status}">${labels[status] || escapeHtml(status)}</span></div><p class="order-route">${escapeHtml(application.city)} • ${escapeHtml(application.vehicleType)} • ${escapeHtml(application.plate)}</p><div class="order-meta"><span>الخدمة: ${application.serviceType === "delivery" ? "توصيل" : "تكسي"}</span></div>${application.vehicleType !== "دراجة" ? `<div class="order-meta"><span>السيارة: ${escapeHtml(application.vehicleMake || "-")} ${escapeHtml(application.vehicleModel || "")}</span><span>الحالة: ${escapeHtml(application.vehicleCondition || "غير محددة")}</span></div>` : `<div class="order-meta"><span>دراجة — توصيل أغراض وطعام فقط</span></div>`}<div class="order-meta"><span>${escapeHtml(application.phone)}</span><span>${escapeHtml(application.email)}</span></div>${actions}</article>`;
 }
 function renderApplications() {
@@ -500,6 +501,7 @@ document.addEventListener("click", async event => {
         ? state.applications.find(item => item.firestoreId === id && item.serviceType === "other")
         : state.serviceApplications.find(item => item.firestoreId === id);
       if (!application) throw new Error("NOT_FOUND");
+      if (application.profileComplete === false) { toast("لا يمكن اعتماد الكابتن قبل إكمال بيانات الطلب"); return; }
       const batch = writeBatch(db);
       batch.update(doc(db, legacy ? "driverApplications" : "serviceApplications", id), {
         status: "rejected",
