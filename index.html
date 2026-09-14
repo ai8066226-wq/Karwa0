@@ -2409,14 +2409,14 @@ body.customer-map-mode .mobile-navigation{display:none!important}
       <div class="role-entry-grid" id="roleEntryGrid">
         <article class="role-entry-card customer"><div class="role-entry-icon">👤</div><h3>عميل</h3><p>اطلب تكسي أو توصيل وتابع طلباتك بسهولة.</p><div class="role-entry-actions"><button type="button" class="primary-button role-auth-action" data-role="customer" data-mode="login">تسجيل الدخول</button><button type="button" class="secondary-button role-auth-action" data-role="customer" data-mode="register">إنشاء حساب</button></div></article>
         <article class="role-entry-card captain"><div class="role-entry-icon">🚕</div><h3>كابتن</h3><p>استقبل الرحلات والطلبات المناسبة لنوع خدمتك.</p><div class="role-entry-actions"><button type="button" class="primary-button role-auth-action" data-role="driverApplicant" data-mode="login">تسجيل الدخول</button><button type="button" class="secondary-button role-auth-action" data-role="driverApplicant" data-mode="register">إنشاء حساب</button></div></article>
-        <article class="role-entry-card services"><div class="role-entry-icon">🧰</div><h3>خدمات أخرى</h3><p>للمطاعم ومزودي الخدمات لإدارة الإعلانات والخدمات.</p><div class="role-entry-actions"><button type="button" class="primary-button role-auth-action" data-role="serviceApplicant" data-mode="login">تسجيل الدخول</button><button type="button" class="secondary-button role-auth-action" data-role="serviceApplicant" data-mode="register">إنشاء حساب</button></div></article>
+        <article class="role-entry-card services"><div class="role-entry-icon">🧰</div><h3>خدمات أخرى</h3><p>سجّل نشاطك وأرسل طلب الاعتماد، ثم أدر خدماتك من لوحة مستقلة.</p><div class="role-entry-actions"><button type="button" class="primary-button role-auth-action" data-role="serviceApplicant" data-mode="login">دخول بوابة الخدمات</button><button type="button" class="secondary-button role-auth-action" data-role="serviceApplicant" data-mode="register">تسجيل خدمة جديدة</button></div></article>
       </div>
       <div id="authFormPanel" hidden>
         <button type="button" class="auth-back-button" id="authBackToRoles">→ العودة لاختيار نوع الحساب</button>
         <div class="selected-role-banner"><span id="selectedRoleIcon">👤</span><div><small>نوع الحساب</small><strong id="selectedRoleLabel">عميل</strong></div></div>
         <form id="authForm">
           <div class="field" id="nameField" hidden><label for="authName">الاسم الكامل</label><input id="authName" autocomplete="name" placeholder="مثال: محمد علي"></div>
-          <div class="field" id="roleField" hidden><select id="authRole"><option value="customer">عميل</option><option value="driverApplicant">كابتن</option><option value="serviceApplicant">خدمات أخرى</option></select></div>
+          <div class="field" id="roleField" hidden><select id="authRole"><option value="customer">عميل</option><option value="driverApplicant">كابتن</option></select></div>
           <div class="field"><label for="authEmail">البريد الإلكتروني</label><input id="authEmail" type="email" inputmode="email" autocomplete="email" placeholder="name@example.com" required></div>
           <div class="field"><label for="authPassword">كلمة المرور</label><input id="authPassword" type="password" autocomplete="current-password" minlength="6" placeholder="ستة أحرف على الأقل" required></div>
           <div class="auth-message" id="authMessage" role="alert"></div>
@@ -2432,8 +2432,8 @@ body.customer-map-mode .mobile-navigation{display:none!important}
   <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
   <script>try{if(window.maplibregl&&maplibregl.setRTLTextPlugin&&(!maplibregl.getRTLTextPluginStatus||maplibregl.getRTLTextPluginStatus()==="unavailable")){maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",true).catch(()=>{});}}catch(e){}</script>
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
-  <script type="module" src="./app.js?v=33"></script>
-  <script src="./pwa.js?v=33"></script>
+  <script type="module" src="./app.js?v=34"></script>
+  <script src="./pwa.js?v=34"></script>
 
 <script id="phase20-map-first-js">
 window.addEventListener("DOMContentLoaded",()=>{

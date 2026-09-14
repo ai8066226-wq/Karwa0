@@ -45,6 +45,8 @@ const state = {
   user: null,
   users: [],
   applications: [],
+  serviceApplications: [],
+  serviceProfiles: [],
   restaurants: [],
   drivers: [],
   ratings: [],
@@ -119,8 +121,12 @@ byId("deniedLogout").addEventListener("click", () => signOut(auth));
 function renderMetrics() {
   byId("usersCount").textContent = state.users.filter(user => !user.role || user.role === "customer").length;
   byId("driversCount").textContent = state.drivers.length;
+  byId("serviceProvidersCount").textContent = state.users.filter(user => user.role === "serviceProvider").length;
   byId("blockedCount").textContent = state.drivers.filter(driver => driver.blocked === true).length;
-  byId("pendingCount").textContent = state.applications.filter(item => item.status === "pending").length;
+  byId("pendingCount").textContent =
+    state.applications.filter(item => item.status === "pending" && item.serviceType !== "other").length +
+    state.serviceApplications.filter(item => item.status === "pending").length +
+    state.applications.filter(item => item.status === "pending" && item.serviceType === "other").length;
   byId("ordersCount").textContent = state.orders.length;
   byId("liveTripsCount").textContent = state.orders.filter(o => !o.cancelled && Number(o.statusIndex||0) > 0 && Number(o.statusIndex||0) < 4).length;
   byId("cancelledTripsCount").textContent = state.orders.filter(o => o.cancelled).length;
@@ -253,14 +259,11 @@ function renderRatings() {
 function applicationCard(application) {
   const status = application.status || "pending";
   const labels = { pending: "قيد المراجعة", approved: "مقبول", rejected: "مرفوض" };
-  const isService = application.serviceType === "other";
-  const restaurant = state.restaurants?.find?.(r => r.ownerId === application.userId || r.firestoreId === application.userId);
   const actions = status === "pending" ? `<div class="order-actions"><button class="primary" data-action="approve" data-id="${application.firestoreId}">قبول وتفعيل</button><button class="danger" data-action="reject" data-id="${application.firestoreId}">رفض</button></div>` : "";
-  if (isService) return `<article class="order-card"><div class="order-top"><h3>🍽️ ${escapeHtml(restaurant?.name || application.name || "طلب خدمة أخرى")}</h3><span class="status-chip ${status}">${labels[status] || escapeHtml(status)}</span></div><p class="order-route">مزود الخدمة: ${escapeHtml(application.name || "-")} • ${escapeHtml(application.city || "-")}</p><div class="order-meta"><span>الهاتف: ${escapeHtml(application.phone || restaurant?.phone || "-")}</span><span>البريد: ${escapeHtml(application.email || "-")}</span></div>${restaurant ? `<div class="order-meta"><span>عنوان المطعم: ${escapeHtml(restaurant.address || "-")}</span><span>وجبات: ${Array.isArray(restaurant.meals)?restaurant.meals.length:0}</span></div>` : ""}${actions}</article>`;
   return `<article class="order-card"><div class="order-top"><h3>🚘 ${escapeHtml(application.name)}</h3><span class="status-chip ${status}">${labels[status] || escapeHtml(status)}</span></div><p class="order-route">${escapeHtml(application.city)} • ${escapeHtml(application.vehicleType)} • ${escapeHtml(application.plate)}</p><div class="order-meta"><span>الخدمة: ${application.serviceType === "delivery" ? "توصيل" : "تكسي"}</span></div>${application.vehicleType !== "دراجة" ? `<div class="order-meta"><span>السيارة: ${escapeHtml(application.vehicleMake || "-")} ${escapeHtml(application.vehicleModel || "")}</span><span>الحالة: ${escapeHtml(application.vehicleCondition || "غير محددة")}</span></div>` : `<div class="order-meta"><span>دراجة — توصيل أغراض وطعام فقط</span></div>`}<div class="order-meta"><span>${escapeHtml(application.phone)}</span><span>${escapeHtml(application.email)}</span></div>${actions}</article>`;
 }
 function renderApplications() {
-  const sorted = [...state.applications].sort((a, b) => {
+  const sorted = state.applications.filter(item => item.serviceType !== "other").sort((a, b) => {
     if (a.status === "pending" && b.status !== "pending") return -1;
     if (b.status === "pending" && a.status !== "pending") return 1;
     return String(b.submittedAt?.seconds || "").localeCompare(String(a.submittedAt?.seconds || ""));
@@ -268,6 +271,55 @@ function renderApplications() {
   byId("applicationsList").innerHTML = sorted.length
     ? sorted.map(applicationCard).join("")
     : `<div class="empty"><span>🚘</span>لا توجد طلبات انضمام بعد.</div>`;
+}
+
+const serviceCategoryLabels = {
+  restaurant: "مطعم ومأكولات",
+  grocery: "بقالة ومتجر غذائي",
+  retail: "تسوق ومنتجات",
+  maintenance: "صيانة وإصلاح",
+  home: "خدمات منزلية",
+  health: "صحة وعناية",
+  other: "خدمة أخرى"
+};
+
+function serviceApplicationCard(application) {
+  const status = application.status || "pending";
+  const labels = { pending: "قيد المراجعة", approved: "مقبول", rejected: "مرفوض" };
+  const source = application.legacy ? "legacy" : "service";
+  const restaurant = state.restaurants.find(item => item.firestoreId === application.firestoreId || item.ownerId === application.userId);
+  const profile = state.serviceProfiles.find(item => item.firestoreId === application.firestoreId || item.ownerId === application.userId);
+  const category = application.category || profile?.category || (restaurant ? "restaurant" : "other");
+  const businessName = application.businessName || profile?.businessName || restaurant?.name || application.name || "مزود خدمة";
+  const ownerName = application.ownerName || application.name || "—";
+  const address = application.address || profile?.address || restaurant?.address || "—";
+  const items = profile?.items || restaurant?.meals || [];
+  const actions = status === "pending" ? `<div class="order-actions"><button class="primary" data-action="approve-service" data-source="${source}" data-id="${application.firestoreId}">قبول وتفعيل</button><button class="danger" data-action="reject-service" data-source="${source}" data-id="${application.firestoreId}">رفض مع ملاحظة</button></div>` : "";
+  return `<article class="order-card service-application-card">
+    <div class="order-top"><h3>🧰 ${escapeHtml(businessName)}</h3><span class="status-chip ${status}">${labels[status] || escapeHtml(status)}</span></div>
+    <p class="order-route">${escapeHtml(serviceCategoryLabels[category] || serviceCategoryLabels.other)} • ${escapeHtml(application.city || profile?.city || "—")}</p>
+    <div class="order-meta"><span>صاحب الخدمة: ${escapeHtml(ownerName)}</span><span>الهاتف: ${escapeHtml(application.phone || profile?.phone || restaurant?.phone || "—")}</span></div>
+    <div class="order-meta"><span>البريد: ${escapeHtml(application.email || "—")}</span><span>العنوان: ${escapeHtml(address)}</span></div>
+    ${application.description ? `<p class="admin-note">${escapeHtml(application.description)}</p>` : ""}
+    <div class="order-meta"><span>العناصر المضافة: ${Array.isArray(items) ? items.length : 0}</span>${application.legacy ? `<span>طلب قديم — مدعوم تلقائيًا</span>` : ""}</div>
+    ${application.reviewNote ? `<p class="admin-note danger-note">ملاحظة المراجعة: ${escapeHtml(application.reviewNote)}</p>` : ""}
+    ${actions}
+  </article>`;
+}
+
+function renderServiceApplications() {
+  const modernIds = new Set(state.serviceApplications.map(item => item.firestoreId));
+  const legacyApplications = state.applications
+    .filter(item => item.serviceType === "other" && !modernIds.has(item.firestoreId))
+    .map(item => ({ ...item, legacy: true }));
+  const sorted = [...state.serviceApplications, ...legacyApplications].sort((a, b) => {
+    if (a.status === "pending" && b.status !== "pending") return -1;
+    if (b.status === "pending" && a.status !== "pending") return 1;
+    return Number(b.submittedAt?.seconds || b.updatedAt?.seconds || 0) - Number(a.submittedAt?.seconds || a.updatedAt?.seconds || 0);
+  });
+  byId("serviceApplicationsList").innerHTML = sorted.length
+    ? sorted.map(serviceApplicationCard).join("")
+    : `<div class="empty"><span>🧰</span>لا توجد طلبات مزودي خدمات بعد.</div>`;
 }
 
 function orderCard(order) {
@@ -322,7 +374,22 @@ function openDashboard() {
   const applicationsUnsubscribe = onSnapshot(collection(db, "driverApplications"), snapshot => {
     state.applications = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
     renderApplications();
+    renderServiceApplications();
     renderMetrics();
+  });
+  const serviceApplicationsUnsubscribe = onSnapshot(collection(db, "serviceApplications"), snapshot => {
+    state.serviceApplications = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
+    renderServiceApplications();
+    renderMetrics();
+  });
+  const serviceProfilesUnsubscribe = onSnapshot(collection(db, "serviceProfiles"), snapshot => {
+    state.serviceProfiles = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
+    renderServiceApplications();
+    renderMetrics();
+  });
+  const restaurantsUnsubscribe = onSnapshot(collection(db, "restaurants"), snapshot => {
+    state.restaurants = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
+    renderServiceApplications();
   });
   const ordersUnsubscribe = onSnapshot(collection(db, "orders"), snapshot => {
     state.orders = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
@@ -343,6 +410,8 @@ function openDashboard() {
   state.dashboardUnsubscribes.push(
     usersUnsubscribe,
     applicationsUnsubscribe,
+    serviceApplicationsUnsubscribe,
+    serviceProfilesUnsubscribe,
     restaurantsUnsubscribe,
     ordersUnsubscribe,
     driversUnsubscribe,
@@ -356,7 +425,93 @@ document.addEventListener("click", async event => {
   const id = button.dataset.id;
   busy(button, true);
   try {
-    if (button.dataset.action === "approve") {
+    if (button.dataset.action === "approve-service") {
+      const legacy = button.dataset.source === "legacy";
+      const application = legacy
+        ? state.applications.find(item => item.firestoreId === id && item.serviceType === "other")
+        : state.serviceApplications.find(item => item.firestoreId === id);
+      if (!application) throw new Error("NOT_FOUND");
+      const existingProfile = state.serviceProfiles.find(item => item.firestoreId === id || item.ownerId === id);
+      const restaurant = state.restaurants.find(item => item.firestoreId === id || item.ownerId === id);
+      const category = application.category || existingProfile?.category || (restaurant ? "restaurant" : "other");
+      const businessName = application.businessName || existingProfile?.businessName || restaurant?.name || application.name || "مزود خدمة";
+      const ownerName = application.ownerName || application.name || "";
+      const phone = application.phone || existingProfile?.phone || restaurant?.phone || "";
+      const address = application.address || existingProfile?.address || restaurant?.address || "";
+      const location = existingProfile?.location || restaurant?.location || null;
+      const items = Array.isArray(existingProfile?.items) ? existingProfile.items : Array.isArray(restaurant?.meals) ? restaurant.meals : [];
+      const batch = writeBatch(db);
+      batch.update(doc(db, legacy ? "driverApplications" : "serviceApplications", id), {
+        status: "approved",
+        reviewNote: "",
+        reviewedBy: state.user.uid,
+        reviewedAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      batch.set(doc(db, "users", id), { role: "serviceProvider", updatedAt: serverTimestamp() }, { merge: true });
+      batch.set(doc(db, "serviceProfiles", id), {
+        ownerId: id,
+        ownerName,
+        businessName,
+        category,
+        phone,
+        city: application.city || existingProfile?.city || "",
+        address,
+        description: application.description || existingProfile?.description || "",
+        location,
+        items,
+        active: true,
+        approvalStatus: "approved",
+        approvedBy: state.user.uid,
+        approvedAt: serverTimestamp(),
+        createdAt: existingProfile?.createdAt || serverTimestamp(),
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      if (category === "restaurant") {
+        const restaurantPayload = {
+          ownerId: id,
+          name: businessName,
+          phone,
+          address,
+          meals: items,
+          active: true,
+          approvalStatus: "approved",
+          approvedBy: state.user.uid,
+          approvedAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        };
+        if (location) restaurantPayload.location = location;
+        batch.set(doc(db, "restaurants", id), restaurantPayload, { merge: true });
+      }
+      await batch.commit();
+      toast("تم قبول مزود الخدمة وفتح لوحته الخاصة");
+    } else if (button.dataset.action === "reject-service") {
+      const note = prompt("سبب الرفض أو البيانات المطلوب تعديلها:", "يرجى استكمال بيانات النشاط")?.trim();
+      if (!note) return;
+      const legacy = button.dataset.source === "legacy";
+      const application = legacy
+        ? state.applications.find(item => item.firestoreId === id && item.serviceType === "other")
+        : state.serviceApplications.find(item => item.firestoreId === id);
+      if (!application) throw new Error("NOT_FOUND");
+      const batch = writeBatch(db);
+      batch.update(doc(db, legacy ? "driverApplications" : "serviceApplications", id), {
+        status: "rejected",
+        reviewNote: note.slice(0, 300),
+        reviewedBy: state.user.uid,
+        reviewedAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      if (legacy) {
+        batch.set(doc(db, "restaurants", id), {
+          active: false,
+          approvalStatus: "rejected",
+          reviewNote: note.slice(0, 300),
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      }
+      await batch.commit();
+      toast("تم رفض الطلب وإرسال الملاحظة لمزود الخدمة");
+    } else if (button.dataset.action === "approve") {
       const application = state.applications.find(item => item.firestoreId === id);
       if (!application) throw new Error("NOT_FOUND");
       const batch = writeBatch(db);
@@ -366,35 +521,23 @@ document.addEventListener("click", async event => {
         reviewedAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
-      const isOtherService = application.serviceType === "other";
       batch.set(doc(db, "users", id), {
-        role: isOtherService ? "serviceProvider" : "driver",
+        role: "driver",
         updatedAt: serverTimestamp()
       }, { merge: true });
-      if (isOtherService) {
-        batch.set(doc(db, "restaurants", id), {
-          active: true,
-          approvalStatus: "approved",
-          approvedBy: state.user.uid,
-          approvedAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        }, { merge: true });
-      } else {
-        batch.set(doc(db, "drivers", id), {
-          userId: id, name: application.name, email: application.email, phone: application.phone,
-          serviceType: application.serviceType || "taxi", vehicleType: application.vehicleType,
-          vehicleMake: application.vehicleMake || "", vehicleModel: application.vehicleModel || "",
-          vehicleCondition: application.vehicleCondition || "", plate: application.plate, city: application.city,
-          online: false, blocked: false, warningCount: 0, warningMessage: "",
-          approvedAt: serverTimestamp(), updatedAt: serverTimestamp()
-        }, { merge: true });
-      }
+      batch.set(doc(db, "drivers", id), {
+        userId: id, name: application.name, email: application.email, phone: application.phone,
+        serviceType: application.serviceType || "taxi", vehicleType: application.vehicleType,
+        vehicleMake: application.vehicleMake || "", vehicleModel: application.vehicleModel || "",
+        vehicleCondition: application.vehicleCondition || "", plate: application.plate, city: application.city,
+        online: false, blocked: false, warningCount: 0, warningMessage: "",
+        approvedAt: serverTimestamp(), updatedAt: serverTimestamp()
+      }, { merge: true });
       await batch.commit();
-      toast(application.serviceType === "other" ? "تم قبول مزود الخدمة وتفعيل حسابه" : "تم قبول الكابتن وتفعيل حسابه");
+      toast("تم قبول الكابتن وتفعيل حسابه");
     } else if (button.dataset.action === "reject") {
       const note = prompt("سبب الرفض أو المطلوب تعديله:", "يرجى مراجعة بيانات المركبة")?.trim();
       if (!note) return;
-      const rejectedApplication = state.applications.find(item => item.firestoreId === id);
       const rejectBatch = writeBatch(db);
       rejectBatch.update(doc(db, "driverApplications", id), {
         status: "rejected",
@@ -403,14 +546,6 @@ document.addEventListener("click", async event => {
         reviewedAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
-      if (rejectedApplication?.serviceType === "other") {
-        rejectBatch.set(doc(db, "restaurants", id), {
-          active: false,
-          approvalStatus: "rejected",
-          reviewNote: note,
-          updatedAt: serverTimestamp()
-        }, { merge: true });
-      }
       await rejectBatch.commit();
       toast("تم رفض الطلب مع إرسال الملاحظة");
     } else if (button.dataset.action === "warn-driver") {

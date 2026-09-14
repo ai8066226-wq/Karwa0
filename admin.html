@@ -67,6 +67,7 @@
     <section class="stats admin-stats">
       <div class="stat"><small>إجمالي العملاء</small><strong id="usersCount">0</strong></div>
       <div class="stat"><small>الكباتن المعتمدون</small><strong id="driversCount">0</strong></div>
+      <div class="stat"><small>مزودو الخدمات المعتمدون</small><strong id="serviceProvidersCount">0</strong></div>
       <div class="stat"><small>كباتن محظورون</small><strong id="blockedCount">0</strong></div>
       <div class="stat"><small>طلبات قيد المراجعة</small><strong id="pendingCount">0</strong></div>
       <div class="stat"><small>إجمالي الطلبات</small><strong id="ordersCount">0</strong></div>
@@ -80,7 +81,13 @@
 
     <div class="layout admin-layout">
       <section class="admin-main-column">
-        <div class="section-title compact"><div><small>الإدارة اليومية</small><h2>التشغيل والكباتن</h2></div></div>
+        <div class="section-title compact"><div><small>الإدارة اليومية</small><h2>الخدمات والتشغيل والكباتن</h2></div></div>
+        <div class="card admin-panel">
+          <div class="card-heading"><h2>طلبات مزودي الخدمات</h2><span class="status-chip pending">اعتماد مستقل</span></div>
+          <p class="muted">راجع بيانات النشاط ثم اقبل الطلب لفتح لوحة الخدمات الخاصة بالحساب.</p>
+          <div class="orders" id="serviceApplicationsList"></div>
+        </div>
+
         <div class="card admin-panel">
           <div class="card-heading"><h2>طلبات انضمام الكباتن</h2><span class="status-chip pending">تحتاج مراجعة</span></div>
           <div class="orders" id="applicationsList"></div>
@@ -110,14 +117,14 @@
         </div>
         <div class="card">
           <h3>مبدأ الصلاحيات</h3>
-          <p class="muted">العميل يرى طلباته فقط، والكابتن المعتمد يرى الطلبات المتاحة، والمدير يدير النظام.</p>
+          <p class="muted">العميل يرى طلباته، والكابتن يعمل من بوابته، ومزود الخدمة لا يدخل لوحته الخاصة إلا بعد اعتماد الإدارة.</p>
         </div>
       </aside>
     </div>
   </main>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./admin.js"></script>
-  <script src="./pwa.js?v=33"></script>
+  <script type="module" src="./admin.js?v=34"></script>
+  <script src="./pwa.js?v=34"></script>
 </body>
 </html>

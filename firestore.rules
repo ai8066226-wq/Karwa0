@@ -8,6 +8,9 @@ service cloud.firestore { match /databases/{database}/documents {
  function admin(){return signed()&&role()=='admin';}
  function driver(){return signed()&&role()=='driver';}
  function customer(){return signed()&&role()=='customer';}
+ function serviceApplicant(){return signed()&&role()=='serviceApplicant';}
+ function serviceProvider(){return signed()&&role()=='serviceProvider';}
+ function validServiceCategory(value){return value in ['restaurant','grocery','retail','maintenance','home','health','other'];}
  match /users/{uid}{
    allow create:if own(uid)&&(request.resource.data.role=='customer'||request.resource.data.role=='driverApplicant'||request.resource.data.role=='serviceApplicant');
    allow read:if own(uid)||admin();
@@ -103,21 +106,86 @@ service cloud.firestore { match /databases/{database}/documents {
  match /authRateLimits/{id}{allow read,write:if false;}
  match /safetyEvents/{id}{allow read:if admin()||(signed()&&(resource.data.reportedBy==request.auth.uid));allow write:if false;}
 
+ match /serviceApplications/{uid}{
+   function validApplication(data){return data.userId==uid
+     && data.ownerName is string && data.ownerName.size()>=2 && data.ownerName.size()<=80
+     && data.businessName is string && data.businessName.size()>=2 && data.businessName.size()<=80
+     && validServiceCategory(data.category)
+     && data.phone is string && data.phone.size()>=8 && data.phone.size()<=20
+     && data.email is string && data.email.size()>=3 && data.email.size()<=160
+     && data.city is string && data.city.size()>=2 && data.city.size()<=50
+     && data.address is string && data.address.size()>=3 && data.address.size()<=160
+     && data.get('description','') is string && data.get('description','').size()<=500
+     && data.serviceType=='other';}
+   allow create:if own(uid)
+     && getAfter(/databases/$(database)/documents/users/$(uid)).data.get('role',null)=='serviceApplicant'
+     && request.resource.data.status=='pending'
+     && validApplication(request.resource.data)
+     && request.resource.data.keys().hasOnly(['userId','ownerName','businessName','category','serviceType','phone','email','city','address','description','status','reviewNote','submittedAt','updatedAt']);
+   allow read:if own(uid)||admin();
+   allow update:if admin()||(own(uid)
+     && serviceApplicant()
+     && resource.data.status!='approved'
+     && request.resource.data.status=='pending'
+     && validApplication(request.resource.data)
+     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ownerName','businessName','category','phone','email','city','address','description','status','reviewNote','resubmittedAt','updatedAt']));
+   allow delete:if admin();
+ }
+
+ match /serviceProfiles/{uid}{
+   function validProfile(data){return data.ownerId==uid
+     && data.businessName is string && data.businessName.size()>=2 && data.businessName.size()<=80
+     && validServiceCategory(data.category)
+     && data.phone is string && data.phone.size()>=8 && data.phone.size()<=20
+     && data.city is string && data.city.size()<=50
+     && data.address is string && data.address.size()>=3 && data.address.size()<=160
+     && data.get('description','') is string && data.get('description','').size()<=500
+     && data.get('items',[]) is list && data.get('items',[]).size()<=50
+     && data.active is bool
+     && data.approvalStatus=='approved';}
+   allow read:if admin()||own(uid)||(signed()&&resource.data.active==true&&resource.data.approvalStatus=='approved');
+   allow create:if admin()||(own(uid)&&serviceProvider()&&validProfile(request.resource.data));
+   allow update:if admin()||(own(uid)
+     && serviceProvider()
+     && validProfile(request.resource.data)
+     && request.resource.data.ownerId==resource.data.ownerId
+     && request.resource.data.category==resource.data.category
+     && request.resource.data.approvalStatus==resource.data.approvalStatus
+     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['businessName','phone','city','address','description','location','items','active','updatedAt']));
+   allow delete:if admin();
+ }
+
  match /restaurants/{id}{
-   allow read:if admin() || (signed() && resource.data.ownerId==request.auth.uid) || (signed() && resource.data.active==true);
-   allow create:if signed()
+   allow read:if admin() || own(id) || (signed() && resource.data.ownerId==request.auth.uid) || (signed() && resource.data.active==true);
+   allow create:if admin() || (signed()
      && request.resource.data.ownerId==request.auth.uid
-     && exists(/databases/$(database)/documents/driverApplications/$(request.auth.uid))
-     && get(/databases/$(database)/documents/driverApplications/$(request.auth.uid)).data.get('serviceType','')=='other' 
-     && request.resource.data.active==false
+     && serviceProvider()
+     && getAfter(/databases/$(database)/documents/serviceProfiles/$(request.auth.uid)).data.get('category','')=='restaurant'
+     && getAfter(/databases/$(database)/documents/serviceProfiles/$(request.auth.uid)).data.get('approvalStatus','')=='approved'
+     && request.resource.data.active is bool
+     && request.resource.data.approvalStatus=='approved'
      && request.resource.data.name is string && request.resource.data.name.size()>=2 && request.resource.data.name.size()<=80
      && request.resource.data.address is string && request.resource.data.address.size()>=3 && request.resource.data.address.size()<=160
      && request.resource.data.phone is string && request.resource.data.phone.size()>=8 && request.resource.data.phone.size()<=20
      && request.resource.data.location is map
      && request.resource.data.location.latitude is number && request.resource.data.location.latitude>=-90 && request.resource.data.location.latitude<=90
      && request.resource.data.location.longitude is number && request.resource.data.location.longitude>=-180 && request.resource.data.location.longitude<=180
-     && request.resource.data.meals is list && request.resource.data.meals.size()>0 && request.resource.data.meals.size()<=30;
-   allow update:if admin() || (signed() && resource.data.ownerId==request.auth.uid && request.resource.data.ownerId==request.auth.uid && request.resource.data.active==resource.data.active && request.resource.data.get('approvalStatus','pending')==resource.data.get('approvalStatus','pending') && get(/databases/$(database)/documents/driverApplications/$(request.auth.uid)).data.get('serviceType','')=='other');
+     && request.resource.data.meals is list && request.resource.data.meals.size()>0 && request.resource.data.meals.size()<=50);
+   allow update:if admin() || (signed()
+     && resource.data.ownerId==request.auth.uid
+     && request.resource.data.ownerId==request.auth.uid
+     && serviceProvider()
+     && get(/databases/$(database)/documents/serviceProfiles/$(request.auth.uid)).data.get('category','')=='restaurant'
+     && get(/databases/$(database)/documents/serviceProfiles/$(request.auth.uid)).data.get('approvalStatus','')=='approved'
+     && request.resource.data.approvalStatus==resource.data.approvalStatus
+     && request.resource.data.name is string && request.resource.data.name.size()>=2 && request.resource.data.name.size()<=80
+     && request.resource.data.address is string && request.resource.data.address.size()>=3 && request.resource.data.address.size()<=160
+     && request.resource.data.phone is string && request.resource.data.phone.size()>=8 && request.resource.data.phone.size()<=20
+     && request.resource.data.location is map
+     && request.resource.data.location.latitude is number && request.resource.data.location.latitude>=-90 && request.resource.data.location.latitude<=90
+     && request.resource.data.location.longitude is number && request.resource.data.location.longitude>=-180 && request.resource.data.location.longitude<=180
+     && request.resource.data.meals is list && request.resource.data.meals.size()>0 && request.resource.data.meals.size()<=50
+     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','address','phone','location','meals','active','updatedAt']));
    allow delete:if admin();
  }
  match /roadReports/{id}{

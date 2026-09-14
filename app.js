@@ -566,6 +566,10 @@ document.querySelectorAll(".role-auth-action").forEach(button => {
   button.addEventListener("click", () => {
     const role = button.dataset.role || "customer";
     const mode = button.dataset.mode || "login";
+    if (role === "serviceApplicant") {
+      window.location.assign(`./services.html?mode=${mode}`);
+      return;
+    }
     byId("authRole").value = role;
     const meta = role === "customer" ? ["👤","عميل"] : role === "driverApplicant" ? ["🚕","كابتن"] : ["🧰","خدمات أخرى"];
     byId("selectedRoleIcon").textContent = meta[0];
