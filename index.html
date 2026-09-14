@@ -2032,70 +2032,23 @@ body{color:#12243f;background:radial-gradient(circle at 85% 0,rgba(27,174,158,.1
               </div>
 
               <div class="service-panel" id="foodPanel">
-                <div class="panel-heading">
-                  <div><h2>مطاعم ووجبات</h2><small>اختر مطعمًا ثم اضغط على الوجبة لعرض التفاصيل والسعر</small></div>
-                  
-                </div>
-
-                <div class="restaurant-marketplace" id="restaurantMarketplace"><div class="restaurant-empty">جاري تحميل المطاعم…</div></div>
-
-                <div class="panel-heading food-legacy-heading"><h2>وجبات كروة السريعة</h2><button class="text-button" id="foodFilter">الأسرع توصيلًا</button></div>
-                <div class="food-list">
-                  <article class="food-item">
-                    <div class="food-icon">🍔</div>
-                    <h3>برغر بغداد</h3>
-                    <p>برغر لحم مع بطاطا • 25 دقيقة</p>
-                    <div class="food-bottom">
-                      <strong>9,500 د.ع</strong>
-                      <button class="add-food-button" data-food="برغر بغداد" data-price="9500">+</button>
-                    </div>
-                  </article>
-
-                  <article class="food-item">
-                    <div class="food-icon">🥙</div>
-                    <h3>شاورما الدار</h3>
-                    <p>وجبة شاورما عربي • 20 دقيقة</p>
-                    <div class="food-bottom">
-                      <strong>7,000 د.ع</strong>
-                      <button class="add-food-button" data-food="شاورما الدار" data-price="7000">+</button>
-                    </div>
-                  </article>
-
-                  <article class="food-item">
-                    <div class="food-icon">🍕</div>
-                    <h3>بيتزا التنور</h3>
-                    <p>بيتزا جبن وسط • 30 دقيقة</p>
-                    <div class="food-bottom">
-                      <strong>12,000 د.ع</strong>
-                      <button class="add-food-button" data-food="بيتزا التنور" data-price="12000">+</button>
-                    </div>
-                  </article>
-
-                  <article class="food-item">
-                    <div class="food-icon">🍗</div>
-                    <h3>دجاج الكرخ</h3>
-                    <p>نصف دجاجة مع رز • 28 دقيقة</p>
-                    <div class="food-bottom">
-                      <strong>10,500 د.ع</strong>
-                      <button class="add-food-button" data-food="دجاج الكرخ" data-price="10500">+</button>
-                    </div>
-                  </article>
-                </div>
-
-                <div class="meal-detail-backdrop" id="mealDetailBackdrop" hidden>
-                  <div class="meal-detail-card" role="dialog" aria-modal="true" aria-labelledby="mealDetailTitle">
-                    <button class="meal-detail-close" id="closeMealDetail" type="button" aria-label="إغلاق">×</button>
-                    <div class="meal-detail-icon" id="mealDetailIcon">🍽️</div><small id="mealDetailRestaurant"></small><h3 id="mealDetailTitle"></h3><p id="mealDetailDescription"></p>
-                    <div class="meal-detail-price" id="mealDetailPrice"></div><button class="primary-button" id="addDetailedMeal" type="button">إضافة إلى الطلب</button>
+                <div class="panel-heading"><div><h2>طلب الطعام</h2><small>اختر «طعام»، ثم المطعم المعلن، ثم الوجبة لعرض تفاصيلها وإرسال الطلب للمطعم.</small></div></div>
+                <div class="food-flow" id="foodFlow">
+                  <button type="button" class="food-category-card" id="openFoodRestaurants"><span class="food-category-icon">🍽️</span><span><strong>طعام</strong><small>عرض المطاعم المعتمدة والمعلنة</small></span><span class="food-category-arrow">‹</span></button>
+                  <div id="foodRestaurantsStep" hidden>
+                    <div class="food-step-head"><button type="button" class="text-button" id="backToFoodCategory">رجوع</button><div><strong>المطاعم المعلنة</strong><small>اختر مطعمًا لعرض قائمة الأكلات</small></div></div>
+                    <div class="restaurant-marketplace" id="restaurantMarketplace"><div class="restaurant-empty">جاري تحميل المطاعم…</div></div>
                   </div>
-                </div>
-
-                <div class="cart-bar" id="cartBar">
-                  <div>
-                    <strong id="cartCount"></strong>
-                    <small id="cartPrice"></small>
+                  <div id="foodMealsStep" hidden>
+                    <div class="food-step-head"><button type="button" class="text-button" id="backToRestaurants">رجوع للمطاعم</button><div><strong id="selectedRestaurantTitle">المطعم</strong><small id="selectedRestaurantMeta"></small></div></div>
+                    <div class="restaurant-meals" id="selectedRestaurantMeals"></div>
                   </div>
-                  <button class="primary-button" id="orderFood">إتمام الطلب</button>
+                  <div class="field food-delivery-address" id="foodDeliveryAddress" hidden>
+                    <label for="foodCustomerAddress">عنوان توصيل الطلب</label>
+                    <input id="foodCustomerAddress" maxlength="180" placeholder="اكتب عنوان العميل بشكل واضح">
+                    <button class="text-button" id="useFoodLocation" type="button">📍 تحديد موقعي للتوصيل</button>
+                    <small id="foodLocationStatus">يجب تحديد GPS حتى يظهر موقع العميل للكابتن.</small>
+                  </div>
                 </div>
               </div>
 
