@@ -541,16 +541,26 @@ function renderProviderRequests(requests) {
   byId("providerRequestsList").innerHTML = requests.length
     ? requests.map(request => {
         const status = request.status || "pending";
+        const deliveryAvailable = request.itemDeliveryAvailable === true || request.deliveryRequested === true || Number(request.itemDeliveryFee || request.deliveryFee || 0) > 0;
+        const deliveryStatus = request.deliveryStatus || (request.deliveryRequested ? "awaitingCaptain" : "notRequested");
         const actions = status === "pending"
-          ? `<div class="request-actions"><button class="button primary" type="button" data-request-action="accepted" data-request-id="${request.firestoreId}">قبول الطلب</button><button class="button danger" type="button" data-request-action="rejected" data-request-id="${request.firestoreId}">رفض</button></div>`
-          : status === "accepted"
+          ? `<div class="request-actions"><button class="button primary" type="button" data-request-action="accepted" data-request-id="${request.firestoreId}">موافقة على الحاجة</button><button class="button danger" type="button" data-request-action="rejected" data-request-id="${request.firestoreId}">رفض</button></div>`
+          : status === "accepted" && deliveryStatus !== "awaitingCustomerChoice"
             ? `<div class="request-actions"><button class="button primary" type="button" data-request-action="completed" data-request-id="${request.firestoreId}">تم إكمال الخدمة</button></div>`
             : "";
+        let deliveryText = "🏪 استلام من النشاط";
+        if (status === "pending") deliveryText = request.providerCategory === "restaurant"
+          ? (request.deliveryRequested ? `🚚 العميل اختار التوصيل • ${money(request.deliveryFee || 0)}` : "🏪 العميل اختار الاستلام من المطعم")
+          : (deliveryAvailable ? `🚚 التوصيل متاح (${money(request.itemDeliveryFee || request.deliveryFee || 0)}) — بعد موافقتك يختار العميل التوصيل أو الاستلام` : "🏪 هذه الخدمة للاستلام من النشاط");
+        else if (deliveryStatus === "awaitingCustomerChoice") deliveryText = "⏳ بانتظار اختيار العميل: توصيل أو استلام";
+        else if (deliveryStatus === "awaitingCaptain") deliveryText = `🚚 تم إرسال التوصيل إلى كباتن التوصيل المطابقين ضمن 10 كم • ${money(request.deliveryFee)}`;
+        else if (deliveryStatus === "notRequested") deliveryText = "🏪 اختار العميل الاستلام من النشاط";
+        else if (deliveryStatus === "notAvailable") deliveryText = "🏪 التوصيل غير متاح لهذه الخدمة";
         return `<article class="request-card">
           <div class="request-card-head"><div><small>${escapeHtml(request.providerName || "نشاطك")}</small><h3>${escapeHtml(request.itemName || "طلب خدمة")}</h3></div><span class="status ${status === "completed" || status === "accepted" ? "ok" : status === "rejected" || status === "cancelled" ? "bad" : ""}">${escapeHtml(requestStatusLabels[status] || status)}</span></div>
           <p>${escapeHtml(request.requestText || "بدون تفاصيل إضافية")}</p>
-          <div class="request-meta"><span>العميل: ${escapeHtml(request.customerName || "عميل كروة")}</span><span>الكمية: ${Number(request.quantity || 1).toLocaleString("ar-IQ")} ${escapeHtml(itemUnitLabels[request.itemUnit] || itemUnitLabels.item)}</span><span>سعر الوحدة: ${money(request.unitPrice || request.itemPrice)}</span><span>المجموع: ${money(request.totalPrice || request.itemPrice)}</span></div>
-          <div class="request-meta"><span>${request.deliveryRequested ? `🚚 توصيل إلى: ${escapeHtml(request.customerAddress || "غير محدد")} • ${money(request.deliveryFee)}` : "🏪 استلام من النشاط بدون توصيل"}</span>${request.deliveryStatus === "awaitingCaptain" ? '<span>تم إرسال التوصيل لكباتن النطاق</span>' : ""}</div>
+          <div class="request-meta"><span>العميل: ${escapeHtml(request.customerName || "عميل كروة")}</span><span>الكمية: ${Number(request.quantity || 1).toLocaleString("ar-IQ")} ${escapeHtml(itemUnitLabels[request.itemUnit] || itemUnitLabels.item)}</span><span>سعر الوحدة: ${money(request.unitPrice || request.itemPrice)}</span><span>قيمة الحاجة: ${money(request.subtotal || request.itemPrice)}</span></div>
+          <div class="request-meta"><span>${deliveryText}</span></div>
           ${request.providerNote ? `<p class="notice bad" style="margin-top:10px">${escapeHtml(request.providerNote)}</p>` : ""}
           ${actions}
         </article>`;
@@ -571,63 +581,58 @@ byId("providerRequestsList").addEventListener("click", async event => {
   setBusy(button, true);
   try {
     if (nextStatus === "accepted") {
-      const batch = writeBatch(db);
-      const requestRef = doc(db, "serviceRequests", request.firestoreId);
-      const requestUpdate = {
-        status: "accepted",
-        providerNote: "",
-        deliveryStatus: request.deliveryRequested ? "awaitingCaptain" : "notRequested",
-        deliveryOrderId: "",
-        statusUpdatedAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      };
-      if (request.deliveryRequested) {
-        if (!request.providerLocation || !request.customerLocation) return toast("موقع النشاط والعميل مطلوبان لإرسال طلب التوصيل.");
-        const orderRef = doc(collection(db, "orders"));
-        requestUpdate.deliveryOrderId = orderRef.id;
-        const deliveryFee = Math.max(0, Number(request.deliveryFee || 0));
-        batch.set(orderRef, {
-          id: "KW-D" + String(Date.now()).slice(-6),
-          userId: request.customerId,
-          providerId: currentUser.uid,
-          serviceRequestId: request.firestoreId,
-          type: "serviceDelivery",
-          title: `توصيل ${request.itemName} من ${request.providerName}`,
-          route: `${request.providerAddress} ← ${request.customerAddress}`,
-          price: deliveryFee,
-          serviceTotal: Number(request.totalPrice || 0),
-          payment: "نقدًا",
-          driverId: null,
-          driverName: "",
-          driverPhone: "",
-          assignmentStatus: "available",
-          pickupLocation: request.providerLocation,
-          destinationLocation: request.customerLocation,
-          serviceCity: request.providerCity || currentProfile?.city || "",
-          requiredDriverService: "delivery",
-          distanceKm: 0,
-          durationMin: 0,
-          routeSource: "serviceDelivery",
-          commissionRate: 0.15,
-          commissionAmount: Math.round(deliveryFee * 0.15),
-          driverEarnings: deliveryFee - Math.round(deliveryFee * 0.15),
-          tripOtp: String(Math.floor(1000 + Math.random() * 9000)),
-          paymentStatus: "pending",
-          acceptedAt: null,
-          arrivedAt: null,
-          startedAt: null,
-          completedAt: null,
-          cancellationReason: "",
-          statusIndex: 0,
-          cancelled: false,
-          createdAt: serverTimestamp(),
-          createdAtISO: new Date().toISOString(),
+      if (request.providerCategory === "restaurant") {
+        const batch = writeBatch(db);
+        const requestRef = doc(db, "serviceRequests", request.firestoreId);
+        const requestUpdate = {
+          status: "accepted",
+          providerNote: "",
+          deliveryStatus: request.deliveryRequested ? "awaitingCaptain" : "notRequested",
+          deliveryOrderId: "",
+          statusUpdatedAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        };
+        if (request.deliveryRequested) {
+          if (!request.providerLocation || !request.customerLocation) return toast("موقع المطعم والعميل مطلوبان لإرسال طلب التوصيل.");
+          const orderRef = doc(collection(db, "orders"));
+          requestUpdate.deliveryOrderId = orderRef.id;
+          const deliveryFee = Math.max(0, Number(request.deliveryFee || 0));
+          batch.set(orderRef, {
+            id: "KW-D" + String(Date.now()).slice(-6),
+            userId: request.customerId,
+            providerId: currentUser.uid,
+            serviceRequestId: request.firestoreId,
+            type: "serviceDelivery",
+            title: `توصيل ${request.itemName} من ${request.providerName}`,
+            route: `${request.providerAddress} ← ${request.customerAddress}`,
+            price: deliveryFee,
+            serviceTotal: Number(request.totalPrice || 0),
+            payment: "نقدًا",
+            driverId: null, driverName: "", driverPhone: "", assignmentStatus: "available",
+            pickupLocation: request.providerLocation, destinationLocation: request.customerLocation,
+            serviceCity: request.providerCity || currentProfile?.city || "", requiredDriverService: "delivery",
+            distanceKm: 0, durationMin: 0, routeSource: "serviceDelivery",
+            commissionRate: 0.15, commissionAmount: Math.round(deliveryFee * 0.15), driverEarnings: deliveryFee - Math.round(deliveryFee * 0.15),
+            tripOtp: String(Math.floor(1000 + Math.random() * 9000)), paymentStatus: "pending",
+            acceptedAt: null, arrivedAt: null, startedAt: null, completedAt: null, cancellationReason: "",
+            statusIndex: 0, cancelled: false, createdAt: serverTimestamp(), createdAtISO: new Date().toISOString(), updatedAt: serverTimestamp()
+          });
+        }
+        batch.update(requestRef, requestUpdate);
+        await batch.commit();
+        toast(request.deliveryRequested ? "تمت الموافقة وإرسال التوصيل لكباتن التوصيل المطابقين" : "تم قبول طلب الطعام للاستلام من المطعم");
+      } else {
+        const deliveryAvailable = request.itemDeliveryAvailable === true;
+        await updateDoc(doc(db, "serviceRequests", request.firestoreId), {
+          status: "accepted",
+          providerNote: "",
+          deliveryStatus: deliveryAvailable ? "awaitingCustomerChoice" : "notRequested",
+          deliveryOrderId: "",
+          statusUpdatedAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
+        toast(deliveryAvailable ? "تمت الموافقة. ينتظر النظام الآن اختيار العميل للتوصيل أو الاستلام." : "تم قبول الطلب للاستلام من النشاط");
       }
-      batch.update(requestRef, requestUpdate);
-      await batch.commit();
-      toast(request.deliveryRequested ? "تم القبول وإرسال التوصيل لكباتن النطاق" : "تم قبول الطلب للاستلام من النشاط");
     } else {
       await updateDoc(doc(db, "serviceRequests", request.firestoreId), {
         status: nextStatus,

@@ -104,6 +104,7 @@ const state = {
   serviceProfiles: [],
   selectedServiceProfile: null,
   serviceRequests: [],
+  serviceDeliveryLocations: {},
   unsubscribeServiceProfiles: null,
   unsubscribeServiceRequests: null,
   orders: [],
@@ -1060,7 +1061,7 @@ function renderOtherServices() {
         <p>${restaurantSafeText(profile.description || "خدمة موثقة ومتاحة للطلب عبر كروة.")}</p>
         <div class="other-service-location"><span>📍 ${restaurantSafeText(profile.address || profile.city || "العنوان غير محدد")}</span><span>GPS: ${restaurantSafeText(serviceLocationText(profile.location))}</span></div>
         <div class="other-service-actions"><button class="secondary-button" type="button" data-show-service-location="${restaurantSafeText(profile.firestoreId)}" ${locationAvailable ? "" : "disabled"}>عرض موقع النشاط</button><span>${items.length ? `${items.length} خدمة/منتج` : "لا توجد عناصر منشورة"}</span></div>
-        <div class="other-item-grid">${items.map((item, index) => `<article class="other-item-card"><div class="other-item-picture">${icon}</div><div class="other-item-body"><h4>${restaurantSafeText(item.name)}</h4><p>${restaurantSafeText(item.description || "لا توجد تفاصيل إضافية.")}</p><div class="other-item-price"><strong>${formatMoney(item.price)}</strong><small>لكل ${restaurantSafeText(otherItemUnitLabels[item.unit])}</small></div><small>${item.deliveryAvailable ? `التوصيل متاح مقابل ${formatMoney(item.deliveryFee)}` : "استلام من النشاط"}</small><button type="button" data-select-service="${restaurantSafeText(profile.firestoreId)}" data-item-index="${index}">اختيار وحساب السعر</button></div></article>`).join("") || '<div class="restaurant-empty">لم ينشر صاحب النشاط خدمات أو وجبات بعد.</div>'}</div>
+        <div class="other-item-grid">${items.map((item, index) => `<article class="other-item-card"><div class="other-item-picture">${icon}</div><div class="other-item-body"><h4>${restaurantSafeText(item.name)}</h4><p>${restaurantSafeText(item.description || "لا توجد تفاصيل إضافية.")}</p><div class="other-item-price"><strong>${formatMoney(item.price)}</strong><small>لكل ${restaurantSafeText(otherItemUnitLabels[item.unit])}</small></div><small>${item.deliveryAvailable ? `يمكن اختيار التوصيل بعد موافقة النشاط • ${formatMoney(item.deliveryFee)}` : "استلام من النشاط بعد الموافقة"}</small><button type="button" data-select-service="${restaurantSafeText(profile.firestoreId)}" data-item-index="${index}">عرض التفاصيل واختيار الحاجة</button></div></article>`).join("") || '<div class="restaurant-empty">لم ينشر صاحب النشاط خدمات أو وجبات بعد.</div>'}</div>
       </div>
     </article>`;
   }).join("");
@@ -1072,36 +1073,33 @@ function updateSelectedServicePrice() {
   if (!select || !profile) return;
   const item = select.value === "" ? null : normalizedClientItem(profile.items?.[Number(select.value)]);
   const quantityInput = byId("otherServiceQuantity");
+  const deliveryNote = byId("selectedServiceDeliveryNote");
   if (!item) {
-    byId("selectedItemImage").textContent = "🍽️";
+    byId("selectedItemImage").textContent = "🧰";
     byId("selectedItemName").textContent = "اختر خدمة لعرض التفاصيل";
     byId("selectedItemDescription").textContent = "سيظهر وصف الخدمة وسعر الوحدة هنا.";
     byId("selectedServicePrice").textContent = "—";
-    byId("customerDeliveryChoice").hidden = true;
-    byId("otherDeliveryRequested").checked = false;
-    byId("otherDeliveryDetails").hidden = true;
     byId("otherServiceGrandTotal").textContent = formatMoney(0);
     byId("otherServiceTotalBreakdown").textContent = "—";
     byId("bookOtherService").disabled = true;
+    if (deliveryNote) deliveryNote.innerHTML = "<b>اختيار التوصيل بعد الموافقة</b><small>اختر خدمة أولًا لمعرفة إمكانية التوصيل.</small>";
     return;
   }
-  byId("selectedItemImage").textContent = "🍽️";
+  byId("selectedItemImage").textContent = professionIcon(profile) || "🧰";
   byId("selectedItemName").textContent = item.name;
   byId("selectedItemDescription").textContent = item.description || "لا توجد تفاصيل إضافية.";
   byId("selectedServicePrice").textContent = `${formatMoney(item.price)} لكل ${otherItemUnitLabels[item.unit]}`;
   byId("otherServiceQuantityLabel").textContent = item.unit === "kg" ? "الوزن المطلوب (كغم)" : item.unit === "person" ? "عدد النفرات" : "الكمية";
   quantityInput.min = item.unit === "kg" ? "0.25" : "1";
   quantityInput.step = item.unit === "kg" ? "0.25" : "1";
-  if (!Number.isFinite(Number(quantityInput.value)) || Number(quantityInput.value) < Number(quantityInput.min)) quantityInput.value = item.unit === "kg" ? "1" : "1";
-  byId("customerDeliveryChoice").hidden = !item.deliveryAvailable;
-  if (!item.deliveryAvailable) byId("otherDeliveryRequested").checked = false;
-  byId("otherDeliveryFeeLabel").textContent = item.deliveryAvailable ? `أجرة التوصيل ${formatMoney(item.deliveryFee)}` : "التوصيل غير متاح";
-  byId("otherDeliveryDetails").hidden = !byId("otherDeliveryRequested").checked;
+  if (!Number.isFinite(Number(quantityInput.value)) || Number(quantityInput.value) < Number(quantityInput.min)) quantityInput.value = "1";
+  if (deliveryNote) deliveryNote.innerHTML = item.deliveryAvailable
+    ? `<b>التوصيل متاح بعد موافقة النشاط</b><small>بعد الموافقة تختار التوصيل مقابل ${formatMoney(item.deliveryFee)} أو الاستلام من النشاط.</small>`
+    : `<b>الاستلام من النشاط</b><small>هذه الخدمة لا تتضمن توصيلًا. بعد الموافقة تستلمها من النشاط.</small>`;
   const quantity = Math.max(Number(quantityInput.min), Number(quantityInput.value || 1));
   const subtotal = Math.round(item.price * quantity);
-  const deliveryFee = byId("otherDeliveryRequested").checked ? item.deliveryFee : 0;
-  byId("otherServiceTotalBreakdown").textContent = `${quantity.toLocaleString("ar-IQ")} ${otherItemUnitLabels[item.unit]} × ${formatMoney(item.price)}${deliveryFee ? ` + توصيل ${formatMoney(deliveryFee)}` : ""}`;
-  byId("otherServiceGrandTotal").textContent = formatMoney(subtotal + deliveryFee);
+  byId("otherServiceTotalBreakdown").textContent = `${quantity.toLocaleString("ar-IQ")} ${otherItemUnitLabels[item.unit]} × ${formatMoney(item.price)}`;
+  byId("otherServiceGrandTotal").textContent = formatMoney(subtotal);
   byId("bookOtherService").disabled = false;
 }
 
@@ -1120,8 +1118,6 @@ function selectServiceProfile(profile, itemIndex = 0) {
   ).join("") || '<option value="">لا توجد خدمات منشورة</option>';
   byId("otherServiceItem").value = items[itemIndex] ? String(itemIndex) : (items.length ? "0" : "");
   byId("otherServiceQuantity").value = "1";
-  byId("otherDeliveryRequested").checked = false;
-  byId("otherCustomerAddress").value = "";
   byId("selectedServiceBox").hidden = false;
   updateSelectedServicePrice();
   byId("selectedServiceBox").scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -1184,23 +1180,43 @@ function renderMyServiceRequests() {
     const [statusLabel, statusClass] = otherRequestStatuses[request.status] || otherRequestStatuses.pending;
     const date = request.createdAt?.toDate?.();
     const deliveryOrder = state.orders.find(order => order.firestoreId === request.deliveryOrderId);
-    const deliveryLabel = !request.deliveryRequested
-      ? "استلام من النشاط"
-      : request.status === "pending"
-        ? "التوصيل ينتظر موافقة النشاط"
-        : request.status === "rejected" || request.status === "cancelled"
-          ? "لم يُنشأ طلب توصيل"
-          : deliveryOrder?.cancelled
-            ? "طلب التوصيل ملغي"
-            : deliveryOrder?.driverId
-              ? `${orderStatuses[Number(deliveryOrder.statusIndex || 0)] || "مع كابتن التوصيل"}${deliveryOrder.driverName ? ` • ${deliveryOrder.driverName}` : ""}`
-              : "يبحث عن كابتن توصيل داخل النطاق";
-    return `<article class="my-service-request-card">
+    const isRestaurantRequest = request.providerCategory === "restaurant";
+    const deliveryAvailable = request.itemDeliveryAvailable === true || request.deliveryRequested === true || Number(request.itemDeliveryFee || request.deliveryFee || 0) > 0;
+    const deliveryStatus = request.deliveryStatus || (request.deliveryRequested ? "awaitingCaptain" : "notRequested");
+    let deliveryLabel = "استلام من النشاط";
+    if (request.status === "pending") deliveryLabel = isRestaurantRequest
+      ? (request.deliveryRequested ? "التوصيل ينتظر موافقة المطعم" : "تم اختيار الاستلام من المطعم")
+      : (deliveryAvailable ? "بعد موافقة النشاط ستختار التوصيل أو الاستلام" : "هذه الخدمة للاستلام من النشاط");
+    else if (request.status === "rejected" || request.status === "cancelled") deliveryLabel = "لم يتم إنشاء طلب توصيل";
+    else if (deliveryStatus === "awaitingCustomerChoice") deliveryLabel = "تمت موافقة النشاط — اختر الآن التوصيل أو الاستلام";
+    else if (deliveryStatus === "awaitingCaptain") {
+      deliveryLabel = deliveryOrder?.cancelled
+        ? "طلب التوصيل ملغي"
+        : deliveryOrder?.driverId
+          ? `${orderStatuses[Number(deliveryOrder.statusIndex || 0)] || "مع كابتن التوصيل"}${deliveryOrder.driverName ? ` • ${deliveryOrder.driverName}` : ""}`
+          : "تم إرسال الطلب إلى كباتن التوصيل المطابقين داخل 10 كم";
+    } else if (deliveryStatus === "notAvailable") deliveryLabel = "التوصيل غير متاح لهذه الخدمة";
+    else if (deliveryStatus === "notRequested") deliveryLabel = "تم اختيار الاستلام من النشاط";
+
+    const choiceBox = request.status === "accepted" && deliveryStatus === "awaitingCustomerChoice" && deliveryAvailable
+      ? `<div class="service-delivery-choice-box">
+          <strong>✓ وافق النشاط على طلبك</strong>
+          <p>اختر طريقة استلام حاجتك. عند اختيار التوصيل سيُرسل الطلب فورًا إلى كابتن توصيل مؤهل ضمن 10 كم من موقع النشاط.</p>
+          <input data-service-delivery-address="${restaurantSafeText(request.firestoreId)}" maxlength="180" placeholder="عنوانك بالتفصيل: الحي، الشارع، أقرب نقطة دالة">
+          <button class="secondary-button" type="button" data-service-delivery-locate="${restaurantSafeText(request.firestoreId)}">📍 تحديد موقعي للتوصيل</button>
+          <small class="service-delivery-location-status ${validServiceLocation(state.serviceDeliveryLocations[request.firestoreId]) ? "ready" : ""}" data-service-delivery-location-status="${restaurantSafeText(request.firestoreId)}">${validServiceLocation(state.serviceDeliveryLocations[request.firestoreId]) ? "تم تحديد موقعك GPS ✓" : "حدد موقعك GPS قبل اختيار التوصيل"}</small>
+          <div class="service-delivery-choice-actions"><button class="primary-button" type="button" data-service-delivery-confirm="${restaurantSafeText(request.firestoreId)}">توصيل • ${formatMoney(request.itemDeliveryFee || request.deliveryFee || 0)}</button><button class="secondary-button" type="button" data-service-pickup-confirm="${restaurantSafeText(request.firestoreId)}">استلام من النشاط</button></div>
+        </div>`
+      : "";
+
+    const displayedTotal = isRestaurantRequest || deliveryStatus === "awaitingCaptain" ? Number(request.totalPrice || request.subtotal || 0) : Number(request.subtotal || request.totalPrice || request.itemPrice || 0);
+    return `<article class="my-service-request-card" data-service-request-card="${restaurantSafeText(request.firestoreId)}">
       <div class="service-request-head"><div><small>${restaurantSafeText(request.itemName || "طلب خدمة")}</small><h3>${restaurantSafeText(request.providerName || "مزود خدمة")}</h3></div><span class="service-request-status ${statusClass}">${statusLabel}</span></div>
       <p>${restaurantSafeText(request.requestText || "")}</p>
-      <div class="service-request-meta"><span>📍 ${restaurantSafeText(request.providerAddress || "العنوان غير محدد")}</span><span>${Number(request.quantity || 1).toLocaleString("ar-IQ")} ${restaurantSafeText(otherItemUnitLabels[request.itemUnit] || otherItemUnitLabels.item)}</span><span>سعر الوحدة ${formatMoney(request.unitPrice || request.itemPrice)}</span><span>الإجمالي ${formatMoney(request.totalPrice || request.itemPrice)}</span>${date ? `<span>${date.toLocaleDateString("ar-IQ")}</span>` : ""}</div>
-      <div class="service-provider-note">🚚 ${restaurantSafeText(deliveryLabel)}${request.deliveryRequested ? ` • أجرة التوصيل ${formatMoney(request.deliveryFee)}` : ""}</div>
+      <div class="service-request-meta"><span>📍 ${restaurantSafeText(request.providerAddress || "العنوان غير محدد")}</span><span>${Number(request.quantity || 1).toLocaleString("ar-IQ")} ${restaurantSafeText(otherItemUnitLabels[request.itemUnit] || otherItemUnitLabels.item)}</span><span>سعر الوحدة ${formatMoney(request.unitPrice || request.itemPrice)}</span><span>قيمة الطلب ${formatMoney(displayedTotal)}</span>${date ? `<span>${date.toLocaleDateString("ar-IQ")}</span>` : ""}</div>
+      <div class="service-provider-note">🚚 ${restaurantSafeText(deliveryLabel)}${deliveryStatus === "awaitingCaptain" ? ` • أجرة التوصيل ${formatMoney(request.deliveryFee)}` : ""}</div>
       ${request.providerNote ? `<div class="service-provider-note">ملاحظة المزود: ${restaurantSafeText(request.providerNote)}</div>` : ""}
+      ${choiceBox}
       ${request.status === "pending" ? `<button class="secondary-button danger-button" type="button" data-cancel-service-request="${restaurantSafeText(request.firestoreId)}">إلغاء الطلب</button>` : ""}
     </article>`;
   }).join("") : '<div class="restaurant-empty">لا توجد طلبات خدمات بعد.</div>';
@@ -1232,35 +1248,27 @@ byId("otherServicesMarketplace")?.addEventListener("click", event => {
 });
 byId("otherServiceItem")?.addEventListener("change", updateSelectedServicePrice);
 byId("otherServiceQuantity")?.addEventListener("input", updateSelectedServicePrice);
-byId("otherDeliveryRequested")?.addEventListener("change", updateSelectedServicePrice);
 byId("closeSelectedService")?.addEventListener("click", () => {
   state.selectedServiceProfile = null;
   byId("selectedServiceBox").hidden = true;
 });
 byId("locateSelectedService")?.addEventListener("click", () => focusServiceLocation(state.selectedServiceProfile));
-byId("useOtherCustomerLocation")?.addEventListener("click", () => locateUser(byId("otherCustomerAddress")));
 byId("bookOtherService")?.addEventListener("click", async event => {
   if (!requireUser()) return;
   const profile = state.selectedServiceProfile;
   if (!profile) return showToast("اختر مزود خدمة أولًا");
   const selectedValue = byId("otherServiceItem").value;
-  if (selectedValue === "") return showToast("اختر خدمة أو وجبة منشورة");
+  if (selectedValue === "") return showToast("اختر الخدمة التي تحتاجها");
   const itemIndex = Number(selectedValue);
   const item = normalizedClientItem(profile.items?.[itemIndex]);
   const quantity = Number(byId("otherServiceQuantity").value || 0);
-  const deliveryRequested = byId("otherDeliveryRequested").checked && item.deliveryAvailable;
   const requestText = byId("otherServiceRequest").value.trim() || `طلب ${item.name}`;
-  const customerAddress = deliveryRequested ? byId("otherCustomerAddress").value.trim() : "استلام من النشاط";
   const step = item.unit === "kg" ? 0.25 : 1;
   if (!Number.isFinite(quantity) || quantity < step || quantity > 100 || (item.unit !== "kg" && !Number.isInteger(quantity))) return showToast("أدخل كمية صحيحة بين الحد الأدنى و100");
-  if (deliveryRequested && customerAddress.length < 3) return showToast("اكتب عنوان التوصيل وحدد موقعك");
-  if (deliveryRequested && !validServiceLocation(state.customerLocation)) return showToast("استخدم زر تحديد موقعي حتى يصل الطلب إلى كابتن ضمن نطاقك");
   const unitPrice = Math.max(0, Number(item.price || 0));
   const subtotal = Math.round(unitPrice * quantity);
-  const deliveryFee = deliveryRequested ? Math.max(0, Number(item.deliveryFee || 0)) : 0;
-  const totalPrice = subtotal + deliveryFee;
   const button = event.currentTarget;
-  setButtonBusy(button, true, "جاري إرسال الطلب…");
+  setButtonBusy(button, true, "جاري إرسال الحاجة…");
   try {
     await addDoc(collection(db, "serviceRequests"), {
       customerId: state.user.uid,
@@ -1278,20 +1286,22 @@ byId("bookOtherService")?.addEventListener("click", async event => {
       unitPrice,
       itemPrice: unitPrice,
       subtotal,
-      deliveryRequested,
-      deliveryFee,
-      totalPrice,
-      deliveryStatus: deliveryRequested ? "pendingProvider" : "notRequested",
+      itemDeliveryAvailable: item.deliveryAvailable === true,
+      itemDeliveryFee: item.deliveryAvailable ? Math.max(0, Number(item.deliveryFee || 0)) : 0,
+      deliveryRequested: false,
+      deliveryFee: 0,
+      totalPrice: subtotal,
+      deliveryStatus: item.deliveryAvailable ? "pendingProvider" : "notAvailable",
       deliveryOrderId: "",
       requestText,
-      customerAddress,
-      customerLocation: deliveryRequested ? { ...state.customerLocation } : null,
+      customerAddress: "",
+      customerLocation: null,
       status: "pending",
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     });
     byId("otherServiceRequest").value = "";
-    showToast(`تم إرسال الطلب إلى ${profile.businessName} بقيمة ${formatMoney(totalPrice)}`);
+    showToast(`تم إرسال حاجتك إلى ${profile.businessName} بقيمة ${formatMoney(subtotal)}. بعد الموافقة تختار التوصيل إن كان متاحًا.`);
   } catch (error) {
     console.error(error);
     showToast("تعذر إرسال الطلب. تأكد من نشر قواعد Firestore الجديدة.");
@@ -1299,22 +1309,153 @@ byId("bookOtherService")?.addEventListener("click", async event => {
     setButtonBusy(button, false);
   }
 });
+
 byId("myServiceRequests")?.addEventListener("click", async event => {
-  const button = event.target.closest("[data-cancel-service-request]");
-  if (!button || !confirm("هل تريد إلغاء طلب الخدمة؟")) return;
-  setButtonBusy(button, true, "جاري الإلغاء…");
-  try {
-    await updateDoc(doc(db, "serviceRequests", button.dataset.cancelServiceRequest), {
-      status: "cancelled",
-      cancelledAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    });
-    showToast("تم إلغاء طلب الخدمة");
-  } catch (error) {
-    console.error(error);
-    showToast("تعذر إلغاء الطلب");
-  } finally {
-    setButtonBusy(button, false);
+  const cancelButton = event.target.closest("[data-cancel-service-request]");
+  const locateButton = event.target.closest("[data-service-delivery-locate]");
+  const deliveryButton = event.target.closest("[data-service-delivery-confirm]");
+  const pickupButton = event.target.closest("[data-service-pickup-confirm]");
+
+  if (cancelButton) {
+    if (!confirm("هل تريد إلغاء طلب الخدمة؟")) return;
+    setButtonBusy(cancelButton, true, "جاري الإلغاء…");
+    try {
+      await updateDoc(doc(db, "serviceRequests", cancelButton.dataset.cancelServiceRequest), {
+        status: "cancelled",
+        cancelledAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      showToast("تم إلغاء طلب الخدمة");
+    } catch (error) {
+      console.error(error);
+      showToast("تعذر إلغاء الطلب");
+    } finally {
+      setButtonBusy(cancelButton, false);
+    }
+    return;
+  }
+
+  const requestId = locateButton?.dataset.serviceDeliveryLocate || deliveryButton?.dataset.serviceDeliveryConfirm || pickupButton?.dataset.servicePickupConfirm;
+  if (!requestId) return;
+  const request = state.serviceRequests.find(item => item.firestoreId === requestId);
+  if (!request || request.status !== "accepted" || request.deliveryStatus !== "awaitingCustomerChoice") return showToast("هذا الطلب لم يعد ينتظر اختيار طريقة الاستلام.");
+
+  if (locateButton) {
+    if (!navigator.geolocation) return showToast("GPS غير مدعوم في هذا الجهاز");
+    setButtonBusy(locateButton, true, "جاري تحديد الموقع…");
+    navigator.geolocation.getCurrentPosition(position => {
+      const location = { latitude: position.coords.latitude, longitude: position.coords.longitude, accuracy: position.coords.accuracy };
+      state.serviceDeliveryLocations[requestId] = location;
+      setCustomerLocation(location.latitude, location.longitude);
+      const card = locateButton.closest("[data-service-request-card]");
+      const status = card?.querySelector("[data-service-delivery-location-status]");
+      if (status) { status.textContent = `تم تحديد موقعك GPS ✓ (${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)})`; status.classList.add("ready"); }
+      setButtonBusy(locateButton, false);
+      showToast("تم تحديد موقع التوصيل");
+    }, () => {
+      setButtonBusy(locateButton, false);
+      showToast("تعذر تحديد موقعك. اسمح للمتصفح باستخدام GPS.");
+    }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 });
+    return;
+  }
+
+  if (pickupButton) {
+    setButtonBusy(pickupButton, true, "جاري الحفظ…");
+    try {
+      await updateDoc(doc(db, "serviceRequests", requestId), {
+        deliveryRequested: false,
+        deliveryFee: 0,
+        totalPrice: Number(request.subtotal || 0),
+        deliveryStatus: "notRequested",
+        customerAddress: "استلام من النشاط",
+        customerLocation: null,
+        deliveryChosenAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      delete state.serviceDeliveryLocations[requestId];
+      showToast("تم اختيار الاستلام من النشاط");
+    } catch (error) {
+      console.error(error);
+      showToast("تعذر حفظ اختيار الاستلام");
+    } finally {
+      setButtonBusy(pickupButton, false);
+    }
+    return;
+  }
+
+  if (deliveryButton) {
+    const card = deliveryButton.closest("[data-service-request-card]");
+    const address = card?.querySelector("[data-service-delivery-address]")?.value.trim() || "";
+    const location = state.serviceDeliveryLocations[requestId] || null;
+    if (address.length < 3) return showToast("اكتب عنوان التوصيل بالتفصيل");
+    if (!validServiceLocation(location)) return showToast("حدد موقعك GPS قبل طلب التوصيل");
+    if (!validServiceLocation(request.providerLocation)) return showToast("موقع النشاط غير محدد؛ اطلب من مزود الخدمة تحديث موقعه");
+    const deliveryFee = Math.max(0, Number(request.itemDeliveryFee || 0));
+    const subtotal = Math.max(0, Number(request.subtotal || 0));
+    const totalPrice = subtotal + deliveryFee;
+    const orderRef = doc(collection(db, "orders"));
+    const createdAtISO = new Date().toISOString();
+    setButtonBusy(deliveryButton, true, "جاري إرسال التوصيل…");
+    try {
+      const batch = writeBatch(db);
+      batch.set(orderRef, {
+        id: "KW-D" + String(Date.now()).slice(-6),
+        userId: state.user.uid,
+        providerId: request.providerId,
+        serviceRequestId: requestId,
+        type: "serviceDelivery",
+        title: `توصيل ${request.itemName} من ${request.providerName}`,
+        route: `${request.providerAddress} ← ${address}`,
+        price: deliveryFee,
+        serviceTotal: totalPrice,
+        payment: "نقدًا",
+        driverId: null,
+        driverName: "",
+        driverPhone: "",
+        assignmentStatus: "available",
+        pickupLocation: { ...request.providerLocation },
+        destinationLocation: { latitude: Number(location.latitude), longitude: Number(location.longitude) },
+        serviceCity: request.providerCity || "",
+        requiredDriverService: "delivery",
+        distanceKm: 0,
+        durationMin: 0,
+        routeSource: "serviceDelivery",
+        commissionRate: COMMISSION_RATE,
+        commissionAmount: Math.round(deliveryFee * COMMISSION_RATE),
+        driverEarnings: deliveryFee - Math.round(deliveryFee * COMMISSION_RATE),
+        tripOtp: String(Math.floor(1000 + Math.random() * 9000)),
+        paymentStatus: "pending",
+        acceptedAt: null,
+        arrivedAt: null,
+        startedAt: null,
+        completedAt: null,
+        cancellationReason: "",
+        statusIndex: 0,
+        cancelled: false,
+        createdAt: serverTimestamp(),
+        createdAtISO,
+        updatedAt: serverTimestamp()
+      });
+      batch.update(doc(db, "serviceRequests", requestId), {
+        deliveryRequested: true,
+        deliveryFee,
+        totalPrice,
+        deliveryStatus: "awaitingCaptain",
+        deliveryOrderId: orderRef.id,
+        customerAddress: address,
+        customerLocation: { latitude: Number(location.latitude), longitude: Number(location.longitude) },
+        deliveryChosenAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      await batch.commit();
+      delete state.serviceDeliveryLocations[requestId];
+      showToast("تم إرسال طلب التوصيل مباشرة إلى كباتن التوصيل المؤهلين ضمن 10 كم");
+    } catch (error) {
+      console.error(error);
+      showToast("تعذر إنشاء طلب التوصيل. تأكد من نشر قواعد Firestore الجديدة.");
+    } finally {
+      setButtonBusy(deliveryButton, false);
+    }
   }
 });
 

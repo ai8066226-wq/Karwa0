@@ -94,7 +94,39 @@ service cloud.firestore { match /databases/{database}/documents {
    function taxiOrderVisible(){return driver()&&currentDriver().get('serviceType','')=='taxi'&&currentDriver().get('vehicleType','')!='دراجة'&&resource.data.type=='ride';}
    function deliveryOrderVisible(){return driver()&&currentDriver().get('serviceType','')=='delivery'&&currentDriver().get('vehicleType','') in ['اقتصادي','تكسي','عائلي','دراجة']&&resource.data.type in ['parcel','food','serviceDelivery'];}
    allow read:if signed()&&(resource.data.userId==request.auth.uid||resource.data.driverId==request.auth.uid||taxiOrderVisible()||deliveryOrderVisible()||admin()||(serviceProvider()&&resource.data.get('providerId','')==request.auth.uid));
-   allow create:if admin()||(customer()&&request.resource.data.userId==request.auth.uid&&request.resource.data.driverId==null&&request.resource.data.statusIndex==0&&request.resource.data.cancelled==false)
+   allow create:if admin()
+     || (customer()
+       && request.resource.data.userId==request.auth.uid
+       && request.resource.data.type!='serviceDelivery'
+       && request.resource.data.driverId==null
+       && request.resource.data.statusIndex==0
+       && request.resource.data.cancelled==false)
+     || (customer()
+       && request.resource.data.type=='serviceDelivery'
+       && request.resource.data.userId==request.auth.uid
+       && request.resource.data.providerId is string
+       && request.resource.data.serviceRequestId is string
+       && request.resource.data.serviceRequestId.size()>0
+       && request.resource.data.driverId==null
+       && request.resource.data.statusIndex==0
+       && request.resource.data.cancelled==false
+       && request.resource.data.requiredDriverService=='delivery'
+       && request.resource.data.payment=='نقدًا'
+       && request.resource.data.commissionRate==0.15
+       && request.resource.data.commissionAmount is number&&request.resource.data.commissionAmount>=0
+       && request.resource.data.driverEarnings is number&&request.resource.data.driverEarnings>=0
+       && request.resource.data.commissionAmount+request.resource.data.driverEarnings==request.resource.data.price
+       && linkedServiceRequest().customerId==request.auth.uid
+       && linkedServiceRequest().providerId==request.resource.data.providerId
+       && linkedServiceRequest().status=='accepted'
+       && linkedServiceRequest().deliveryRequested==true
+       && linkedServiceRequest().deliveryStatus=='awaitingCaptain'
+       && linkedServiceRequest().deliveryOrderId==id
+       && linkedServiceRequest().providerCity==request.resource.data.serviceCity
+       && linkedServiceRequest().providerLocation==request.resource.data.pickupLocation
+       && linkedServiceRequest().customerLocation==request.resource.data.destinationLocation
+       && linkedServiceRequest().totalPrice==request.resource.data.serviceTotal
+       && linkedServiceRequest().deliveryFee==request.resource.data.price)
      || (serviceProvider()
        && request.resource.data.type=='serviceDelivery'
        && request.resource.data.providerId==request.auth.uid
@@ -109,10 +141,12 @@ service cloud.firestore { match /databases/{database}/documents {
        && request.resource.data.commissionAmount is number&&request.resource.data.commissionAmount>=0
        && request.resource.data.driverEarnings is number&&request.resource.data.driverEarnings>=0
        && request.resource.data.commissionAmount+request.resource.data.driverEarnings==request.resource.data.price
+       && linkedServiceRequest().providerCategory=='restaurant'
        && linkedServiceRequest().providerId==request.auth.uid
        && linkedServiceRequest().customerId==request.resource.data.userId
        && linkedServiceRequest().status=='accepted'
        && linkedServiceRequest().deliveryRequested==true
+       && linkedServiceRequest().deliveryStatus=='awaitingCaptain'
        && linkedServiceRequest().deliveryOrderId==id
        && linkedServiceRequest().providerCity==request.resource.data.serviceCity
        && linkedServiceRequest().providerLocation==request.resource.data.pickupLocation
@@ -210,13 +244,15 @@ service cloud.firestore { match /databases/{database}/documents {
  match /serviceRequests/{id}{
    function providerProfile(){return get(/databases/$(database)/documents/serviceProfiles/$(request.resource.data.providerId)).data;}
    function providerItem(){return providerProfile().items[request.resource.data.itemIndex];}
+   function deliveryOrderAfter(){return getAfter(/databases/$(database)/documents/orders/$(request.resource.data.deliveryOrderId)).data;}
+
+   // المطاعم تحتفظ بمسارها السابق: العميل يختار التوصيل مع الوجبة قبل موافقة المطعم.
    allow create:if customer()
+     && request.resource.data.providerCategory=='restaurant'
      && request.resource.data.customerId==request.auth.uid
      && request.resource.data.customerName==userDoc().get('name','')
-     && request.resource.data.providerId is string
-     && request.resource.data.providerId.size()>0
-     && providerProfile().active==true
-     && providerProfile().approvalStatus=='approved'
+     && request.resource.data.providerId is string && request.resource.data.providerId.size()>0
+     && providerProfile().active==true && providerProfile().approvalStatus=='approved'
      && request.resource.data.providerName==providerProfile().businessName
      && request.resource.data.providerCity==providerProfile().city
      && request.resource.data.providerAddress==providerProfile().address
@@ -239,9 +275,92 @@ service cloud.firestore { match /databases/{database}/documents {
      && request.resource.data.requestText is string && request.resource.data.requestText.size()>=3 && request.resource.data.requestText.size()<=500
      && request.resource.data.customerAddress is string && request.resource.data.customerAddress.size()>=3 && request.resource.data.customerAddress.size()<=180
      && request.resource.data.keys().hasOnly(['customerId','customerName','providerId','providerName','providerCategory','providerCity','providerAddress','providerLocation','itemIndex','itemName','itemUnit','quantity','unitPrice','itemPrice','subtotal','deliveryRequested','deliveryFee','totalPrice','deliveryStatus','deliveryOrderId','requestText','customerAddress','customerLocation','status','createdAt','updatedAt']);
+
+   // الخدمات الأخرى: يختار العميل حاجته وسعرها أولًا، ثم يحدد التوصيل بعد موافقة مقدم الخدمة.
+   allow create:if customer()
+     && request.resource.data.providerCategory!='restaurant'
+     && request.resource.data.customerId==request.auth.uid
+     && request.resource.data.customerName==userDoc().get('name','')
+     && request.resource.data.providerId is string && request.resource.data.providerId.size()>0
+     && providerProfile().active==true && providerProfile().approvalStatus=='approved'
+     && request.resource.data.providerName==providerProfile().businessName
+     && request.resource.data.providerCity==providerProfile().city
+     && request.resource.data.providerAddress==providerProfile().address
+     && request.resource.data.providerLocation==providerProfile().location
+     && request.resource.data.status=='pending'
+     && request.resource.data.itemIndex is int && request.resource.data.itemIndex>=0 && request.resource.data.itemIndex<providerProfile().items.size()
+     && request.resource.data.itemName is string && request.resource.data.itemName.size()>=2 && request.resource.data.itemName.size()<=80
+     && request.resource.data.itemName==providerItem().name
+     && request.resource.data.itemUnit==providerItem().get('unit','item')
+     && request.resource.data.unitPrice is number && request.resource.data.unitPrice>0 && request.resource.data.unitPrice==providerItem().price
+     && request.resource.data.itemPrice==request.resource.data.unitPrice
+     && request.resource.data.quantity is number && request.resource.data.quantity>0 && request.resource.data.quantity<=100
+     && (request.resource.data.itemUnit=='kg'||request.resource.data.quantity is int)
+     && request.resource.data.subtotal==request.resource.data.unitPrice*request.resource.data.quantity
+     && request.resource.data.itemDeliveryAvailable is bool
+     && request.resource.data.itemDeliveryAvailable==providerItem().get('deliveryAvailable',false)
+     && request.resource.data.itemDeliveryFee is number && request.resource.data.itemDeliveryFee>=0
+     && ((!request.resource.data.itemDeliveryAvailable&&request.resource.data.itemDeliveryFee==0)||(request.resource.data.itemDeliveryAvailable&&request.resource.data.itemDeliveryFee==providerItem().get('deliveryFee',0)))
+     && request.resource.data.deliveryRequested==false
+     && request.resource.data.deliveryFee==0
+     && ((!request.resource.data.itemDeliveryAvailable&&request.resource.data.deliveryStatus=='notAvailable')||(request.resource.data.itemDeliveryAvailable&&request.resource.data.deliveryStatus=='pendingProvider'))
+     && request.resource.data.deliveryOrderId==''
+     && request.resource.data.totalPrice==request.resource.data.subtotal
+     && request.resource.data.requestText is string && request.resource.data.requestText.size()>=3 && request.resource.data.requestText.size()<=500
+     && request.resource.data.customerAddress==''
+     && request.resource.data.customerLocation==null
+     && request.resource.data.keys().hasOnly(['customerId','customerName','providerId','providerName','providerCategory','providerCity','providerAddress','providerLocation','itemIndex','itemName','itemUnit','quantity','unitPrice','itemPrice','subtotal','itemDeliveryAvailable','itemDeliveryFee','deliveryRequested','deliveryFee','totalPrice','deliveryStatus','deliveryOrderId','requestText','customerAddress','customerLocation','status','createdAt','updatedAt']);
+
    allow read:if admin()||(customer()&&resource.data.customerId==request.auth.uid)||(serviceProvider()&&resource.data.providerId==request.auth.uid);
    allow update:if admin()
      || (customer()&&resource.data.customerId==request.auth.uid&&resource.data.status=='pending'&&request.resource.data.status=='cancelled'&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','cancelledAt','updatedAt']))
+     || (customer()
+       && resource.data.providerCategory!='restaurant'
+       && resource.data.customerId==request.auth.uid
+       && resource.data.status=='accepted'
+       && resource.data.deliveryStatus=='awaitingCustomerChoice'
+       && resource.data.get('itemDeliveryAvailable',false)==true
+       && request.resource.data.status=='accepted'
+       && request.resource.data.deliveryRequested==true
+       && request.resource.data.deliveryFee==resource.data.get('itemDeliveryFee',0)
+       && request.resource.data.totalPrice==resource.data.subtotal+resource.data.get('itemDeliveryFee',0)
+       && request.resource.data.deliveryStatus=='awaitingCaptain'
+       && request.resource.data.deliveryOrderId is string && request.resource.data.deliveryOrderId.size()>0
+       && request.resource.data.customerAddress is string && request.resource.data.customerAddress.size()>=3 && request.resource.data.customerAddress.size()<=180
+       && request.resource.data.customerLocation is map
+       && request.resource.data.customerLocation.latitude is number&&request.resource.data.customerLocation.latitude>=-90&&request.resource.data.customerLocation.latitude<=90
+       && request.resource.data.customerLocation.longitude is number&&request.resource.data.customerLocation.longitude>=-180&&request.resource.data.customerLocation.longitude<=180
+       && request.resource.data.deliveryChosenAt is timestamp
+       && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deliveryRequested','deliveryFee','totalPrice','deliveryStatus','deliveryOrderId','customerAddress','customerLocation','deliveryChosenAt','updatedAt'])
+       && existsAfter(/databases/$(database)/documents/orders/$(request.resource.data.deliveryOrderId))
+       && deliveryOrderAfter().type=='serviceDelivery'
+       && deliveryOrderAfter().serviceRequestId==id
+       && deliveryOrderAfter().userId==request.auth.uid
+       && deliveryOrderAfter().providerId==resource.data.providerId
+       && deliveryOrderAfter().requiredDriverService=='delivery'
+       && deliveryOrderAfter().driverId==null
+       && deliveryOrderAfter().statusIndex==0
+       && deliveryOrderAfter().cancelled==false
+       && deliveryOrderAfter().pickupLocation==resource.data.providerLocation
+       && deliveryOrderAfter().destinationLocation==request.resource.data.customerLocation
+       && deliveryOrderAfter().serviceCity==resource.data.providerCity
+       && deliveryOrderAfter().price==request.resource.data.deliveryFee
+       && deliveryOrderAfter().serviceTotal==request.resource.data.totalPrice)
+     || (customer()
+       && resource.data.providerCategory!='restaurant'
+       && resource.data.customerId==request.auth.uid
+       && resource.data.status=='accepted'
+       && resource.data.deliveryStatus=='awaitingCustomerChoice'
+       && request.resource.data.status=='accepted'
+       && request.resource.data.deliveryRequested==false
+       && request.resource.data.deliveryFee==0
+       && request.resource.data.totalPrice==resource.data.subtotal
+       && request.resource.data.deliveryStatus=='notRequested'
+       && request.resource.data.deliveryOrderId==''
+       && request.resource.data.customerAddress=='استلام من النشاط'
+       && request.resource.data.customerLocation==null
+       && request.resource.data.deliveryChosenAt is timestamp
+       && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deliveryRequested','deliveryFee','totalPrice','deliveryStatus','customerAddress','customerLocation','deliveryChosenAt','updatedAt']))
      || (serviceProvider()
        && resource.data.providerId==request.auth.uid
        && request.resource.data.providerId==request.auth.uid
@@ -250,11 +369,16 @@ service cloud.firestore { match /databases/{database}/documents {
        && (
          (resource.data.status=='pending'&&request.resource.data.status=='rejected'&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','providerNote','statusUpdatedAt','updatedAt']))
          || (resource.data.status=='accepted'&&request.resource.data.status=='completed'&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','providerNote','statusUpdatedAt','updatedAt']))
-         || (resource.data.status=='pending'&&request.resource.data.status=='accepted'
+         || (resource.data.providerCategory!='restaurant'
+           && resource.data.status=='pending'&&request.resource.data.status=='accepted'
+           && request.resource.data.deliveryOrderId==''
+           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','providerNote','deliveryStatus','deliveryOrderId','statusUpdatedAt','updatedAt'])
+           && ((resource.data.get('itemDeliveryAvailable',false)==true&&request.resource.data.deliveryStatus=='awaitingCustomerChoice')||(resource.data.get('itemDeliveryAvailable',false)==false&&request.resource.data.deliveryStatus=='notRequested')))
+         || (resource.data.providerCategory=='restaurant'
+           && resource.data.status=='pending'&&request.resource.data.status=='accepted'
            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','providerNote','deliveryStatus','deliveryOrderId','statusUpdatedAt','updatedAt'])
            && ((!resource.data.get('deliveryRequested',false)&&request.resource.data.deliveryStatus=='notRequested'&&request.resource.data.deliveryOrderId=='')||(resource.data.get('deliveryRequested',false)&&request.resource.data.deliveryStatus=='awaitingCaptain'&&request.resource.data.deliveryOrderId is string&&request.resource.data.deliveryOrderId.size()>0&&existsAfter(/databases/$(database)/documents/orders/$(request.resource.data.deliveryOrderId))&&getAfter(/databases/$(database)/documents/orders/$(request.resource.data.deliveryOrderId)).data.serviceRequestId==id&&getAfter(/databases/$(database)/documents/orders/$(request.resource.data.deliveryOrderId)).data.providerId==request.auth.uid))
-         )
-       ));
+       )));
    allow delete:if admin();
  }
 

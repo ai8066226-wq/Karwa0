@@ -119,6 +119,15 @@ function canDriverHandleOrder(order, driver = state.driverData) {
   if (mode === "delivery") return DELIVERY_ORDER_TYPES.has(order?.type);
   return false;
 }
+
+function orderMeetsDriverDispatchConditions(order, now = Date.now()) {
+  if (!order || order.cancelled || Number(order.statusIndex || 0) >= 4 || order.driverId) return false;
+  if (!canDriverHandleOrder(order)) return false;
+  if (!orderWithinRequestRadius(order)) return false;
+  if (order.type === "serviceDelivery" && order.serviceCity && String(order.serviceCity).trim() !== String(state.driverData?.city || "").trim()) return false;
+  const expiresAt = order.dispatchExpiresAt?.seconds ? order.dispatchExpiresAt.seconds * 1000 : new Date(order.dispatchExpiresAt || 0).getTime();
+  return !expiresAt || expiresAt <= now || !Array.isArray(order.dispatchCandidateIds) || !order.dispatchCandidateIds.length || order.dispatchCandidateIds.includes(state.user?.uid);
+}
 const DRIVER_MAP_STYLES = {
   day: "https://tiles.openfreemap.org/styles/positron",
   night: "https://tiles.openfreemap.org/styles/dark"
@@ -283,7 +292,7 @@ async function drawPickupRoute(force=false) {
   if (!state.map) return;
   const activeOrder=state.orders.find(order=>order.driverId===state.user?.uid&&!order.cancelled&&Number(order.statusIndex||0)<4);
   const st=Number(activeOrder?.statusIndex||0),target=st>=3?activeOrder?.destinationLocation:activeOrder?.pickupLocation;if(!target)return;
-  const targetPoint=[Number(target.latitude),Number(target.longitude)];if(state.pickupMarker)state.pickupMarker.setLatLng(targetPoint);else state.pickupMarker=window.L.marker(targetPoint,{icon:mapIcon("pickup")}).addTo(state.map);state.pickupMarker.bindPopup(st>=3?"عنوان العميل":(activeOrder?.type==="serviceDelivery"?"عنوان المطعم":"موقع العميل"));
+  const targetPoint=[Number(target.latitude),Number(target.longitude)];if(state.pickupMarker)state.pickupMarker.setLatLng(targetPoint);else state.pickupMarker=window.L.marker(targetPoint,{icon:mapIcon("pickup")}).addTo(state.map);state.pickupMarker.bindPopup(st>=3?"عنوان العميل":(activeOrder?.type==="serviceDelivery"?"عنوان النشاط / الاستلام":"موقع العميل"));
   if(!state.driverMarker)return;const pos=state.driverMarker.getLatLng(),now=Date.now(),current={latitude:pos.lat,longitude:pos.lng};const moved=state.lastRoutePoint?haversine(current,state.lastRoutePoint):Infinity;if(!force&&now-state.lastRouteAt<9000&&moved<.08)return;state.lastRouteAt=now;state.lastRoutePoint=current;
   let coords=[[pos.lat,pos.lng],targetPoint],km=haversine(current,target)*1.28,mins=km/28*60,provider="تقدير",maneuvers=[];
   try{const vr=await valhallaNavigate(current,target);coords=vr.coords;km=vr.km;mins=vr.mins;maneuvers=vr.maneuvers;provider="Valhalla";}catch(e){try{const u=`https://router.project-osrm.org/route/v1/driving/${pos.lng},${pos.lat};${target.longitude},${target.latitude}?overview=full&geometries=geojson`;const r=await fetch(u,{signal:AbortSignal.timeout(4500)}),x=await r.json(),route=x.routes?.[0];if(!route)throw 0;coords=route.geometry.coordinates.map(([lng,lat])=>[lat,lng]);km=route.distance/1000;mins=route.duration/60;provider="OSRM";}catch(_){}}
@@ -738,7 +747,7 @@ function orderCard(order, mode) {
         <span class="status-chip ${statusClass}">${escapeHtml(order.cancelled ? "ملغي" : statuses[statusIndex])}</span>
       </div>
       <p class="order-route">${escapeHtml(order.route)}</p>
-      ${order.type === "serviceDelivery" ? `<div class="order-meta delivery-addresses"><span>🏪 عنوان المطعم: ${escapeHtml(String(order.route||"").split(" ← ")[0]||"غير محدد")}</span><span>🏠 عنوان العميل: ${escapeHtml(String(order.route||"").split(" ← ")[1]||"غير محدد")}</span></div>` : ""}
+      ${order.type === "serviceDelivery" ? `<div class="order-meta delivery-addresses"><span>🏪 عنوان النشاط / الاستلام: ${escapeHtml(String(order.route||"").split(" ← ")[0]||"غير محدد")}</span><span>🏠 عنوان العميل: ${escapeHtml(String(order.route||"").split(" ← ")[1]||"غير محدد")}</span></div>` : ""}
       <div class="order-bottom">
         <div class="order-meta"><span>${escapeHtml(order.id)}</span><span>${escapeHtml(order.payment || "نقدًا")}</span>${mode === "available" ? `<span>🗓️ ${escapeHtml(formatOrderCreatedAt(order))}</span>` : ""}${mode === "available" && Number.isFinite(distanceToOrder(order)) ? `<span>يبعد ${distanceToOrder(order).toFixed(1)} كم</span>` : ""}</div>
         ${order.distanceKm ? `<div class="order-meta"><span>المشوار ${Number(order.distanceKm).toFixed(1)} كم</span><span>≈ ${Math.round(Number(order.durationMin||0))} دقيقة</span><span>صافي الكابتن ${money(order.driverEarnings)}</span></div>` : ""}
@@ -750,16 +759,7 @@ function orderCard(order, mode) {
 
 function renderOrders() {
   const now=Date.now();
-  const available = state.orders.filter(order => {
-    if(order.cancelled || Number(order.statusIndex || 0) >= 4 || order.driverId) return false;
-    // فصل صارم: التكسي يرى الركوب فقط، والتوصيل يرى طلبات التوصيل فقط.
-    if (!canDriverHandleOrder(order)) return false;
-    // لا يصل الطلب إلى الكابتن إلا إذا كان GPS الحالي داخل 10 كم من نقطة بداية الطلب.
-    if (!orderWithinRequestRadius(order)) return false;
-    if(order.type === "serviceDelivery" && order.serviceCity && String(order.serviceCity).trim() !== String(state.driverData?.city || "").trim()) return false;
-    const exp=order.dispatchExpiresAt?.seconds ? order.dispatchExpiresAt.seconds*1000 : new Date(order.dispatchExpiresAt||0).getTime();
-    return !exp || exp<=now || !Array.isArray(order.dispatchCandidateIds) || !order.dispatchCandidateIds.length || order.dispatchCandidateIds.includes(state.user?.uid);
-  }).sort((a,b) => distanceToOrder(a) - distanceToOrder(b));
+  const available = state.orders.filter(order => orderMeetsDriverDispatchConditions(order, now)).sort((a,b) => distanceToOrder(a) - distanceToOrder(b));
   const mine = state.orders.filter(order =>
     order.driverId === state.user?.uid && !order.cancelled && Number(order.statusIndex || 0) < 4
   );
@@ -839,6 +839,7 @@ function openDriverDashboard() {
   });
 
   let knownOrderIds = new Set();
+  let ordersSnapshotReady = false;
   let ordersUnsubscribe = null;
   let subscribedOrderMode = "";
   const subscribeToAllowedOrders = () => {
@@ -848,6 +849,7 @@ function openDriverDashboard() {
     ordersUnsubscribe = null;
     subscribedOrderMode = mode;
     knownOrderIds = new Set();
+    ordersSnapshotReady = false;
     state.orders = [];
     renderOrders();
     if (mode === "none") return;
@@ -856,14 +858,15 @@ function openDriverDashboard() {
       : query(collection(db, "orders"), where("type", "in", ["parcel", "food", "serviceDelivery"]));
     ordersUnsubscribe = onSnapshot(ordersQuery, snapshot => {
       const incoming = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
-      if (knownOrderIds.size && state.driverData?.online) {
-        const fresh = incoming.find(o => !knownOrderIds.has(o.firestoreId) && !o.driverId && !o.cancelled && Number(o.statusIndex||0) < 4 && canDriverHandleOrder(o) && orderWithinRequestRadius(o));
+      if (ordersSnapshotReady && state.driverData?.online) {
+        const fresh = incoming.find(o => !knownOrderIds.has(o.firestoreId) && orderMeetsDriverDispatchConditions(o));
         if (fresh) {
           toast(fresh.type === "ride" ? "طلب تكسي جديد متاح" : "طلب توصيل جديد متاح");
           if ("Notification" in window && Notification.permission === "granted") new Notification("كروة — طلب جديد", { body: fresh.title || "لديك طلب متاح", icon: "./karwa-icon.svg" });
         }
       }
       knownOrderIds = new Set(incoming.map(o=>o.firestoreId));
+      ordersSnapshotReady = true;
       state.orders = incoming.filter(o => canDriverHandleOrder(o) || o.driverId === state.user?.uid).sort((a, b) => String(b.createdAtISO || "").localeCompare(String(a.createdAtISO || "")));
       renderOrders();
     }, error => {
