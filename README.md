@@ -39,7 +39,7 @@ OSRM وNominatim العامان مناسبان للتطوير والاختبار
 - `firestore.rules` تمنع العميل أو الكابتن من تعديل السعر والعمولة وأرباح الرحلة أو مراحلها مباشرة؛ الرحلات الحساسة تمر عبر Cloud Functions.
 - `phone-auth.js`: وحدة جاهزة لـ Firebase Phone Auth + reCAPTCHA لإرسال والتحقق من OTP الحقيقي للهاتف.
 - `push-notifications.js` و `firebase-messaging-sw.js`: بنية Web Push وFCM مع حفظ الرموز من خلال Backend.
-- `storage.rules`: مساحة آمنة لوثائق الكابتن (صور/PDF حتى 5MB) مع وصول الكابتن نفسه أو الإدارة.
+- `storage.rules`: مساحة آمنة لوثائق الكابتن، وصور الوجبات والخدمات بصيغ JPG/PNG/WebP وبحد أقصى 100KB للصورة.
 - `firebase.json`: إعداد موحد لنشر Functions + Firestore + Hosting.
 
 ## النشر
@@ -227,30 +227,21 @@ firebase deploy --only hosting
 
 > انشر `firestore.rules` الجديدة قبل اختبار سوق الخدمات والطلبات المباشرة.
 
-## Phase 38 — media reliability, catalog management, blocking and service ratings
-- Meal/service images are compressed immediately after selection to a safe ~92 KB target and upload/download operations have timeouts so the UI cannot remain indefinitely on “جاري الإضافة”.
-- Providers can edit or delete individual catalog items before publishing changes.
-- Admin can block/unblock approved service providers; blocked profiles are hidden from customers and cannot receive new service requests.
-- Customers can rate a completed service/product from 1–5 stars; marketplace cards show provider rating averages.
-- Deploy both `firestore.rules` and `storage.rules` with this release.
+## Phase 36 — صور الوجبات والتسعير والتوصيل حسب النطاق
 
+- يستطيع صاحب النشاط إضافة صورة اختيارية لكل وجبة أو خدمة بصيغة JPG أو PNG أو WebP، مع حد صارم قدره 100KB في الواجهة وقواعد Storage.
+- يحدد صاحب النشاط سعر الوحدة وطريقة الحساب: قطعة/طلب، كيلوغرام، أو نفر، ويضيف وصفًا تفصيليًا وصورة.
+- يمكن تحديد توفر التوصيل وأجرته لكل عنصر بصورة مستقلة؛ ويختار العميل الاستلام من النشاط أو التوصيل.
+- تعرض صفحة العميل كل عنصر بصورته ووصفه وسعر الوحدة، وتحسب الإجمالي مباشرة من الكمية أو الوزن أو عدد النفرات، ثم تضيف أجرة التوصيل فقط عند اختياره.
+- بعد قبول مزود الخدمة، ينشأ طلب توصيل مستقل تلقائيًا داخل `orders` إذا اختار العميل التوصيل.
+- طلب توصيل النشاط لا يظهر ولا يمكن قبوله إلا لحساب كابتن نوعه `delivery` وتطابق مدينته `serviceCity` الخاصة بالنشاط.
+- يتابع العميل طلب النشاط وحالة كابتن التوصيل من الواجهة نفسها، ويظهر طلب التوصيل أيضًا ضمن طلباته المعتادة.
 
-## Phase 40
-- تم إلغاء رفع صور الخدمات والمنتجات بالكامل لتسريع الإضافة.
-- تم تحديث بطاقات الخدمات والمنتجات بتصميم احترافي يعتمد على الأيقونات والمعلومات والسعر وأزرار الإدارة.
+### متطلبات النشر للمرحلة 36
 
+```bash
+firebase deploy --only firestore:rules,storage
+firebase deploy --only hosting
+```
 
-## Phase 41 - Service request delivery fix
-- Fixed customer serviceRequests creation rule that could reject valid requests when the local display name differed from users/{uid}.name.
-- Provider can read its own serviceRequests by providerId identity even during role/profile refresh.
-- Customer name/phone are refreshed from users/{uid} immediately before creating the request.
-- Added clearer permission diagnostics in customer and provider portals.
-
-
-## Phase 42 — Fixed pricing + optional delivery
-- Every service/product must have a price greater than zero.
-- Removed custom / “price by agreement” ordering from the customer marketplace.
-- Customer explicitly chooses delivery or no delivery.
-- Delivery fee is shown separately and added to the product price before order submission.
-- serviceRequests stores itemPrice, deliveryRequested, deliveryFee and totalPrice.
-- A captain delivery order is created only when the customer selected delivery.
+يجب نشر `storage.rules` حتى يعمل رفع الصور، ونشر `firestore.rules` حتى تعمل عملية تحويل الطلب المقبول إلى كابتن التوصيل ضمن المدينة نفسها.

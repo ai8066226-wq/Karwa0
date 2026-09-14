@@ -75,12 +75,37 @@ service cloud.firestore { match /databases/{database}/documents {
    allow delete:if admin()||(own(uid)&&driver());
  }
  match /orders/{id}{
-   allow read:if signed()&&(resource.data.userId==request.auth.uid||resource.data.driverId==request.auth.uid||driver()||admin());
-   allow create:if admin()||(customer()&&request.resource.data.userId==request.auth.uid&&request.resource.data.driverId==null&&request.resource.data.statusIndex==0&&request.resource.data.cancelled==false)||(serviceProvider()&&request.resource.data.type=='serviceDelivery'&&request.resource.data.serviceDelivery.providerId==request.auth.uid&&request.resource.data.driverId==null&&request.resource.data.statusIndex==0&&request.resource.data.cancelled==false);
+   function linkedServiceRequest(){return getAfter(/databases/$(database)/documents/serviceRequests/$(request.resource.data.serviceRequestId)).data;}
+   allow read:if signed()&&(resource.data.userId==request.auth.uid||resource.data.driverId==request.auth.uid||driver()||admin()||(serviceProvider()&&resource.data.get('providerId','')==request.auth.uid));
+   allow create:if admin()||(customer()&&request.resource.data.userId==request.auth.uid&&request.resource.data.driverId==null&&request.resource.data.statusIndex==0&&request.resource.data.cancelled==false)
+     || (serviceProvider()
+       && request.resource.data.type=='serviceDelivery'
+       && request.resource.data.providerId==request.auth.uid
+       && request.resource.data.serviceRequestId is string
+       && request.resource.data.serviceRequestId.size()>0
+       && request.resource.data.driverId==null
+       && request.resource.data.statusIndex==0
+       && request.resource.data.cancelled==false
+       && request.resource.data.requiredDriverService=='delivery'
+       && request.resource.data.payment=='نقدًا'
+       && request.resource.data.commissionRate==0.15
+       && request.resource.data.commissionAmount is number&&request.resource.data.commissionAmount>=0
+       && request.resource.data.driverEarnings is number&&request.resource.data.driverEarnings>=0
+       && request.resource.data.commissionAmount+request.resource.data.driverEarnings==request.resource.data.price
+       && linkedServiceRequest().providerId==request.auth.uid
+       && linkedServiceRequest().customerId==request.resource.data.userId
+       && linkedServiceRequest().status=='accepted'
+       && linkedServiceRequest().deliveryRequested==true
+       && linkedServiceRequest().deliveryOrderId==id
+       && linkedServiceRequest().providerCity==request.resource.data.serviceCity
+       && linkedServiceRequest().providerLocation==request.resource.data.pickupLocation
+       && linkedServiceRequest().customerLocation==request.resource.data.destinationLocation
+       && linkedServiceRequest().totalPrice==request.resource.data.serviceTotal
+       && linkedServiceRequest().deliveryFee==request.resource.data.price);
    allow update:if admin()
      || (customer()&&resource.data.userId==request.auth.uid&&resource.data.cancelled==false&&request.resource.data.cancelled==true&&request.resource.data.cancelledBy=='customer'&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cancelled','cancellationReason','cancelledBy','cancelledAt','updatedAt']))
      || (driver() && (
-       (resource.data.driverId==null && resource.data.cancelled==false && resource.data.statusIndex==0 && request.resource.data.driverId==request.auth.uid && request.resource.data.statusIndex==resource.data.statusIndex && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['driverId','driverName','driverPhone','assignmentStatus','acceptedAt','updatedAt']) && (resource.data.type!='ride' || (get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.get('serviceType','taxi')=='taxi' && get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.vehicleType!='دراجة')) && get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.get('activeOrderId','')=='' && getAfter(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.activeOrderId==id)
+       (resource.data.driverId==null && resource.data.cancelled==false && resource.data.statusIndex==0 && request.resource.data.driverId==request.auth.uid && request.resource.data.statusIndex==resource.data.statusIndex && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['driverId','driverName','driverPhone','assignmentStatus','acceptedAt','updatedAt']) && (resource.data.type!='ride' || (get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.get('serviceType','taxi')=='taxi' && get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.vehicleType!='دراجة')) && (resource.data.type!='serviceDelivery' || (get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.get('serviceType','taxi')=='delivery' && get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.get('city','')==resource.data.get('serviceCity',''))) && get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.get('activeOrderId','')=='' && getAfter(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.activeOrderId==id)
        || (resource.data.driverId==request.auth.uid && request.resource.data.driverId==request.auth.uid && request.resource.data.statusIndex==resource.data.statusIndex+1 && request.resource.data.statusIndex<=4 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['statusIndex','arrivedAt','startedAt','completedAt','paymentStatus','updatedAt']))
        || (resource.data.driverId==request.auth.uid && request.resource.data.driverId==request.auth.uid && resource.data.cancelled==false && request.resource.data.cancelled==true && request.resource.data.cancelledBy=='driver' && request.resource.data.statusIndex==resource.data.statusIndex && resource.data.statusIndex<4 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cancelled','cancelledBy','cancellationReason','cancelledAt','assignmentStatus','updatedAt']))
      ));
@@ -148,9 +173,8 @@ service cloud.firestore { match /databases/{database}/documents {
      && data.get('description','') is string && data.get('description','').size()<=500
      && data.get('items',[]) is list && data.get('items',[]).size()<=50
      && data.active is bool
-     && data.get('blocked',false) is bool
      && data.approvalStatus=='approved';}
-   allow read:if admin()||own(uid)||(signed()&&resource.data.active==true&&resource.data.approvalStatus=='approved'&&resource.data.get('blocked',false)!=true);
+   allow read:if admin()||own(uid)||(signed()&&resource.data.active==true&&resource.data.approvalStatus=='approved');
    allow create:if admin()||(own(uid)&&serviceProvider()&&validProfile(request.resource.data));
    allow update:if admin()||(own(uid)
      && serviceProvider()
@@ -164,35 +188,53 @@ service cloud.firestore { match /databases/{database}/documents {
 
  match /serviceRequests/{id}{
    function providerProfile(){return get(/databases/$(database)/documents/serviceProfiles/$(request.resource.data.providerId)).data;}
+   function providerItem(){return providerProfile().items[request.resource.data.itemIndex];}
    allow create:if customer()
      && request.resource.data.customerId==request.auth.uid
-     && request.resource.data.customerName is string && request.resource.data.customerName.size()>=2 && request.resource.data.customerName.size()<=80
+     && request.resource.data.customerName==userDoc().get('name','')
      && request.resource.data.providerId is string
      && request.resource.data.providerId.size()>0
      && providerProfile().active==true
-     && providerProfile().get('blocked',false)!=true
      && providerProfile().approvalStatus=='approved'
      && request.resource.data.providerName==providerProfile().businessName
+     && request.resource.data.providerCity==providerProfile().city
      && request.resource.data.providerAddress==providerProfile().address
+     && request.resource.data.providerLocation==providerProfile().location
      && request.resource.data.status=='pending'
+     && request.resource.data.itemIndex is int && request.resource.data.itemIndex>=0 && request.resource.data.itemIndex<providerProfile().items.size()
      && request.resource.data.itemName is string && request.resource.data.itemName.size()>=2 && request.resource.data.itemName.size()<=80
-     && request.resource.data.itemPrice is number && request.resource.data.itemPrice>0
+     && request.resource.data.itemName==providerItem().name
+     && request.resource.data.itemImageUrl==providerItem().get('imageUrl','')
+     && request.resource.data.itemUnit==providerItem().get('unit','item')
+     && request.resource.data.unitPrice is number && request.resource.data.unitPrice>0 && request.resource.data.unitPrice==providerItem().price
+     && request.resource.data.itemPrice==request.resource.data.unitPrice
+     && request.resource.data.quantity is number && request.resource.data.quantity>0 && request.resource.data.quantity<=100
+     && (request.resource.data.itemUnit=='kg'||request.resource.data.quantity is int)
+     && request.resource.data.subtotal==request.resource.data.unitPrice*request.resource.data.quantity
      && request.resource.data.deliveryRequested is bool
      && request.resource.data.deliveryFee is number && request.resource.data.deliveryFee>=0
-     && request.resource.data.totalPrice is number && request.resource.data.totalPrice==request.resource.data.itemPrice+request.resource.data.deliveryFee
+     && ((!request.resource.data.deliveryRequested&&request.resource.data.deliveryFee==0&&request.resource.data.deliveryStatus=='notRequested'&&request.resource.data.customerLocation==null)||(request.resource.data.deliveryRequested&&providerItem().get('deliveryAvailable',false)==true&&request.resource.data.deliveryFee==providerItem().get('deliveryFee',0)&&request.resource.data.deliveryStatus=='pendingProvider'&&request.resource.data.customerLocation is map&&request.resource.data.customerLocation.latitude is number&&request.resource.data.customerLocation.latitude>=-90&&request.resource.data.customerLocation.latitude<=90&&request.resource.data.customerLocation.longitude is number&&request.resource.data.customerLocation.longitude>=-180&&request.resource.data.customerLocation.longitude<=180))
+     && request.resource.data.deliveryOrderId==''
+     && request.resource.data.totalPrice==request.resource.data.subtotal+request.resource.data.deliveryFee
      && request.resource.data.requestText is string && request.resource.data.requestText.size()>=3 && request.resource.data.requestText.size()<=500
      && request.resource.data.customerAddress is string && request.resource.data.customerAddress.size()>=3 && request.resource.data.customerAddress.size()<=180
-     && request.resource.data.keys().hasOnly(['customerId','customerName','customerPhone','providerId','providerName','providerCategory','providerAddress','providerLocation','itemName','itemPrice','deliveryRequested','deliveryFee','totalPrice','requestText','customerAddress','customerLocation','status','createdAt','updatedAt']);
-   allow read:if admin()||(signed()&&resource.data.customerId==request.auth.uid)||(signed()&&resource.data.providerId==request.auth.uid);
+     && request.resource.data.keys().hasOnly(['customerId','customerName','providerId','providerName','providerCategory','providerCity','providerAddress','providerLocation','itemIndex','itemName','itemImageUrl','itemUnit','quantity','unitPrice','itemPrice','subtotal','deliveryRequested','deliveryFee','totalPrice','deliveryStatus','deliveryOrderId','requestText','customerAddress','customerLocation','status','createdAt','updatedAt']);
+   allow read:if admin()||(customer()&&resource.data.customerId==request.auth.uid)||(serviceProvider()&&resource.data.providerId==request.auth.uid);
    allow update:if admin()
      || (customer()&&resource.data.customerId==request.auth.uid&&resource.data.status=='pending'&&request.resource.data.status=='cancelled'&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','cancelledAt','updatedAt']))
-     || (signed()
+     || (serviceProvider()
        && resource.data.providerId==request.auth.uid
        && request.resource.data.providerId==request.auth.uid
-       && ((resource.data.status=='pending'&&request.resource.data.status in ['accepted','rejected'])||(resource.data.status=='accepted'&&request.resource.data.status=='completed'))
        && request.resource.data.get('providerNote','') is string
        && request.resource.data.get('providerNote','').size()<=300
-       && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','providerNote','deliveryOrderId','statusUpdatedAt','updatedAt']));
+       && (
+         (resource.data.status=='pending'&&request.resource.data.status=='rejected'&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','providerNote','statusUpdatedAt','updatedAt']))
+         || (resource.data.status=='accepted'&&request.resource.data.status=='completed'&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','providerNote','statusUpdatedAt','updatedAt']))
+         || (resource.data.status=='pending'&&request.resource.data.status=='accepted'
+           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','providerNote','deliveryStatus','deliveryOrderId','statusUpdatedAt','updatedAt'])
+           && ((!resource.data.get('deliveryRequested',false)&&request.resource.data.deliveryStatus=='notRequested'&&request.resource.data.deliveryOrderId=='')||(resource.data.get('deliveryRequested',false)&&request.resource.data.deliveryStatus=='awaitingCaptain'&&request.resource.data.deliveryOrderId is string&&request.resource.data.deliveryOrderId.size()>0&&existsAfter(/databases/$(database)/documents/orders/$(request.resource.data.deliveryOrderId))&&getAfter(/databases/$(database)/documents/orders/$(request.resource.data.deliveryOrderId)).data.serviceRequestId==id&&getAfter(/databases/$(database)/documents/orders/$(request.resource.data.deliveryOrderId)).data.providerId==request.auth.uid))
+         )
+       ));
    allow delete:if admin();
  }
 
@@ -242,14 +284,5 @@ service cloud.firestore { match /databases/{database}/documents {
  }
  match /tripShares/{id}{allow read,write:if false;}
  match /customerRatings/{id}{allow read:if admin()||(signed()&&(resource.data.customerId==request.auth.uid||resource.data.driverId==request.auth.uid));allow write:if false;}
- match /serviceRatings/{id}{
-   function req(){return get(/databases/$(database)/documents/serviceRequests/$(id)).data;}
-   allow read:if signed();
-   allow create:if customer() && id==request.resource.data.requestId && request.resource.data.customerId==request.auth.uid
-     && req().customerId==request.auth.uid && req().status=='completed' && request.resource.data.providerId==req().providerId
-     && request.resource.data.itemName==req().itemName && request.resource.data.score is int && request.resource.data.score>=1 && request.resource.data.score<=5
-     && request.resource.data.keys().hasOnly(['requestId','customerId','providerId','providerName','itemName','score','createdAt']);
-   allow update:if false; allow delete:if admin();
- }
  match /ratings/{id}{function o(){return get(/databases/$(database)/documents/orders/$(id)).data;}allow create:if signed()&&o().userId==request.auth.uid&&o().statusIndex>=4&&request.resource.data.customerId==request.auth.uid;allow read:if signed()&&(resource.data.customerId==request.auth.uid||resource.data.driverId==request.auth.uid||admin());allow update:if false;allow delete:if admin();}
 }}

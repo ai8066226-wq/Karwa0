@@ -37,6 +37,10 @@
     .provider-requests{margin-top:20px}.request-list{display:grid;gap:12px}.request-card{padding:16px;border:1px solid var(--line);border-radius:17px;background:#fbfcfd}.request-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.request-card h3{margin:0;font-size:16px}.request-card p{margin:9px 0;color:var(--muted);line-height:1.7}.request-meta{display:flex;flex-wrap:wrap;gap:7px 14px;color:var(--muted);font-size:12px}.request-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px}.request-actions .button{min-height:38px;padding:8px 13px;font-size:12px}
     @media(max-width:620px){.location-capture{grid-template-columns:1fr}.location-capture .button{width:100%}.request-card-head{align-items:flex-start}.request-actions,.request-actions .button{width:100%}}
   </style>
+  <style id="phase36-item-pricing-delivery">
+    .advanced-catalog-editor{grid-template-columns:minmax(0,1fr) 150px 150px}.advanced-catalog-editor select{width:100%;min-height:46px;border:1px solid #ced9e4;border-radius:13px;padding:10px 12px;color:var(--ink);background:#fbfcfe}.item-image-picker{grid-column:1/-1;padding:12px;display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px dashed #99cfc9;border-radius:14px;color:#08635e;background:#f1faf8;cursor:pointer}.item-image-picker span{font-weight:900}.item-image-picker small{margin-inline-start:auto}.item-image-picker input{width:auto;min-height:0;padding:0;border:0;background:transparent}.delivery-editor{grid-column:1/-1;display:grid;grid-template-columns:1fr 170px;align-items:center;gap:12px;padding:12px;border:1px solid #d8e7e4;border-radius:14px;background:#f7fbfa}.delivery-editor label{margin:0;display:flex;align-items:center;gap:8px}.delivery-editor label input{width:18px;min-height:18px}.delivery-editor>input{min-height:42px}.upload-status{grid-column:1/-1}.catalog-item-rich{grid-template-columns:72px minmax(0,1fr) auto auto}.catalog-item-image{width:72px;height:72px;overflow:hidden;display:grid;place-items:center;border-radius:14px;color:#087b75;background:#eaf7f5;font-size:25px}.catalog-item-image img{width:100%;height:100%;object-fit:cover}.catalog-item-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}.catalog-item-tags span{padding:4px 7px;border-radius:999px;color:#506178;background:#eef3f6;font-size:10px;font-weight:800}
+    @media(max-width:700px){.advanced-catalog-editor{grid-template-columns:1fr}.item-image-picker,.delivery-editor,.upload-status{grid-column:auto}.item-image-picker{align-items:flex-start;flex-direction:column}.item-image-picker small{margin:0}.delivery-editor{grid-template-columns:1fr}.catalog-item-rich{grid-template-columns:58px minmax(0,1fr) auto}.catalog-item-image{width:58px;height:58px}.catalog-item-rich .danger{grid-column:3;grid-row:1/3}}
+  </style>
 </head>
 <body>
   <header class="topbar"><div class="topbar-inner"><a class="brand" href="./index.html" aria-label="كروة - الصفحة الرئيسية"><span class="brand-mark">ك</span><span>كروة<small>بوابة الخدمات الأخرى</small></span></a><div class="account"><span id="accountName"></span><button class="button danger hidden" id="logoutBtn" type="button">تسجيل الخروج</button></div></div></header>
@@ -86,7 +90,20 @@
     <div class="content-grid">
       <section class="card card-body"><div class="card-head"><div><h2>إدارة ملف الخدمة</h2><p class="muted">احرص على إبقاء بيانات التواصل والخدمات محدثة.</p></div><span class="status ok">محمي ومعتمد</span></div>
         <form id="providerForm"><div class="form-grid"><div class="field"><label for="pBusinessName">اسم النشاط</label><input id="pBusinessName" maxlength="80" required></div><div class="field"><label for="pCategory">تصنيف الخدمة</label><input id="pCategory" disabled></div><div class="field"><label for="pPhone">رقم الهاتف</label><input id="pPhone" inputmode="tel" maxlength="20" required></div><div class="field"><label for="pCity">المدينة</label><input id="pCity" maxlength="50" required></div><div class="field full"><label for="pAddress">العنوان</label><input id="pAddress" maxlength="160" required></div><div class="field full"><label for="pDescription">وصف النشاط</label><textarea id="pDescription" maxlength="500"></textarea></div><div class="field full"><label>الموقع الجغرافي</label><button class="button secondary" id="pGpsBtn" type="button">📍 تحديث موقعي الحالي</button><small id="pGpsStatus">لم يتم تحديد الموقع</small></div><div class="field full"><div class="toggle-row"><div><b>إظهار النشاط للعملاء</b><small style="display:block;margin-top:4px">يمكنك إيقاف الظهور مؤقتًا دون فقدان بياناتك.</small></div><label class="toggle"><input id="pActive" type="checkbox" checked><span></span></label></div></div></div>
-          <div class="catalog"><div class="card-head"><div><h3>الخدمات أو المنتجات</h3><p class="muted">للمطاعم: أضف تفاصيل الوجبة والسعر والوزن/عدد النفرات ورسوم التوصيل الاختيارية.</p></div><span class="status ok" id="pItemCount">0 عنصر</span></div><div class="catalog-editor"><input id="pItemName" maxlength="80" placeholder="اسم الخدمة أو الوجبة"><input id="pItemPrice" type="number" min="0" step="250" placeholder="سعر المنتج (إجباري)"><input id="pItemUnit" maxlength="60" placeholder="الوزن أو عدد النفرات (مثال: 1 كغم / 4 نفر)"><input id="pItemDeliveryFee" type="number" min="0" step="250" placeholder="رسوم التوصيل (اختياري)"><textarea id="pItemDescription" maxlength="300" placeholder="تفاصيل الوجبة أو الخدمة"></textarea><button class="button secondary" id="pAddItem" type="button">＋ إضافة</button></div><div class="catalog-list" id="pItemList"></div></div>
+          <div class="catalog">
+            <div class="card-head"><div><h3>الخدمات أو المنتجات</h3><p class="muted">أضف صورة وتفاصيل وسعر الوحدة، وحدد هل هي بالكيلو أو بالنفر أو بالقطعة.</p></div><span class="status ok" id="pItemCount">0 عنصر</span></div>
+            <div class="catalog-editor advanced-catalog-editor">
+              <input id="pItemName" maxlength="80" placeholder="اسم الوجبة أو الخدمة">
+              <input id="pItemPrice" type="number" min="1" step="250" placeholder="سعر الوحدة">
+              <select id="pItemUnit" aria-label="وحدة التسعير"><option value="item">بالقطعة / الطلب</option><option value="kg">بالكيلوغرام</option><option value="person">بالنفر</option></select>
+              <label class="item-image-picker" for="pItemImage"><span>📷 صورة الوجبة</span><small>JPG أو PNG أو WebP — الحد الأقصى 100KB</small><input id="pItemImage" type="file" accept="image/jpeg,image/png,image/webp"></label>
+              <textarea id="pItemDescription" maxlength="300" placeholder="تفاصيل الوجبة أو الخدمة"></textarea>
+              <div class="delivery-editor"><label><input id="pDeliveryAvailable" type="checkbox"> التوصيل متاح</label><input id="pDeliveryFee" type="number" min="0" step="250" value="0" placeholder="أجرة التوصيل" disabled></div>
+              <small class="upload-status" id="pItemImageStatus">الصورة اختيارية ويجب ألا تتجاوز 100KB.</small>
+              <button class="button secondary" id="pAddItem" type="button">＋ إضافة وحفظ العنصر</button>
+            </div>
+            <div class="catalog-list" id="pItemList"></div>
+          </div>
           <button class="button primary wide form-submit" id="saveProviderButton" type="submit">حفظ التغييرات</button>
         </form>
       </section>
@@ -97,7 +114,7 @@
 
   <section class="shell hidden" id="deniedView"><div class="card auth-card" style="max-width:520px;margin:8vh auto;text-align:center"><div style="font-size:44px">🔐</div><h1>هذه البوابة مخصصة لمزودي الخدمات</h1><p class="muted" id="deniedText">نوع الحساب الحالي لا يملك صلاحية فتح هذه الصفحة.</p><button class="button danger wide" id="deniedLogout" type="button">تسجيل الخروج</button></div></section>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./services.js?v=5"></script>
-  <script src="./pwa.js?v=35"></script>
+  <script type="module" src="./services.js?v=6"></script>
+  <script src="./pwa.js?v=36"></script>
 </body>
 </html>

@@ -492,13 +492,3 @@ body{letter-spacing:.01em}.topbar{box-shadow:0 5px 22px rgba(16,32,68,.04)}.shel
 .captain-trip-groups summary b { color: #0b4f70; }
 .admin-panel:nth-of-type(2)>.card-heading,
 .admin-panel:nth-of-type(3)>.card-heading { background: linear-gradient(90deg, #f0f8f7, #fff); }
-
-/* Phase 39 — professional catalog cards, image-free */
-.catalog-item.pro-item{grid-template-columns:52px minmax(0,1fr) auto auto;padding:15px;gap:13px;background:linear-gradient(145deg,#fff,#f8fafc);border-color:#dfe7ef;border-radius:19px;box-shadow:0 7px 20px rgba(15,23,42,.045);transition:.18s ease}
-.catalog-item.pro-item:hover{transform:translateY(-1px);border-color:#a7d8d4;box-shadow:0 10px 25px rgba(15,23,42,.07)}
-.item-symbol{width:52px;height:52px;border-radius:16px;display:grid;place-items:center;background:linear-gradient(135deg,#d9f5f2,#f1fbfa);border:1px solid #b8e6e2;color:var(--brand);font-size:20px;font-weight:950}
-.item-copy{min-width:0}.item-copy b{font-size:15px}.item-copy>small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}.item-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.item-tags span{font-size:11px;font-weight:800;padding:4px 8px;border-radius:999px;background:#edf7f6;color:#286b66}.item-actions{display:flex;gap:6px}.catalog-item.pro-item .price{font-size:15px;padding:7px 10px;border-radius:11px;background:#eef9f8}
-@media(max-width:620px){.catalog-item.pro-item{grid-template-columns:46px 1fr auto}.item-symbol{width:46px;height:46px}.catalog-item.pro-item .price{grid-column:3;grid-row:1}.item-actions{grid-column:2/4}.item-actions .button{flex:1}}
-
-/* Phase 40 - professional service delivery details */
-.service-delivery-details{display:grid;gap:8px;margin:12px 0;padding:14px;border:1px solid #dbe5e8;border-radius:16px;background:#f8fbfc;font-size:14px}.service-delivery-details b{font-size:15px}.service-delivery-details span{display:block;line-height:1.65}.service-delivery-details hr{width:100%;border:0;border-top:1px solid #e3eaed;margin:3px 0}

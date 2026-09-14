@@ -74,7 +74,7 @@ try {
 
 const byId = id => document.getElementById(id);
 const statuses = ["بانتظار كابتن", "الكابتن في الطريق", "وصلت إلى العميل", "بدأت الرحلة", "تم الوصول"];
-const icons = { ride: "🚕", parcel: "📦", food: "🍽️" };
+const icons = { ride: "🚕", parcel: "📦", food: "🍽️", serviceDelivery: "🛵" };
 const DRIVER_MAP_STYLES = {
   day: "https://tiles.openfreemap.org/styles/positron",
   night: "https://tiles.openfreemap.org/styles/dark"
@@ -612,7 +612,6 @@ function orderCard(order, mode) {
         <span class="status-chip ${statusClass}">${escapeHtml(order.cancelled ? "ملغي" : statuses[statusIndex])}</span>
       </div>
       <p class="order-route">${escapeHtml(order.route)}</p>
-      ${order.type === "serviceDelivery" && order.serviceDelivery ? `<div class="service-delivery-details"><b>تفاصيل طلب الخدمة</b><span>🏪 ${escapeHtml(order.serviceDelivery.providerName || "صاحب الخدمة")}</span><span>📍 عنوان الخدمة: ${escapeHtml(order.serviceDelivery.providerAddress || "غير محدد")}</span><span>🧾 ${escapeHtml(order.serviceDelivery.itemName || "طلب خدمة")}</span><span>📝 ${escapeHtml(order.serviceDelivery.requestText || "بدون تفاصيل")}</span><hr><span>👤 العميل: ${escapeHtml(order.serviceDelivery.customerName || "عميل كروة")}</span><span>📞 ${escapeHtml(order.serviceDelivery.customerPhone || "غير متوفر")}</span><span>📍 عنوان العميل: ${escapeHtml(order.serviceDelivery.customerAddress || "غير محدد")}</span></div>` : ""}
       <div class="order-bottom">
         <div class="order-meta"><span>${escapeHtml(order.id)}</span><span>${escapeHtml(order.payment || "نقدًا")}</span>${mode === "available" ? `<span>🗓️ ${escapeHtml(formatOrderCreatedAt(order))}</span>` : ""}${mode === "available" && Number.isFinite(distanceToOrder(order)) ? `<span>يبعد ${distanceToOrder(order).toFixed(1)} كم</span>` : ""}</div>
         ${order.distanceKm ? `<div class="order-meta"><span>المشوار ${Number(order.distanceKm).toFixed(1)} كم</span><span>≈ ${Math.round(Number(order.durationMin||0))} دقيقة</span><span>صافي الكابتن ${money(order.driverEarnings)}</span></div>` : ""}
@@ -629,18 +628,8 @@ function renderOrders() {
     // كابتن التوصيل (وكذلك الدراجة) لا يرى طلبات التكسي؛ كابتن التكسي يراها.
     const serviceType = state.driverData?.serviceType || "taxi";
     if((serviceType === "delivery" || state.driverData?.vehicleType === "دراجة") && order.type === "ride") return false;
-    if(order.type === "serviceDelivery") {
-      if(serviceType !== "delivery") return false;
-      const distance = distanceToOrder(order);
-      if(!Number.isFinite(distance) || distance > 10) return false;
-    }
-    if(order.type === "food") {
-      if(order.foodDetails?.deliveryRequested !== true) return false;
-      if(serviceType !== "delivery") return false;
-      const radius = Number(order.foodDetails?.deliveryRadiusKm || 10);
-      const distance = distanceToOrder(order);
-      if(!Number.isFinite(distance) || distance > radius) return false;
-    }
+    if(order.type === "serviceDelivery" && serviceType !== "delivery") return false;
+    if(order.type === "serviceDelivery" && order.serviceCity && String(order.serviceCity).trim() !== String(state.driverData?.city || "").trim()) return false;
     const exp=order.dispatchExpiresAt?.seconds ? order.dispatchExpiresAt.seconds*1000 : new Date(order.dispatchExpiresAt||0).getTime();
     return !exp || exp<=now || !Array.isArray(order.dispatchCandidateIds) || !order.dispatchCandidateIds.length || order.dispatchCandidateIds.includes(state.user?.uid);
   }).sort((a,b) => distanceToOrder(a) - distanceToOrder(b));
@@ -785,6 +774,8 @@ document.addEventListener("click", async event => {
         if (driver.activeOrderId) throw new Error("DRIVER_BUSY");
         if (order.cancelled || Number(order.statusIndex || 0) >= 4) throw new Error("ORDER_NOT_AVAILABLE");
         if (order.driverId && order.driverId !== state.user.uid) throw new Error("ORDER_TAKEN");
+        if (order.type === "serviceDelivery" && driver.serviceType !== "delivery") throw new Error("DELIVERY_DRIVER_ONLY");
+        if (order.type === "serviceDelivery" && order.serviceCity && String(order.serviceCity).trim() !== String(driver.city || "").trim()) throw new Error("OUTSIDE_DRIVER_AREA");
         transaction.update(orderRef, {
           driverId: state.user.uid,
           driverName: driver.name || state.userData?.name || state.user.email || "كابتن كروة",
@@ -816,12 +807,22 @@ document.addEventListener("click", async event => {
       if (next === 2) fields.arrivedAt = serverTimestamp();
       if (next === 3) fields.startedAt = serverTimestamp();
       if (next === 4) { fields.completedAt = serverTimestamp(); fields.paymentStatus = "paid"; }
-      await updateDoc(orderRef, fields);
+      if (next === 4) {
+        await runTransaction(db, async transaction => {
+          const driverRef = doc(db, "drivers", state.user.uid);
+          const freshOrder = await transaction.get(orderRef);
+          if (!freshOrder.exists() || freshOrder.data().driverId !== state.user.uid) throw new Error("ORDER_NOT_FOUND");
+          transaction.update(orderRef, fields);
+          transaction.update(driverRef, { activeOrderId: "", activeOrderCode: "", busySince: null, updatedAt: serverTimestamp() });
+        });
+      } else {
+        await updateDoc(orderRef, fields);
+      }
       setTimeout(()=>drawPickupRoute(true),400); toast(statuses[next]);
     }
   } catch (error) {
     console.error(error);
-    toast(error.message === "OFFLINE" ? "فعّل حالة الاتصال أولًا" : error.message === "OTP_REQUIRED" ? "يجب إدخال رمز بدء الرحلة" : error.message === "OTP_INVALID" ? "رمز بدء الرحلة غير صحيح" : error.message === "ORDER_TAKEN" ? "سبق أن قبل كابتن آخر هذا الطلب" : error.message === "ORDER_NOT_FOUND" ? "الطلب غير موجود" : error.message === "ORDER_NOT_AVAILABLE" ? "الطلب لم يعد متاحًا" : error.message === "DRIVER_BUSY" ? "لديك رحلة نشطة بالفعل، أكملها أولًا" : error.message === "DRIVER_PROFILE_MISSING" ? "ملف الكابتن غير موجود. أعد تفعيل الحساب من الإدارة" : error.message === "DRIVER_BLOCKED" ? "الحساب موقوف من الإدارة" : driverCallableMessage(error, button.dataset.action === "accept" ? "قبول الطلب" : "تحديث حالة الرحلة"));
+    toast(error.message === "OFFLINE" ? "فعّل حالة الاتصال أولًا" : error.message === "OTP_REQUIRED" ? "يجب إدخال رمز بدء الرحلة" : error.message === "OTP_INVALID" ? "رمز بدء الرحلة غير صحيح" : error.message === "ORDER_TAKEN" ? "سبق أن قبل كابتن آخر هذا الطلب" : error.message === "ORDER_NOT_FOUND" ? "الطلب غير موجود" : error.message === "ORDER_NOT_AVAILABLE" ? "الطلب لم يعد متاحًا" : error.message === "DRIVER_BUSY" ? "لديك رحلة نشطة بالفعل، أكملها أولًا" : error.message === "DRIVER_PROFILE_MISSING" ? "ملف الكابتن غير موجود. أعد تفعيل الحساب من الإدارة" : error.message === "DRIVER_BLOCKED" ? "الحساب موقوف من الإدارة" : error.message === "DELIVERY_DRIVER_ONLY" ? "هذا الطلب مخصص لكابتن مسجل في خدمة التوصيل" : error.message === "OUTSIDE_DRIVER_AREA" ? "هذا الطلب خارج نطاق المدينة المسجلة لحسابك" : driverCallableMessage(error, button.dataset.action === "accept" ? "قبول الطلب" : "تحديث حالة الرحلة"));
   } finally {
     busy(button, false);
   }
