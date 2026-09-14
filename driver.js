@@ -60,7 +60,7 @@ function driverCallableMessage(error, action = "تنفيذ العملية") {
   if (e.named === "ORDER_NOT_FOUND" || e.code === "not-found" && !e.raw.includes("404")) return "الطلب لم يعد موجودًا أو تم حذفه.";
   if (e.named === "NOT_ASSIGNED") return "هذه الرحلة غير مسندة إلى حساب الكابتن الحالي.";
   if (e.named === "INVALID_TRANSITION") return "لا يمكن نقل الرحلة إلى الحالة التالية من حالتها الحالية.";
-  if (e.named === "OTP_INVALID") return "رمز بدء الرحلة غير صحيح.";
+  if (e.named === "OTP_INVALID") return "رمز التحقق غير صحيح.";
   if (e.code === "unauthenticated") return "انتهت جلسة تسجيل الدخول. سجّل الدخول من جديد.";
   if (e.code === "not-found" || e.raw.includes("NOT FOUND") || e.raw.includes("404")) return "خدمة الكابتن الخلفية غير منشورة. انشر Firebase Functions ثم أعد المحاولة.";
   if (e.code === "unavailable" || e.code === "deadline-exceeded" || e.raw.includes("NETWORK") || !navigator.onLine) return "تعذر الاتصال بخادم كروة. تحقق من الإنترنت ثم أعد المحاولة.";
@@ -76,6 +76,11 @@ try {
 
 const byId = id => document.getElementById(id);
 const statuses = ["بانتظار كابتن", "الكابتن في الطريق", "وصلت إلى العميل", "بدأت الرحلة", "تم الوصول"];
+function driverStatusLabel(order, index) {
+  if (order?.type === "serviceDelivery") return ["بانتظار كابتن", "في الطريق إلى الاستلام", "وصلت إلى نقطة الاستلام", "في الطريق إلى العميل", "تم التسليم"][index] || statuses[index] || "قيد المتابعة";
+  if (DELIVERY_ORDER_TYPES.has(order?.type)) return ["بانتظار كابتن", "في الطريق إلى الاستلام", "وصلت إلى نقطة الاستلام", "في الطريق إلى العميل", "تم التسليم"][index] || statuses[index] || "قيد المتابعة";
+  return statuses[index] || "قيد المتابعة";
+}
 const icons = { ride: "🚕", parcel: "📦", food: "🍽️", serviceDelivery: "🛵" };
 const DELIVERY_ORDER_TYPES = new Set(["parcel", "food", "serviceDelivery"]);
 const DRIVER_REQUEST_RADIUS_KM = 10;
@@ -738,13 +743,13 @@ function orderCard(order, mode) {
   const action = mode === "available"
     ? `<button class="primary" data-action="accept" data-id="${order.firestoreId}" ${state.driverData?.online ? "" : "disabled"}>قبول الطلب</button>`
     : statusIndex < 4 && !order.cancelled
-      ? `<button class="primary" data-action="advance" data-id="${order.firestoreId}">${escapeHtml(statuses[statusIndex + 1])}</button>`
+      ? `<button class="primary" data-action="advance" data-id="${order.firestoreId}">${escapeHtml(driverStatusLabel(order, statusIndex + 1))}</button>`
       : "";
   return `
     <article class="order-card">
       <div class="order-top">
         <h3>${icons[order.type] || "🧾"} ${escapeHtml(order.title)}</h3>
-        <span class="status-chip ${statusClass}">${escapeHtml(order.cancelled ? "ملغي" : statuses[statusIndex])}</span>
+        <span class="status-chip ${statusClass}">${escapeHtml(order.cancelled ? "ملغي" : driverStatusLabel(order, statusIndex))}</span>
       </div>
       <p class="order-route">${escapeHtml(order.route)}</p>
       ${order.type === "serviceDelivery" ? `<div class="order-meta delivery-addresses"><span>🏪 عنوان النشاط / الاستلام: ${escapeHtml(String(order.route||"").split(" ← ")[0]||"غير محدد")}</span><span>🏠 عنوان العميل: ${escapeHtml(String(order.route||"").split(" ← ")[1]||"غير محدد")}</span></div>` : ""}
@@ -961,15 +966,23 @@ document.addEventListener("click", async event => {
       if (!order) throw new Error("ORDER_NOT_FOUND");
       const next = Number(order.statusIndex || 0) + 1;
       let otp = "";
-      const otpStep = DELIVERY_ORDER_TYPES.has(order.type) ? 4 : 3;
-      if (next === otpStep) {
+      let pickupOtp = "";
+      const finalOtpStep = DELIVERY_ORDER_TYPES.has(order.type) ? 4 : 3;
+      const pickupOtpStep = order.type === "serviceDelivery" ? 3 : -1;
+      if (next === pickupOtpStep) {
+        pickupOtp = (prompt("أدخل رمز الاستلام المكوّن من 4 أرقام الذي يعطيك إياه المطعم أو صاحب الخدمة عند وصولك:", "") || "").trim();
+        if (!pickupOtp) throw new Error("PICKUP_OTP_REQUIRED");
+        if (!/^\d{4}$/.test(pickupOtp)) throw new Error("PICKUP_OTP_INVALID");
+      }
+      if (next === finalOtpStep) {
         otp = prompt(DELIVERY_ORDER_TYPES.has(order.type) ? "أدخل رمز التسليم المكوّن من 4 أرقام الذي يعطيك إياه العميل عند الوصول:" : "أدخل رمز بدء الرحلة المكوّن من 4 أرقام:", "") || "";
         if (!otp) throw new Error("OTP_REQUIRED");
       }
-      if (next === otpStep && String(otp).trim() !== String(order.tripOtp || "").trim()) throw new Error("OTP_INVALID");
+      if (next === finalOtpStep && String(otp).trim() !== String(order.tripOtp || "").trim()) throw new Error("OTP_INVALID");
       const fields = { statusIndex: next, updatedAt: serverTimestamp() };
       if (next === 2) fields.arrivedAt = serverTimestamp();
       if (next === 3) fields.startedAt = serverTimestamp();
+      if (next === pickupOtpStep) { fields.pickupVerificationCode = pickupOtp; fields.pickupVerifiedAt = serverTimestamp(); }
       if (next === 4) { fields.completedAt = serverTimestamp(); fields.paymentStatus = "paid"; }
       if (next === 4) {
         await runTransaction(db, async transaction => {
@@ -980,13 +993,18 @@ document.addEventListener("click", async event => {
           transaction.update(driverRef, { activeOrderId: "", activeOrderCode: "", busySince: null, updatedAt: serverTimestamp() });
         });
       } else {
-        await updateDoc(orderRef, fields);
+        try {
+          await updateDoc(orderRef, fields);
+        } catch (updateError) {
+          if (next === pickupOtpStep && String(updateError?.code || "").includes("permission-denied")) throw new Error("PICKUP_OTP_INVALID");
+          throw updateError;
+        }
       }
-      setTimeout(()=>drawPickupRoute(true),400); toast(statuses[next]);
+      setTimeout(()=>drawPickupRoute(true),400); toast(driverStatusLabel(order, next));
     }
   } catch (error) {
     console.error(error);
-    toast(error.message === "OFFLINE" ? "فعّل حالة الاتصال أولًا" : error.message === "OTP_REQUIRED" ? "يجب إدخال الرمز" : error.message === "OTP_INVALID" ? "الرمز غير صحيح" : error.message === "ORDER_TAKEN" ? "سبق أن قبل كابتن آخر هذا الطلب" : error.message === "ORDER_NOT_FOUND" ? "الطلب غير موجود" : error.message === "ORDER_NOT_AVAILABLE" ? "الطلب لم يعد متاحًا" : error.message === "DRIVER_BUSY" ? "لديك رحلة نشطة بالفعل، أكملها أولًا" : error.message === "DRIVER_PROFILE_MISSING" ? "ملف الكابتن غير موجود. أعد تفعيل الحساب من الإدارة" : error.message === "DRIVER_BLOCKED" ? "الحساب موقوف من الإدارة" : error.message === "DELIVERY_DRIVER_ONLY" ? "هذا الطلب مخصص لكابتن مسجل في خدمة التوصيل" : error.message === "TAXI_DRIVER_ONLY" ? "هذا الطلب مخصص لكابتن تكسي مسجل لخدمة الركوب" : error.message === "OUTSIDE_DRIVER_AREA" ? "هذا الطلب خارج نطاق المدينة المسجلة لحسابك" : error.message === "LOCATION_REQUIRED" ? "يجب تفعيل GPS وتحديد موقعك الحالي قبل قبول أي طلب" : error.message === "OUTSIDE_REQUEST_RADIUS" ? `هذا الطلب أصبح خارج نطاق ${DRIVER_REQUEST_RADIUS_KM} كم من موقعك الحالي` : driverCallableMessage(error, button.dataset.action === "accept" ? "قبول الطلب" : "تحديث حالة الرحلة"));
+    toast(error.message === "OFFLINE" ? "فعّل حالة الاتصال أولًا" : error.message === "PICKUP_OTP_REQUIRED" ? "يجب إدخال رمز الاستلام من المطعم أو صاحب الخدمة" : error.message === "PICKUP_OTP_INVALID" ? "رمز الاستلام غير صحيح" : error.message === "OTP_REQUIRED" ? "يجب إدخال الرمز" : error.message === "OTP_INVALID" ? "الرمز غير صحيح" : error.message === "ORDER_TAKEN" ? "سبق أن قبل كابتن آخر هذا الطلب" : error.message === "ORDER_NOT_FOUND" ? "الطلب غير موجود" : error.message === "ORDER_NOT_AVAILABLE" ? "الطلب لم يعد متاحًا" : error.message === "DRIVER_BUSY" ? "لديك رحلة نشطة بالفعل، أكملها أولًا" : error.message === "DRIVER_PROFILE_MISSING" ? "ملف الكابتن غير موجود. أعد تفعيل الحساب من الإدارة" : error.message === "DRIVER_BLOCKED" ? "الحساب موقوف من الإدارة" : error.message === "DELIVERY_DRIVER_ONLY" ? "هذا الطلب مخصص لكابتن مسجل في خدمة التوصيل" : error.message === "TAXI_DRIVER_ONLY" ? "هذا الطلب مخصص لكابتن تكسي مسجل لخدمة الركوب" : error.message === "OUTSIDE_DRIVER_AREA" ? "هذا الطلب خارج نطاق المدينة المسجلة لحسابك" : error.message === "LOCATION_REQUIRED" ? "يجب تفعيل GPS وتحديد موقعك الحالي قبل قبول أي طلب" : error.message === "OUTSIDE_REQUEST_RADIUS" ? `هذا الطلب أصبح خارج نطاق ${DRIVER_REQUEST_RADIUS_KM} كم من موقعك الحالي` : driverCallableMessage(error, button.dataset.action === "accept" ? "قبول الطلب" : "تحديث حالة الرحلة"));
   } finally {
     busy(button, false);
   }

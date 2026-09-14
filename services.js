@@ -72,6 +72,7 @@ let activeRole = "";
 let roleUnsubscribe = null;
 let contentUnsubscribe = null;
 let requestsUnsubscribe = null;
+const pickupOtpBackfillIds = new Set();
 
 function showView(id) {
   views.forEach(view => byId(view)?.classList.toggle("hidden", view !== id));
@@ -561,6 +562,7 @@ function renderProviderRequests(requests) {
           <p>${escapeHtml(request.requestText || "بدون تفاصيل إضافية")}</p>
           <div class="request-meta"><span>العميل: ${escapeHtml(request.customerName || "عميل كروة")}</span><span>الكمية: ${Number(request.quantity || 1).toLocaleString("ar-IQ")} ${escapeHtml(itemUnitLabels[request.itemUnit] || itemUnitLabels.item)}</span><span>سعر الوحدة: ${money(request.unitPrice || request.itemPrice)}</span><span>قيمة الحاجة: ${money(request.subtotal || request.itemPrice)}</span></div>
           <div class="request-meta"><span>${deliveryText}</span></div>
+          ${request.pickupOtp && request.deliveryRequested ? `<div class="notice" style="margin-top:10px"><strong>🔐 رمز استلام الكابتن: ${escapeHtml(request.pickupOtp)}</strong><span>أعطِ هذا الرمز للكابتن فقط بعد وصوله فعليًا واستلامه الطلب منك. لا يبدأ التوصيل للعميل بدونه.</span></div>` : ""}
           ${request.providerNote ? `<p class="notice bad" style="margin-top:10px">${escapeHtml(request.providerNote)}</p>` : ""}
           ${actions}
         </article>`;
@@ -589,6 +591,7 @@ byId("providerRequestsList").addEventListener("click", async event => {
           providerNote: "",
           deliveryStatus: request.deliveryRequested ? "awaitingCaptain" : "notRequested",
           deliveryOrderId: "",
+          pickupOtp: request.deliveryRequested ? String(Math.floor(1000 + Math.random() * 9000)) : "",
           statusUpdatedAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         };
@@ -686,6 +689,16 @@ async function openProvider() {
       providerRequests = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }))
         .sort((a, b) => Number(b.createdAt?.seconds || 0) - Number(a.createdAt?.seconds || 0));
       renderProviderRequests(providerRequests);
+      providerRequests.filter(request => request.status === "accepted" && request.deliveryStatus === "awaitingCaptain" && !request.pickupOtp && !pickupOtpBackfillIds.has(request.firestoreId)).forEach(request => {
+        pickupOtpBackfillIds.add(request.firestoreId);
+        updateDoc(doc(db, "serviceRequests", request.firestoreId), {
+          pickupOtp: String(Math.floor(1000 + Math.random() * 9000)),
+          updatedAt: serverTimestamp()
+        }).catch(error => {
+          console.error("pickup OTP backfill failed", error);
+          pickupOtpBackfillIds.delete(request.firestoreId);
+        });
+      });
     },
     error => {
       console.error(error);

@@ -1442,6 +1442,7 @@ byId("myServiceRequests")?.addEventListener("click", async event => {
         totalPrice,
         deliveryStatus: "awaitingCaptain",
         deliveryOrderId: orderRef.id,
+        pickupOtp: String(Math.floor(1000 + Math.random() * 9000)),
         customerAddress: address,
         customerLocation: { latitude: Number(location.latitude), longitude: Number(location.longitude) },
         deliveryChosenAt: serverTimestamp(),
@@ -1526,7 +1527,9 @@ function renderTracking() {
   const call=byId("callDriver"); if(call){call.classList.toggle("hidden",!order.driverPhone);call.href=order.driverPhone?`tel:${String(order.driverPhone).replace(/[^+\d]/g,"")}`:"#";}
   const stageHint=byId("tripStageHint"); if(stageHint)stageHint.textContent=order.type==="serviceDelivery"?(statusIndex===0?"بانتظار كابتن توصيل":statusIndex===1?"الكابتن في الطريق إلى المطعم":statusIndex===2?"الكابتن وصل إلى المطعم لاستلام الطلب":statusIndex===3?"الطلب في الطريق إليك — أعطِ رمز التسليم للكابتن فقط عند وصوله":"تم تسليم الطلب"):(statusIndex===0?"نبحث عن كابتن قريب":statusIndex===1?"الكابتن في الطريق إلى نقطة الانطلاق":statusIndex===2?"الكابتن وصل — تحقق من السيارة ثم أعطه رمز الرحلة":statusIndex===3?"الرحلة جارية نحو الوجهة":"وصلت بالسلامة");
   if(order.driverId && state.driverMarker) drawLiveRoute(true);
-  byId("trackingStatus").textContent = orderStatuses[statusIndex] || "قيد المتابعة";
+  byId("trackingStatus").textContent = order.type === "serviceDelivery"
+    ? (["بانتظار كابتن", "الكابتن في الطريق إلى الاستلام", "وصل الكابتن إلى نقطة الاستلام", "الطلب في الطريق إليك", "تم التسليم"][statusIndex] || "قيد المتابعة")
+    : (orderStatuses[statusIndex] || "قيد المتابعة");
   byId("tripOtpBox").classList.toggle("hidden", !(order.driverId && (order.type === "serviceDelivery" ? statusIndex < 4 : statusIndex < 3)));
   byId("tripOtp").textContent = order.tripOtp || "—";
   byId("paymentTripStatus").textContent = order.paymentStatus === "paid" ? "مدفوع" : "الدفع عند الإكمال";
