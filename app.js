@@ -3,6 +3,7 @@ import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/
 import {
   browserLocalPersistence,
   createUserWithEmailAndPassword,
+  deleteUser,
   getAuth,
   onAuthStateChanged,
   setPersistence,
@@ -42,6 +43,17 @@ const functions = getFunctions(firebaseApp);
 const createRideOrderSecure = httpsCallable(functions, "createRideOrderV2");
 const quoteRideSecure = httpsCallable(functions, "quoteRide");
 const cancelOrderSecure = httpsCallable(functions, "cancelOrderV2");
+
+async function registerNativePushToken(user) {
+  if (!user) return false;
+  let token=""; try{token=String(window.KarwaNative?.getPushToken?.()||window.KarwaNotify?.getNativePushToken?.()||"").trim()}catch{}
+  if (!token) return false;
+  const id = `android_${token.slice(-36).replace(/[^a-zA-Z0-9_-]/g,"_")}`;
+  try { await setDoc(doc(db,"users",user.uid,"pushTokens",id), { token, platform:"android", app:"karwa", role:"customer", updatedAt:serverTimestamp() }, { merge:true }); return true; }
+  catch (error) { console.warn("تعذر تسجيل رمز إشعارات Android", error); return false; }
+}
+window.addEventListener("karwa-native-push-token", () => { if (auth.currentUser) registerNativePushToken(auth.currentUser); });
+
 
 function callableErrorKey(error) {
   const code = String(error?.code || "").replace(/^functions\//, "").toLowerCase();
@@ -87,6 +99,8 @@ function readCustomerPreference(key, fallback) {
 function writeCustomerPreference(key, value) {
   try { localStorage.setItem(key, value); } catch (_) {}
 }
+
+let customerRegistrationInProgress = false;
 
 const state = {
   user: null,
@@ -180,7 +194,7 @@ function activeBonusAmount(data={}){const amount=Math.max(0,Number(data.bonusBal
 function walletAvailable(data={balance:state.balance,bonusBalance:state.bonusBalance,bonusExpiresAt:state.bonusExpiresAt}){return Math.max(0,Number(data.balance||0))+activeBonusAmount(data);}
 function walletDebitPatch(data,amount){const fee=Math.max(0,Math.round(Number(amount||0)));const paid=Math.max(0,Number(data.balance||0));const bonus=activeBonusAmount(data);if(paid+bonus<fee)return null;const useBonus=Math.min(bonus,fee);const paidDebit=fee-useBonus;return {balance:paid-paidDebit,bonusBalance:Math.max(0,Number(data.bonusBalance||0)-useBonus),updatedAt:serverTimestamp()};}
 function applyWalletPatchToState(patch){if(!patch)return;state.balance=Number(patch.balance??state.balance);state.bonusBalance=Number(patch.bonusBalance??state.bonusBalance);renderBalance();}
-function signupBonusFields(settings=state.appSettings||{}){const enabled=settings.signupBonusEnabled!==false;const amount=enabled?Math.max(0,Math.round(Number(settings.signupBonusAmount??1000))):0;const hours=Math.max(1,Math.min(168,Math.round(Number(settings.signupBonusHours??24))));return {bonusBalance:amount,bonusExpiresAt:amount?new Date(Date.now()+hours*3600000):null,welcomeBonusGranted:amount>0,welcomeBonusEvaluated:true};}
+function signupBonusFields(settings=state.appSettings||{}){const enabled=settings.signupBonusEnabled!==false;const amount=enabled?Math.max(0,Math.round(Number(settings.signupBonusAmount??1000))):0;const hours=Math.max(1,Math.min(168,Math.round(Number(settings.signupBonusHours??24))));return {bonusBalance:amount,bonusExpiresAt:amount?new Date(Date.now()+hours*3600000-60000):null,welcomeBonusGranted:amount>0,welcomeBonusEvaluated:true};}
 function haversineKm(a,b){const R=6371,toRad=v=>v*Math.PI/180;const dLat=toRad(b.latitude-a.latitude),dLon=toRad(b.longitude-a.longitude);const x=Math.sin(dLat/2)**2+Math.cos(toRad(a.latitude))*Math.cos(toRad(b.latitude))*Math.sin(dLon/2)**2;return 2*R*Math.asin(Math.sqrt(x));}
 function trafficProfile(km, mins) {
   if(!km || !mins) return {multiplier:1,label:"طبيعي",ratio:1};
@@ -773,8 +787,8 @@ byId("authForm").addEventListener("submit", async event => {
   const name = byId("authName").value.trim();
   const selectedRole = byId("authRole")?.value || "customer";
   const inviteCode = byId("authInviteCode")?.value.trim().toUpperCase() || "";
-  if (selectedRole === "driverApplicant") {
-    window.location.assign(`./driver.html?mode=${state.authMode}`);
+  if (selectedRole === "driverApplicant" || selectedRole === "serviceApplicant") {
+    window.location.assign(selectedRole === "driverApplicant" ? `./driver.html?mode=${state.authMode}` : `./services.html?mode=${state.authMode}`);
     return;
   }
   const submit = byId("authSubmit");
@@ -788,40 +802,55 @@ byId("authForm").addEventListener("submit", async event => {
   setButtonBusy(submit, true);
   try {
     if (state.authMode === "register") {
-      const settingsSnapshot = await getDoc(doc(db, "appSettings", "pricing"));
-      state.appSettings = settingsSnapshot.exists() ? settingsSnapshot.data() : {};
-      const credential = await createUserWithEmailAndPassword(auth, email, password);
-      await updateProfile(credential.user, { displayName: name });
-      const ownReferral=makeReferralCode(credential.user.uid);
-      let invitedByUserId="";
-      if(selectedRole==="customer"&&inviteCode){try{const rs=await getDoc(doc(db,"referralCodes",inviteCode));if(rs.exists()&&rs.data().ownerId!==credential.user.uid)invitedByUserId=rs.data().ownerId;}catch(_){}}
-      const registerBatch=writeBatch(db);
-      const welcomeBonus=signupBonusFields();
-      registerBatch.set(doc(db, "users", credential.user.uid), {
-        name,email,role:selectedRole,balance:0,...welcomeBonus,notifications:true,referralCode:ownReferral,
-        ...(inviteCode&&invitedByUserId?{invitedByCode:inviteCode,invitedByUserId}:{}),createdAt:serverTimestamp(),updatedAt:serverTimestamp()
-      });
-      registerBatch.set(doc(db,"referralCodes",ownReferral),{code:ownReferral,ownerId:credential.user.uid,ownerName:name,active:true,createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
-      await registerBatch.commit();
-      state.name = name;
-      state.role = selectedRole;
-      state.balance = 0;
-      state.bonusBalance = Number(welcomeBonus.bonusBalance||0);
-      state.bonusExpiresAt = welcomeBonus.bonusExpiresAt;
-      state.notifications = true;
-      state.referralCode = ownReferral;
-      if(inviteCode&&invitedByUserId&&byId("couponCode")){byId("couponCode").value=inviteCode;if(byId("couponStatus"))byId("couponStatus").textContent="كود الدعوة محفوظ — حدّد المسار ثم اضغط تطبيق";}
-      renderProfile();
-      renderBalance();
-      renderNotificationSwitch();
-      if (selectedRole === "driverApplicant") { window.location.replace("./driver.html"); return; }
-      if (selectedRole === "serviceApplicant") { window.location.replace("./services.html"); return; }
-      showToast("تم إنشاء حساب العميل بنجاح");
+      customerRegistrationInProgress = true;
+      let credential = null;
+      let profileSaved = false;
+      try {
+        try {
+          const settingsSnapshot = await getDoc(doc(db, "appSettings", "pricing"));
+          state.appSettings = settingsSnapshot.exists() ? settingsSnapshot.data() : {};
+        } catch (settingsError) {
+          console.warn("تعذر تحميل إعدادات التسجيل؛ سيتم استخدام القيم الافتراضية", settingsError);
+          state.appSettings = state.appSettings || {};
+        }
+        credential = await createUserWithEmailAndPassword(auth, email, password);
+        await updateProfile(credential.user, { displayName: name });
+        const ownReferral=makeReferralCode(credential.user.uid);
+        let invitedByUserId="";
+        if(inviteCode){try{const rs=await getDoc(doc(db,"referralCodes",inviteCode));if(rs.exists()&&rs.data().ownerId!==credential.user.uid)invitedByUserId=rs.data().ownerId;}catch(_){}}
+        const welcomeBonus=signupBonusFields();
+        await setDoc(doc(db, "users", credential.user.uid), {
+          name,email,role:"customer",balance:0,...welcomeBonus,notifications:true,referralCode:ownReferral,
+          ...(inviteCode&&invitedByUserId?{invitedByCode:inviteCode,invitedByUserId}:{}),createdAt:serverTimestamp(),updatedAt:serverTimestamp()
+        });
+        profileSaved = true;
+        try {
+          await setDoc(doc(db,"referralCodes",ownReferral),{code:ownReferral,ownerId:credential.user.uid,ownerName:name,active:true,createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
+        } catch (referralError) { console.warn("سيعاد إنشاء كود الدعوة بعد الدخول", referralError); }
+        state.name = name;
+        state.role = "customer";
+        state.balance = 0;
+        state.bonusBalance = Number(welcomeBonus.bonusBalance||0);
+        state.bonusExpiresAt = welcomeBonus.bonusExpiresAt;
+        state.notifications = true;
+        state.referralCode = ownReferral;
+        if(inviteCode&&invitedByUserId&&byId("couponCode")){byId("couponCode").value=inviteCode;if(byId("couponStatus"))byId("couponStatus").textContent="كود الدعوة محفوظ — حدّد المسار ثم اضغط تطبيق";}
+        customerRegistrationInProgress = false;
+        await startVerifiedCustomerSession(credential.user);
+        closeAuthModal();
+        showToast("تم إنشاء حساب العميل بنجاح");
+      } catch (registrationError) {
+        if (credential?.user && !profileSaved) {
+          try { await deleteUser(credential.user); } catch (rollbackError) { console.warn("تعذر حذف حساب التسجيل غير المكتمل", rollbackError); }
+        }
+        throw registrationError;
+      }
     } else {
       await signInWithEmailAndPassword(auth, email, password);
       showToast("مرحبًا بعودتك");
     }
   } catch (error) {
+    customerRegistrationInProgress = false;
     console.error(error);
     byId("authMessage").textContent = authErrorMessage(error);
   } finally {
@@ -2427,6 +2456,11 @@ onAuthStateChanged(auth, async user => {
     return;
   }
 
+  if (customerRegistrationInProgress) {
+    byId("connectionBadge").textContent = "جاري إنشاء الحساب…";
+    return;
+  }
+
   closeAuthModal();
   if (state.profileRetryTimer) clearTimeout(state.profileRetryTimer);
   state.profileRetryTimer = null;
@@ -2449,6 +2483,8 @@ onAuthStateChanged(auth, async user => {
       return;
     }
     await startVerifiedCustomerSession(user);
+    registerNativePushToken(user);
+    window.setTimeout(()=>registerNativePushToken(user),5000);
   } catch (error) {
     console.error(error);
     const errorCode = String(error?.code || "");

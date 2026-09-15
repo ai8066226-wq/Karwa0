@@ -1,0 +1,8 @@
+{
+  "phase": 59,
+  "version": "2.1.0",
+  "webBasePhase": 58,
+  "updateMode": "server-first-local-fallback-auto-refresh",
+  "hosting": "https://karwa0.web.app",
+  "notifications": "android-native-sound-vibration"
+}

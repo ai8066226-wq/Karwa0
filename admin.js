@@ -33,6 +33,13 @@ const app = initializeApp(firebaseConfig, "karwa-admin-portal");
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+async function registerAdminNativePushToken(user){
+  if(!user)return false;let token="";try{token=String(window.KarwaNative?.getPushToken?.()||window.KarwaNotify?.getNativePushToken?.()||"").trim()}catch{}if(!token)return false;
+  const id=`android_${token.slice(-36).replace(/[^a-zA-Z0-9_-]/g,"_")}`;
+  try{await setDoc(doc(db,"users",user.uid,"pushTokens",id),{token,platform:"android",app:"karwa",role:"admin",updatedAt:serverTimestamp()},{merge:true});return true}catch(error){console.warn("تعذر تسجيل رمز إشعارات الإدارة",error);return false}
+}
+window.addEventListener("karwa-native-push-token",()=>{if(auth.currentUser)registerAdminNativePushToken(auth.currentUser)});
+
 try {
   await setPersistence(auth, browserLocalPersistence);
 } catch (error) {
@@ -828,6 +835,7 @@ document.addEventListener("click", async event => {
 });
 
 onAuthStateChanged(auth, user => {
+  if(user){registerAdminNativePushToken(user);window.setTimeout(()=>registerAdminNativePushToken(user),5000);}
   state.user = user;
   if (state.roleUnsubscribe) state.roleUnsubscribe();
   clearDashboardListeners();

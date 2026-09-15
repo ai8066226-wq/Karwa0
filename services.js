@@ -37,6 +37,13 @@ const app = initializeApp(firebaseConfig, "karwa-services-portal-v4");
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+async function registerServiceNativePushToken(user){
+  if(!user)return false;let token="";try{token=String(window.KarwaNative?.getPushToken?.()||window.KarwaNotify?.getNativePushToken?.()||"").trim()}catch{}if(!token)return false;
+  const id=`android_${token.slice(-36).replace(/[^a-zA-Z0-9_-]/g,"_")}`;
+  try{await setDoc(doc(db,"users",user.uid,"pushTokens",id),{token,platform:"android",app:"karwa",role:"service",updatedAt:serverTimestamp()},{merge:true});return true}catch(error){console.warn("تعذر تسجيل رمز إشعارات الخدمات",error);return false}
+}
+window.addEventListener("karwa-native-push-token",()=>{if(auth.currentUser)registerServiceNativePushToken(auth.currentUser)});
+
 try {
   await setPersistence(auth, browserLocalPersistence);
 } catch (error) {
@@ -882,6 +889,7 @@ function clearRoleContent() {
 }
 
 onAuthStateChanged(auth, user => {
+  if(user){registerServiceNativePushToken(user);window.setTimeout(()=>registerServiceNativePushToken(user),5000);}
   currentUser = user;
   activeRole = "";
   roleUnsubscribe?.();

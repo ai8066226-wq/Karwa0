@@ -43,6 +43,17 @@ const functions = getFunctions(app);
 const acceptOrderSecure = httpsCallable(functions, "acceptOrder");
 const advanceTripSecure = httpsCallable(functions, "advanceTrip");
 
+async function registerDriverPushToken(user){
+  if(!user)return false;let token="";try{token=String(window.KarwaNative?.getPushToken?.()||"").trim()}catch{}if(!token)return false;
+  const id=`android_${token.slice(-36).replace(/[^a-zA-Z0-9_-]/g,"_")}`;
+  try{await setDoc(doc(db,"users",user.uid,"pushTokens",id),{token,platform:"android",app:"karwa",role:"driver",updatedAt:serverTimestamp()},{merge:true});return true}catch(error){console.warn("تعذر تسجيل رمز إشعارات الكابتن",error);return false}
+}
+window.addEventListener("karwa-native-push-token",()=>{if(auth.currentUser)registerDriverPushToken(auth.currentUser)});
+function driverNativePermissionGranted(){try{if(window.KarwaNative?.notificationPermissionGranted)return !!window.KarwaNative.notificationPermissionGranted()}catch{}return "Notification" in window&&Notification.permission==="granted"}
+async function requestDriverDevicePermission(){try{if(window.KarwaNative?.requestNotificationPermission){window.KarwaNative.requestNotificationPermission();await new Promise(r=>setTimeout(r,650));return driverNativePermissionGranted()}}catch{}if("Notification" in window){try{return (await Notification.requestPermission())==="granted"}catch{}}return false}
+window.addEventListener("karwa-native-push-received",event=>{const x=event.detail||{};addDriverNotification({id:`native:${x.tag||Date.now()}:${x.title||"karwa"}`,type:x.type==="wallet"?"wallet":x.type==="driver"||x.type==="order"?"order":"system",title:x.title||"كروة",message:x.body||"لديك تحديث جديد",target:x.route?.includes("driver")?"available":"",device:false})});
+
+
 function callableErrorKey(error) {
   const code = String(error?.code || "").replace(/^functions\//, "").toLowerCase();
   const message = String(error?.message || "").toUpperCase();
@@ -276,9 +287,11 @@ function renderDriverNotifications(){
   list.innerHTML=state.notifications.map(item=>`<button type="button" class="driver-notification-item ${escapeHtml(item.type)} ${item.read?"":"unread"}" data-driver-notification-id="${escapeHtml(item.id)}"><span class="driver-notification-icon" aria-hidden="true">${icons[item.type]||icons.system}</span><span class="driver-notification-copy"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.message)}</span><time datetime="${new Date(item.createdAt).toISOString()}">${escapeHtml(driverNotificationTime(item.createdAt))}</time></span><i class="driver-notification-dot" aria-hidden="true"></i></button>`).join("");
 }
 function showDriverDeviceNotification(title,message){
-  if(!state.deviceNotificationsEnabled||!("Notification" in window)||Notification.permission!=="granted")return;
-  try{const notification=new Notification(title,{body:message,icon:"./karwa-icon.svg",badge:"./karwa-icon.svg",tag:`karwa-driver-${Date.now()}`});notification.onclick=()=>{window.focus();notification.close();};}catch(_){}
-  try{navigator.vibrate?.([170,80,170]);}catch(_){}
+  if(!state.deviceNotificationsEnabled)return;
+  try{if(window.KarwaNative?.notify){window.KarwaNative.notify(String(title||"كروة"),String(message||"لديك تحديث جديد"),"driver","./driver.html");return}}catch(_){}
+  if(!("Notification" in window)||Notification.permission!=="granted")return;
+  try{const notification=new Notification(title,{body:message,icon:"./karwa-icon-192.png",badge:"./karwa-icon-192.png",tag:`karwa-driver-${Date.now()}`});notification.onclick=()=>{window.focus();notification.close();};}catch(_){}
+  try{navigator.vibrate?.([220,100,220]);}catch(_){}
 }
 function addDriverNotification({id,type="system",title,message="",target="",device=true}){
   if(!state.user||!id||state.notifications.some(item=>item.id===String(id)))return false;
@@ -298,10 +311,11 @@ function updateDriverNotificationSetting(){
   if(control){control.classList.toggle("on",state.deviceNotificationsEnabled);control.setAttribute("aria-checked",String(state.deviceNotificationsEnabled));}
   if(!message)return;
   message.className="driver-notification-permission";
-  if(!("Notification" in window)){message.textContent="إشعارات الجهاز غير مدعومة هنا، لكن مركز إشعارات اللوحة سيبقى فعالًا.";message.classList.add("denied");return;}
-  if(Notification.permission==="denied"){message.textContent="حظر المتصفح إشعارات الجهاز. يمكنك السماح بها من إعدادات الموقع، وسيبقى مركز اللوحة فعالًا.";message.classList.add("denied");return;}
-  if(Notification.permission==="granted"&&state.deviceNotificationsEnabled){message.textContent="إشعارات الجهاز مفعلة أثناء فتح بوابة الكابتن.";message.classList.add("allowed");return;}
-  message.textContent=Notification.permission==="granted"?"إشعارات الجهاز متوقفة. مركز إشعارات اللوحة ما زال يعمل.":"فعّل الخيار ليطلب المتصفح إذن الإشعارات لأول مرة.";
+  const native=!!window.KarwaNative;
+  const granted=driverNativePermissionGranted();
+  if(granted&&state.deviceNotificationsEnabled){message.textContent=native?"إشعارات Android مفعلة مع الصوت والاهتزاز.":"إشعارات الجهاز مفعلة أثناء فتح بوابة الكابتن.";message.classList.add("allowed");return;}
+  if(!native&&"Notification" in window&&Notification.permission==="denied"){message.textContent="حظر المتصفح إشعارات الجهاز. يمكنك السماح بها من إعدادات الموقع، وسيبقى مركز اللوحة فعالًا.";message.classList.add("denied");return;}
+  message.textContent="فعّل الإشعارات لتصلك الطلبات في النافذة المنسدلة مع الصوت والاهتزاز.";
 }
 function setDriverNotificationsOpen(open,restoreFocus=true){
   const view=byId("driverView"),panel=byId("driverNotificationsPanel"),toggle=byId("driverNotificationsToggle");if(!view||!panel||!toggle)return;
@@ -658,17 +672,10 @@ byId("driverNotificationsList").addEventListener("click", event => {
   }
 });
 byId("driverNotificationSetting").addEventListener("click",async()=>{
-  let next=!state.deviceNotificationsEnabled;
-  let activationFailed=false;
-  if(next){
-    if(!("Notification" in window)){toast("إشعارات الجهاز غير مدعومة في هذا المتصفح");next=false;activationFailed=true;}
-    else if(Notification.permission!=="granted"){
-      try{next=(await Notification.requestPermission())==="granted";}catch(_){next=false;}
-      if(!next){activationFailed=true;toast("لم يتم السماح بإشعارات الجهاز، وسيبقى مركز إشعارات اللوحة فعالًا");}
-    }
-  }
+  let next=!state.deviceNotificationsEnabled;let activationFailed=false;
+  if(next){next=await requestDriverDevicePermission();if(!next){activationFailed=true;toast("لم يتم السماح بإشعارات الجهاز، وسيبقى مركز إشعارات اللوحة فعالًا");}}
   state.deviceNotificationsEnabled=next;updateDriverNotificationSetting();
-  if(state.user){try{await setDoc(doc(db,"users",state.user.uid),{notifications:next,updatedAt:serverTimestamp()},{merge:true});if(!activationFailed)toast(next?"تم تفعيل إشعارات الجهاز":"تم إيقاف إشعارات الجهاز");}catch(error){console.error(error);toast("تعذر حفظ إعداد الإشعارات");}}
+  if(state.user){try{await setDoc(doc(db,"users",state.user.uid),{notifications:next,updatedAt:serverTimestamp()},{merge:true});if(!activationFailed)toast(next?"تم تفعيل إشعارات Android بالصوت والاهتزاز":"تم إيقاف إشعارات الجهاز");}catch(error){console.error(error);toast("تعذر حفظ إعداد الإشعارات");}}
 });
 document.addEventListener("click",event=>{if(event.target.closest(".driver-options-toggle"))setDriverNotificationsOpen(false,false);},true);
 document.addEventListener("keydown", event => {
@@ -1229,6 +1236,7 @@ onAuthStateChanged(auth, user => {
     return;
   }
 
+  registerDriverPushToken(user); window.setTimeout(()=>registerDriverPushToken(user),5000);
   state.userUnsubscribe = onSnapshot(doc(db, "users", user.uid), snapshot => {
     if (!snapshot.exists()) {
       if (state.directRegistration) {
@@ -1240,7 +1248,7 @@ onAuthStateChanged(auth, user => {
       return;
     }
     state.userData = snapshot.data();
-    state.deviceNotificationsEnabled = state.userData.notifications !== false && "Notification" in window && Notification.permission === "granted";
+    state.deviceNotificationsEnabled = state.userData.notifications !== false && driverNativePermissionGranted();
     updateDriverNotificationSetting();
     renderDriverWallet();
     if (!state.topupUnsubscribe) subscribeDriverTopups(user);
