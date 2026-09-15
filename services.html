@@ -30,7 +30,8 @@
     .preview{position:sticky;top:92px}.preview-panel{padding:18px;border:1px solid #d5e9e5;border-radius:19px;background:linear-gradient(145deg,#effaf8,#fff)}.preview-panel h3{margin:0 0 7px}.preview-panel p{margin:5px 0;color:var(--muted)}.preview-category{display:inline-flex;margin-bottom:12px;padding:6px 9px;border-radius:999px;color:var(--brand);background:#dff5f0;font-size:11px;font-weight:900}.empty{padding:18px;border:1px dashed #cfd9e2;border-radius:14px;color:var(--muted);text-align:center}.toast{position:fixed;right:22px;bottom:22px;z-index:100;max-width:min(390px,calc(100% - 32px));padding:13px 17px;border-radius:14px;color:#fff;background:#10233f;box-shadow:0 14px 34px #0003;opacity:0;transform:translateY(12px);pointer-events:none;transition:.22s}.toast.show{opacity:1;transform:none}
     @media(max-width:900px){.auth-layout,.content-grid{grid-template-columns:1fr}.auth-layout{min-height:auto}.auth-intro{min-height:410px}.metrics{grid-template-columns:repeat(2,1fr)}.preview{position:static}}
     @media(max-width:620px){.topbar-inner,.shell{width:min(100% - 24px,1160px)}.account span{display:none}.shell{padding-top:18px}.auth-intro,.hero{padding:24px 20px;border-radius:23px}.auth-intro{min-height:0}.feature-list{margin-top:22px}.form-grid,.summary{grid-template-columns:1fr}.field.full{grid-column:auto}.hero{align-items:flex-start;flex-direction:column}.metrics{grid-template-columns:1fr 1fr}.card-body{padding:17px}.catalog-editor{grid-template-columns:1fr}.catalog-editor textarea{grid-column:auto}.catalog-item{grid-template-columns:1fr auto}.catalog-item .danger{grid-column:2;grid-row:1/3}}
-  </style>
+  .unified-wallet{display:grid;gap:14px}.unified-wallet-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.unified-wallet-balance{position:relative;overflow:hidden;padding:18px;border-radius:18px;color:#fff;background:linear-gradient(145deg,var(--brand-dark),var(--brand));box-shadow:0 12px 28px rgba(11,79,112,.18)}.unified-wallet-balance small,.unified-wallet-balance span{display:block;position:relative;z-index:1;color:#d9f4f0;font-size:11px;font-weight:800}.unified-wallet-balance strong{display:block;position:relative;z-index:1;margin:7px 0;font-size:30px}.unified-topup-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}.unified-topup-destination{display:flex;align-items:center;gap:12px;padding:13px;border:1px solid #cce5e1;border-radius:15px;background:#f3fbf9}.unified-wallet-icon{font-size:28px}.unified-topup-destination div{display:grid;gap:3px;min-width:0}.unified-topup-destination small,.unified-topup-destination span{color:#63778a;font-size:11px}.unified-topup-destination strong{font-size:15px;overflow-wrap:anywhere}.unified-topup-history{display:grid;gap:8px}.unified-topup-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:12px}.unified-topup-row>div{display:grid;gap:3px}.unified-topup-row small{color:var(--muted);font-size:10px}.unified-topup-status{padding:5px 8px;border-radius:999px;background:#fff3cf;color:#976000;font-size:9px;font-weight:900;white-space:nowrap}.unified-topup-status.approved{background:#e2f7ef;color:#08765b}.unified-topup-status.rejected{background:#ffebef;color:#ae263b}@media(max-width:700px){.unified-topup-grid{grid-template-columns:1fr}}
+</style>
   <style id="phase35-service-requests">
     .metrics{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
     .location-capture{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:10px;padding:11px;border:1px solid #d8e7e4;border-radius:14px;background:#f2faf8}.location-capture small{margin:0}.location-capture .button{white-space:nowrap}
@@ -86,18 +87,22 @@
 
   <main class="shell hidden" id="providerView">
     <section class="hero"><div><span class="eyebrow">مساحة مزود الخدمة</span><h1>أهلًا، <span id="providerHeroName">شريك كروة</span></h1><p>حدّث ملف نشاطك والخدمات التي يراها العملاء من مكان واحد.</p></div><span class="badge">✓ حساب معتمد</span></section>
-    <section class="metrics"><div class="metric"><small>حالة الظهور</small><strong id="activeMetric">نشط</strong></div><div class="metric"><small>تصنيف النشاط</small><strong id="categoryMetric">—</strong></div><div class="metric"><small>الخدمات والمنتجات</small><strong id="itemsMetric">0</strong></div><div class="metric"><small>طلبات العملاء</small><strong id="requestsMetric">0</strong></div><div class="metric"><small>الرصيد المتاح</small><strong id="serviceWalletBalance">0 د.ع</strong></div><div class="metric"><small>حالة الاعتماد</small><strong style="color:var(--ok)">معتمد ✓</strong></div></section>
-    <section class="card card-body" style="margin-bottom:18px">
-      <div class="card-head"><div><h2>محفظة مزود الخدمة</h2><p class="muted">يُخصم رسم النشر مرة واحدة عند نشر النشاط لأول مرة، ثم الرسم الثابت عند قبول كل طلب.</p></div><span class="status ok" id="serviceBonusStatus">الرصيد المشحون</span></div>
-      <div class="form-grid">
-        <div class="field"><label>وجهة التحويل</label><div><b id="serviceTopupTransferId">أضف معرف التحويل من الإدارة</b><small style="display:block" id="serviceTopupCardHolder">إدارة كروة</small></div></div>
-        <div class="field"><label>الرسوم الحالية</label><div><b id="serviceFeeSummary">نشر 1,000 د.ع • طلب 250 د.ع</b><small style="display:block">يجب توفر الرصيد قبل تنفيذ العملية.</small></div></div>
+    <section class="metrics"><div class="metric"><small>حالة الظهور</small><strong id="activeMetric">نشط</strong></div><div class="metric"><small>تصنيف النشاط</small><strong id="categoryMetric">—</strong></div><div class="metric"><small>الخدمات والمنتجات</small><strong id="itemsMetric">0</strong></div><div class="metric"><small>طلبات العملاء</small><strong id="requestsMetric">0</strong></div><div class="metric"><small>الرصيد المتاح</small><strong id="serviceWalletMetric">0 د.ع</strong></div><div class="metric"><small>حالة الاعتماد</small><strong style="color:var(--ok)">معتمد ✓</strong></div></section>
+    <section class="card card-body unified-wallet" style="margin-bottom:18px" aria-labelledby="serviceWalletTitle">
+      <div class="unified-wallet-head"><div><span class="eyebrow" style="color:var(--brand-dark);border-color:#c7e5e1;background:#eaf7f5">المحفظة</span><h2 id="serviceWalletTitle" style="margin:8px 0 0">الرصيد والشحن</h2></div><span class="status ok" id="serviceBonusStatus">الرصيد المشحون</span></div>
+      <div class="unified-wallet-balance"><small>الرصيد المتاح</small><strong id="serviceWalletBalance">0 د.ع</strong><span id="serviceFeeSummary">نشر 1,000 د.ع • طلب 250 د.ع</span></div>
+      <div class="unified-topup-grid">
+        <div>
+          <div class="unified-topup-destination"><span class="unified-wallet-icon">💳</span><div><small id="serviceTopupTransferLabel">Mastercard محلي</small><strong id="serviceTopupTransferId">معرف التحويل يظهر هنا</strong><span>اسم المستلم: <b id="serviceTopupCardHolder">إدارة كروة</b></span></div></div>
+          <p class="muted">حوّل المبلغ إلى حساب Mastercard المحدد من الإدارة، ثم أدخل نفس المبلغ ومرجع العملية. لا تدخل PIN أو CVV أو كلمة مرور البطاقة.</p>
+          <form id="serviceTopupForm" class="form-grid">
+            <div class="field"><label for="serviceTopupAmount">المبلغ المحوّل (د.ع)</label><input id="serviceTopupAmount" type="number" inputmode="numeric" min="1000" max="1000000" step="250" placeholder="مثال: 10000" required></div>
+            <div class="field"><label for="serviceTopupReference">رقم/مرجع التحويل</label><input id="serviceTopupReference" maxlength="80" placeholder="مثال: رقم العملية" required></div>
+            <div class="field full"><button class="button primary wide" id="serviceTopupSubmit" type="submit">إرسال طلب الشحن إلى الإدارة</button></div>
+          </form>
+        </div>
+        <div><h3 style="margin-top:0">طلبات الشحن</h3><div id="serviceTopupRequestsList" class="unified-topup-history"><p class="muted">لا توجد طلبات شحن بعد.</p></div></div>
       </div>
-      <form id="serviceTopupForm" class="form-grid" style="margin-top:12px">
-        <div class="field"><label for="serviceTopupAmount">مبلغ الشحن (د.ع)</label><input id="serviceTopupAmount" type="number" min="1000" max="1000000" step="250" placeholder="10000" required></div>
-        <div class="field"><label for="serviceTopupReference">مرجع التحويل</label><input id="serviceTopupReference" maxlength="80" placeholder="رقم العملية" required></div>
-        <div class="field full"><button class="button primary" id="serviceTopupSubmit" type="submit">إرسال طلب الشحن إلى الإدارة</button></div>
-      </form>
     </section>
     <div class="content-grid">
       <section class="card card-body"><div class="card-head"><div><h2>إدارة ملف الخدمة</h2><p class="muted">احرص على إبقاء بيانات التواصل والخدمات محدثة.</p></div><span class="status ok">محمي ومعتمد</span></div>
@@ -124,7 +129,7 @@
 
   <section class="shell hidden" id="deniedView"><div class="card auth-card" style="max-width:520px;margin:8vh auto;text-align:center"><div style="font-size:44px">🔐</div><h1>هذه البوابة مخصصة لمزودي الخدمات</h1><p class="muted" id="deniedText">نوع الحساب الحالي لا يملك صلاحية فتح هذه الصفحة.</p><button class="button danger wide" id="deniedLogout" type="button">تسجيل الخروج</button></div></section>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./services.js?v=51"></script>
-  <script src="./pwa.js?v=51"></script>
+  <script type="module" src="./services.js?v=52"></script>
+  <script src="./pwa.js?v=52"></script>
 </body>
 </html>

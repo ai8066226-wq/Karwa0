@@ -153,6 +153,8 @@ const state = {
   driverData: null,
   ratings: [],
   orders: [],
+  topupRequests: [],
+  topupUnsubscribe: null,
   userUnsubscribe: null,
   viewUnsubscribes: [],
   locationWatchId: null,
@@ -187,8 +189,21 @@ function renderDriverWallet(){
   if(byId("driverWalletBalance"))byId("driverWalletBalance").textContent=`${driverWalletAvailable().toLocaleString("ar-IQ")} د.ع`;
   const bonus=driverActiveBonus(state.userData||{});if(byId("driverBonusStatus"))byId("driverBonusStatus").textContent=bonus>0?`مجاني ${bonus.toLocaleString("ar-IQ")} د.ع حتى ${new Date(driverTimestampMillis(state.userData?.bonusExpiresAt)).toLocaleString("ar-IQ")}`:"الرصيد المشحون";
   if(byId("driverOrderFeeLabel"))byId("driverOrderFeeLabel").textContent=`${driverFixedFee("captainOrderFee",250).toLocaleString("ar-IQ")} د.ع`;
+  if(byId("driverTopupTransferLabel"))byId("driverTopupTransferLabel").textContent=driverPricingSettings.topupTransferLabel||"Mastercard محلي";
   if(byId("driverTopupTransferId"))byId("driverTopupTransferId").textContent=driverPricingSettings.topupTransferId||"أضف معرف التحويل من الإدارة";
   if(byId("driverTopupCardHolder"))byId("driverTopupCardHolder").textContent=driverPricingSettings.topupCardHolder||"إدارة كروة";
+  renderDriverTopupRequests();
+}
+function renderDriverTopupRequests(){
+  const box=byId("driverTopupRequestsList");if(!box)return;
+  if(!state.user){box.innerHTML='<p class="muted">سجّل الدخول لعرض طلبات الشحن.</p>';return;}
+  if(!state.topupRequests.length){box.innerHTML='<p class="muted">لا توجد طلبات شحن بعد.</p>';return;}
+  const labels={pending:"بانتظار المراجعة",approved:"تم الاعتماد",rejected:"مرفوض"};
+  box.innerHTML=state.topupRequests.map(x=>`<div class="unified-topup-row"><div><strong>${money(x.amount)}</strong><small>${escapeHtml(x.transferReference||"بدون مرجع")}</small></div><span class="unified-topup-status ${escapeHtml(x.status||"pending")}">${labels[x.status]||escapeHtml(x.status||"pending")}</span></div>`).join("");
+}
+function subscribeDriverTopups(user){
+  state.topupUnsubscribe?.();
+  state.topupUnsubscribe=onSnapshot(query(collection(db,"topupRequests"),where("userId","==",user.uid)),snapshot=>{state.topupRequests=snapshot.docs.map(d=>({...d.data(),firestoreId:d.id})).sort((a,b)=>Number(b.createdAt?.seconds||0)-Number(a.createdAt?.seconds||0));renderDriverTopupRequests();},error=>console.warn("تعذر تحميل طلبات شحن الكابتن",error));
 }
 onSnapshot(doc(db,"appSettings","pricing"),snapshot=>{driverPricingSettings=snapshot.exists()?snapshot.data():{};renderDriverWallet();},error=>console.warn("تعذر تحميل إعدادات الرسوم",error));
 
@@ -1052,6 +1067,7 @@ byId("driverTopupForm")?.addEventListener("submit",async event=>{
 onAuthStateChanged(auth, user => {
   state.user = user;
   if (state.userUnsubscribe) state.userUnsubscribe();
+  state.topupUnsubscribe?.(); state.topupUnsubscribe=null; state.topupRequests=[];
   clearViewListeners();
   if (!user) {
     state.userData = null;
@@ -1077,6 +1093,7 @@ onAuthStateChanged(auth, user => {
     }
     state.userData = snapshot.data();
     renderDriverWallet();
+    if (!state.topupUnsubscribe) subscribeDriverTopups(user);
     if (state.userData.role === "driver") {
       openDriverDashboard();
     } else if (state.userData.role === "driverApplicant" || state.userData.role === "serviceApplicant" || state.userData.role === "serviceProvider") {

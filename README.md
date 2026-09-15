@@ -1,4 +1,4 @@
-# Karwa0 — Phase 51: رسوم ثابتة، محافظ لجميع الأدوار ورصيد ترحيبي
+# Karwa0 — Phase 52: رسوم ثابتة، محافظ لجميع الأدوار ورصيد ترحيبي
 
 ## التعديلات في هذه النسخة
 
@@ -16,7 +16,7 @@
 
 1. انشر `firestore.rules` الجديدة **قبل اختبار الرسوم والمحافظ**؛ القواعد الجديدة جزء أساسي من الخصم الذري وحماية الرصيد.
 2. من لوحة الإدارة افتح قسم **التسعير والرسوم والشحن** واضبط سعر الكيلومتر، الرسوم الثابتة، إعداد الرصيد المجاني، ومعرف التحويل المحلي.
-3. ارفع ملفات الواجهة كاملة؛ تم رفع Service Worker وملفات JavaScript إلى Phase 51 لتقليل بقاء نسخة PWA قديمة.
+3. ارفع ملفات الواجهة كاملة؛ تم رفع Service Worker وملفات JavaScript إلى Phase 52 لتقليل بقاء نسخة PWA قديمة.
 4. الشحن الحالي **مراجعة محلية بإيصال/مرجع تحويل** وليس خصمًا آليًا من Mastercard. للخصم الآلي يلزم مزود دفع مرخص وبيانات تاجر/API مناسبة.
 
 ---
@@ -333,3 +333,9 @@ firebase deploy --only hosting
 - طلب توصيل الغرض يتطلب تحديد موقع الاستلام عبر GPS حتى يمكن إدخاله في نظام نطاق 10 كم.
 
 > بعد رفع Phase 46 يجب نشر `firestore.rules` الجديدة، ثم رفع ملفات الاستضافة.
+
+## Phase 52 — Unified wallet UI
+- Captain wallet moved into Account & Settings with the same top-up flow used by the customer portal.
+- Captain and service portals now show top-up request history and review status.
+- Transfer label, Mastercard destination, recipient, available balance, temporary bonus status, and fixed fees are rendered consistently from admin pricing settings.
+- PWA cache bumped to phase 52 so wallet UI updates are not hidden by the previous service-worker cache.

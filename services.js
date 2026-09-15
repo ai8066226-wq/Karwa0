@@ -72,6 +72,8 @@ let activeRole = "";
 let roleUnsubscribe = null;
 let contentUnsubscribe = null;
 let requestsUnsubscribe = null;
+let topupUnsubscribe = null;
+let serviceTopupRequests = [];
 const pickupOtpBackfillIds = new Set();
 let pricingSettings = {};
 
@@ -82,12 +84,27 @@ function walletAvailable(data=currentUserData||{}){return Math.max(0,Number(data
 function walletDebitPatch(data,amount){const fee=Math.max(0,Math.round(Number(amount||0)));const paid=Math.max(0,Number(data?.balance||0));const bonus=activeBonusAmount(data||{});if(paid+bonus<fee)return null;const useBonus=Math.min(bonus,fee);return {balance:paid-(fee-useBonus),bonusBalance:Math.max(0,Number(data?.bonusBalance||0)-useBonus),updatedAt:serverTimestamp()};}
 function signupBonusFields(settings=pricingSettings||{}){const enabled=settings.signupBonusEnabled!==false;const amount=enabled?Math.max(0,Math.round(Number(settings.signupBonusAmount??1000))):0;const hours=Math.max(1,Math.min(168,Math.round(Number(settings.signupBonusHours??24))));return {bonusBalance:amount,bonusExpiresAt:amount?new Date(Date.now()+hours*3600000):null,welcomeBonusGranted:amount>0,welcomeBonusEvaluated:true};}
 function renderServiceWallet(){
-  const balance=byId("serviceWalletBalance");if(balance)balance.textContent=`${walletAvailable().toLocaleString("ar-IQ")} د.ع`;
+  const value=`${walletAvailable().toLocaleString("ar-IQ")} د.ع`;
+  if(byId("serviceWalletBalance"))byId("serviceWalletBalance").textContent=value;
+  if(byId("serviceWalletMetric"))byId("serviceWalletMetric").textContent=value;
   const bonus=activeBonusAmount(currentUserData||{}),bonusStatus=byId("serviceBonusStatus");
   if(bonusStatus)bonusStatus.textContent=bonus>0?`مجاني ${bonus.toLocaleString("ar-IQ")} د.ع حتى ${new Date(timestampMillis(currentUserData?.bonusExpiresAt)).toLocaleString("ar-IQ")}`:"الرصيد المشحون";
+  if(byId("serviceTopupTransferLabel"))byId("serviceTopupTransferLabel").textContent=pricingSettings.topupTransferLabel||"Mastercard محلي";
   if(byId("serviceTopupTransferId"))byId("serviceTopupTransferId").textContent=pricingSettings.topupTransferId||"أضف معرف التحويل من الإدارة";
   if(byId("serviceTopupCardHolder"))byId("serviceTopupCardHolder").textContent=pricingSettings.topupCardHolder||"إدارة كروة";
-  if(byId("serviceFeeSummary"))byId("serviceFeeSummary").textContent=`نشر ${fixedFee("publishFee",1000).toLocaleString("ar-IQ")} د.ع • طلب ${fixedFee("providerOrderFee",250).toLocaleString("ar-IQ")} د.ع`;
+  if(byId("serviceFeeSummary"))byId("serviceFeeSummary").textContent=`رسم النشر ${fixedFee("publishFee",1000).toLocaleString("ar-IQ")} د.ع • رسم الطلب ${fixedFee("providerOrderFee",250).toLocaleString("ar-IQ")} د.ع`;
+  renderServiceTopupRequests();
+}
+function renderServiceTopupRequests(){
+  const box=byId("serviceTopupRequestsList");if(!box)return;
+  if(!currentUser){box.innerHTML='<p class="muted">سجّل الدخول لعرض طلبات الشحن.</p>';return;}
+  if(!serviceTopupRequests.length){box.innerHTML='<p class="muted">لا توجد طلبات شحن بعد.</p>';return;}
+  const labels={pending:"بانتظار المراجعة",approved:"تم الاعتماد",rejected:"مرفوض"};
+  box.innerHTML=serviceTopupRequests.map(x=>`<div class="unified-topup-row"><div><strong>${Number(x.amount||0).toLocaleString("ar-IQ")} د.ع</strong><small>${escapeHtml(x.transferReference||"بدون مرجع")}</small></div><span class="unified-topup-status ${escapeHtml(x.status||"pending")}">${labels[x.status]||escapeHtml(x.status||"pending")}</span></div>`).join("");
+}
+function subscribeServiceTopups(user){
+  topupUnsubscribe?.();
+  topupUnsubscribe=onSnapshot(query(collection(db,"topupRequests"),where("userId","==",user.uid)),snapshot=>{serviceTopupRequests=snapshot.docs.map(d=>({...d.data(),firestoreId:d.id})).sort((a,b)=>Number(b.createdAt?.seconds||0)-Number(a.createdAt?.seconds||0));renderServiceTopupRequests();},error=>console.warn("تعذر تحميل طلبات شحن مزود الخدمة",error));
 }
 function serviceCommissionRate(){return 0;}
 
@@ -692,6 +709,7 @@ byId("providerRequestsList").addEventListener("click", async event => {
 
 async function openProvider() {
   showView("providerView");
+  subscribeServiceTopups(currentUser);
   const [profileSnapshot, applicationSnapshot, restaurantSnapshot] = await Promise.all([
     getDoc(doc(db, "serviceProfiles", currentUser.uid)),
     getDoc(doc(db, "serviceApplications", currentUser.uid)),
@@ -849,6 +867,9 @@ function clearRoleContent() {
   contentUnsubscribe = null;
   requestsUnsubscribe?.();
   requestsUnsubscribe = null;
+  topupUnsubscribe?.();
+  topupUnsubscribe = null;
+  serviceTopupRequests = [];
   providerRequests = [];
 }
 
