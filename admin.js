@@ -59,6 +59,7 @@ const state = {
   ratings: [],
   orders: [],
   topupRequests: [],
+  coupons: [],
   pricingSettings: null,
   paymentSettings: null,
   roleUnsubscribe: null,
@@ -210,6 +211,41 @@ function fieldNumber(id,fallback){const n=Number(byId(id)?.value);return Number.
 function renderPricingSettings(){const p=deepMergeAdmin(DEFAULT_ADMIN_PRICING,state.pricingSettings||{});const map=[['fareEconomyBase',p.taxi.economy.baseFare],['fareEconomyKm',p.taxi.economy.perKm],['fareEconomyMin',p.taxi.economy.perMinute],['fareEconomyMinimum',p.taxi.economy.minimumFare],['commissionEconomy',p.taxi.economy.commissionRate*100],['fareTaxiBase',p.taxi.taxi.baseFare],['fareTaxiKm',p.taxi.taxi.perKm],['fareTaxiMin',p.taxi.taxi.perMinute],['fareTaxiMinimum',p.taxi.taxi.minimumFare],['commissionTaxi',p.taxi.taxi.commissionRate*100],['fareFamilyBase',p.taxi.family.baseFare],['fareFamilyKm',p.taxi.family.perKm],['fareFamilyMin',p.taxi.family.perMinute],['fareFamilyMinimum',p.taxi.family.minimumFare],['commissionFamily',p.taxi.family.commissionRate*100],['commissionParcel',p.deliveryCommissions.parcel*100],['commissionFood',p.deliveryCommissions.food*100],['commissionServiceDelivery',p.deliveryCommissions.serviceDelivery*100],['freeFlowSpeed',p.traffic.freeFlowSpeedKph],['trafficWeight',p.traffic.trafficWeight],['maxTrafficMultiplier',p.traffic.maxMultiplier],['peakExtra',p.traffic.peakExtra],['inviterReward',p.referral.inviterReward],['inviteeReward',p.referral.inviteeReward]];map.forEach(([id,v])=>{if(document.activeElement!==byId(id)&&byId(id))byId(id).value=v;});}
 function renderPaymentSettings(){const p=state.paymentSettings||{};if(byId('mastercardEnabled'))byId('mastercardEnabled').checked=p.mastercardEnabled===true;[['adminMastercardNumber',p.mastercardNumber||''],['adminMastercardHolder',p.cardHolder||''],['adminMinTopup',p.minTopup||5000],['adminMaxTopup',p.maxTopup||1000000],['adminTopupInstructions',p.instructions||'']].forEach(([id,v])=>{if(document.activeElement!==byId(id)&&byId(id))byId(id).value=v;});}
 function renderTopupRequests(){const host=byId('topupRequestsList');if(!host)return;const list=[...state.topupRequests].sort((a,b)=>{if(a.status==='pending'&&b.status!=='pending')return -1;if(b.status==='pending'&&a.status!=='pending')return 1;return Number(b.createdAt?.seconds||0)-Number(a.createdAt?.seconds||0)});const pending=list.filter(x=>x.status==='pending').length;byId('pendingTopupsBadge').textContent=`${pending} بانتظار التحقق`;host.innerHTML=list.length?list.map(x=>`<article class="order-card topup-admin-card ${escapeHtml(x.status||'pending')}"><div class="order-top"><h3>💳 ${escapeHtml(x.customerName||'عميل كروة')}</h3><span class="status-chip ${x.status==='approved'?'approved':x.status==='rejected'?'rejected':'pending'}">${x.status==='approved'?'تمت الإضافة':x.status==='rejected'?'مرفوض':'قيد التحقق'}</span></div><div class="order-meta"><span>${money(x.amount)}</span><span>مرجع: <b>${escapeHtml(x.reference||'—')}</b></span><span>${escapeHtml(x.customerEmail||'')}</span></div>${x.status==='pending'?`<div class="order-actions"><button class="primary" data-action="approve-topup" data-id="${x.firestoreId}">وصل المبلغ — إضافة الرصيد</button><button class="danger" data-action="reject-topup" data-id="${x.firestoreId}">رفض</button></div>`:''}</article>`).join(''):`<div class="empty"><span>💳</span>لا توجد طلبات شحن.</div>`;}
+
+function normalizeCouponCode(value){return String(value||"").trim().toUpperCase().replace(/[^A-Z0-9_-]/g,"").slice(0,24);}
+function renderCoupons(){
+  const host=byId("couponsList"); if(!host)return;
+  const list=[...state.coupons].sort((a,b)=>String(a.firestoreId).localeCompare(String(b.firestoreId)));
+  if(byId("couponCountBadge"))byId("couponCountBadge").textContent=`${list.length} كود`;
+  host.innerHTML=list.length?list.map(c=>{
+    const pct=Math.max(0,Number(c.discountPercent||c.percent||0));
+    const fixed=Math.max(0,Number(c.discountAmount||c.amount||0));
+    const value=pct>0?`${pct}%`:money(fixed);
+    const expiry=c.validUntilISO?new Date(c.validUntilISO):null;
+    const expired=expiry&&!Number.isNaN(expiry.getTime())&&expiry.getTime()<Date.now();
+    const active=c.active!==false&&!expired;
+    return `<article class="order-card"><div class="order-top"><h3>🎟️ ${escapeHtml(c.firestoreId)}</h3><span class="status-chip ${active?'approved':'rejected'}">${active?'فعال':'متوقف'}</span></div><div class="order-meta"><span>الخصم: <b>${escapeHtml(value)}</b></span><span>أقل أجرة: ${money(c.minFare||0)}</span>${pct>0&&Number(c.maxDiscount||0)>0?`<span>أقصى خصم: ${money(c.maxDiscount)}</span>`:''}${c.validUntilISO?`<span>ينتهي: ${escapeHtml(c.validUntilISO.slice(0,10))}</span>`:''}</div><div class="order-actions"><button class="secondary" data-action="toggle-coupon" data-id="${escapeHtml(c.firestoreId)}">${active?'إيقاف':'تفعيل'}</button><button class="danger" data-action="delete-coupon" data-id="${escapeHtml(c.firestoreId)}">حذف</button></div></article>`;
+  }).join(""):`<div class="empty"><span>🎟️</span>لا توجد أكواد خصم بعد.</div>`;
+}
+byId("saveCouponAdmin")?.addEventListener("click",async event=>{
+  const button=event.currentTarget; busy(button,true,"جاري الحفظ…");
+  try{
+    const code=normalizeCouponCode(byId("couponCodeAdmin")?.value);
+    const type=byId("couponTypeAdmin")?.value||"fixed";
+    const value=Math.max(0,Number(byId("couponValueAdmin")?.value||0));
+    const maxDiscount=Math.max(0,Number(byId("couponMaxAdmin")?.value||0));
+    const minFare=Math.max(0,Number(byId("couponMinFareAdmin")?.value||0));
+    const expiry=byId("couponExpiryAdmin")?.value||"";
+    if(code.length<3){toast("اكتب كودًا من 3 أحرف أو أرقام على الأقل");return;}
+    if(value<=0){toast("أدخل قيمة خصم أكبر من صفر");return;}
+    if(type==="percent"&&value>100){toast("نسبة الخصم لا يمكن أن تتجاوز 100%");return;}
+    const payload={active:byId("couponActiveAdmin")?.checked!==false,minFare,updatedAt:serverTimestamp(),updatedBy:state.user.uid};
+    if(type==="percent"){payload.discountPercent=value;payload.discountAmount=0;payload.maxDiscount=maxDiscount;}else{payload.discountAmount=Math.round(value);payload.discountPercent=0;payload.maxDiscount=0;}
+    if(expiry)payload.validUntilISO=new Date(`${expiry}T23:59:59`).toISOString();else payload.validUntilISO="";
+    await setDoc(doc(db,"coupons",code),payload,{merge:true});
+    byId("couponCodeAdmin").value="";byId("couponValueAdmin").value="";toast("تم حفظ كود الخصم");
+  }catch(e){console.error(e);toast("تعذر حفظ كود الخصم");}finally{busy(button,false);}
+});
 byId('savePricingSettings')?.addEventListener('click',async event=>{const button=event.currentTarget;busy(button,true,'جاري الحفظ…');try{const data={taxi:{economy:{label:'اقتصادي',baseFare:fieldNumber('fareEconomyBase',1500),perKm:fieldNumber('fareEconomyKm',650),perMinute:fieldNumber('fareEconomyMin',65),minimumFare:fieldNumber('fareEconomyMinimum',3000),commissionRate:fieldNumber('commissionEconomy',15)/100},taxi:{label:'تكسي',baseFare:fieldNumber('fareTaxiBase',2000),perKm:fieldNumber('fareTaxiKm',800),perMinute:fieldNumber('fareTaxiMin',80),minimumFare:fieldNumber('fareTaxiMinimum',4000),commissionRate:fieldNumber('commissionTaxi',15)/100},family:{label:'عائلي',baseFare:fieldNumber('fareFamilyBase',2750),perKm:fieldNumber('fareFamilyKm',975),perMinute:fieldNumber('fareFamilyMin',95),minimumFare:fieldNumber('fareFamilyMinimum',5000),commissionRate:fieldNumber('commissionFamily',15)/100}},traffic:{freeFlowSpeedKph:fieldNumber('freeFlowSpeed',38),trafficWeight:fieldNumber('trafficWeight',.35),maxMultiplier:fieldNumber('maxTrafficMultiplier',1.45),peakExtra:fieldNumber('peakExtra',.08),peakWindows:state.pricingSettings?.traffic?.peakWindows||DEFAULT_ADMIN_PRICING.traffic.peakWindows},deliveryCommissions:{parcel:fieldNumber('commissionParcel',15)/100,food:fieldNumber('commissionFood',15)/100,serviceDelivery:fieldNumber('commissionServiceDelivery',15)/100},referral:{enabled:true,inviterReward:fieldNumber('inviterReward',2000),inviteeReward:fieldNumber('inviteeReward',1000)},updatedAt:serverTimestamp(),updatedBy:state.user.uid};await setDoc(doc(db,'platformSettings','pricing'),data,{merge:true});toast('تم حفظ التسعير والعمولات للطلبات الجديدة');}catch(e){console.error(e);toast('تعذر حفظ التسعير');}finally{busy(button,false);}});
 byId('savePaymentSettings')?.addEventListener('click',async event=>{const button=event.currentTarget;busy(button,true,'جاري الحفظ…');try{const card=byId('adminMastercardNumber').value.trim();if(byId('mastercardEnabled').checked&&card.replace(/\D/g,'').length<12){toast('أدخل رقم بطاقة صالح قبل تفعيل الشحن');return;}await setDoc(doc(db,'platformSettings','payments'),{mastercardEnabled:byId('mastercardEnabled').checked,mastercardNumber:card,cardHolder:byId('adminMastercardHolder').value.trim().slice(0,80),minTopup:fieldNumber('adminMinTopup',5000),maxTopup:fieldNumber('adminMaxTopup',1000000),instructions:byId('adminTopupInstructions').value.trim().slice(0,300),updatedAt:serverTimestamp(),updatedBy:state.user.uid},{merge:true});toast('تم حفظ إعدادات ماستر كارد');}catch(e){console.error(e);toast('تعذر حفظ إعدادات الشحن');}finally{busy(button,false);}});
 
@@ -516,6 +552,7 @@ function openDashboard() {
     renderMetrics();
   });
   const topupsUnsubscribe = onSnapshot(collection(db, "topupRequests"), snapshot => { state.topupRequests = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id })); renderTopupRequests(); });
+  const couponsUnsubscribe = onSnapshot(collection(db, "coupons"), snapshot => { state.coupons = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id })); renderCoupons(); });
   const pricingUnsubscribe = onSnapshot(doc(db, "platformSettings", "pricing"), snapshot => { state.pricingSettings = snapshot.exists() ? snapshot.data() : null; renderPricingSettings(); });
   const paymentsUnsubscribe = onSnapshot(doc(db, "platformSettings", "payments"), snapshot => { state.paymentSettings = snapshot.exists() ? snapshot.data() : null; renderPaymentSettings(); });
   const ratingsUnsubscribe = onSnapshot(collection(db, "ratings"), snapshot => {
@@ -531,7 +568,7 @@ function openDashboard() {
     restaurantsUnsubscribe,
     ordersUnsubscribe,
     driversUnsubscribe,
-    topupsUnsubscribe, pricingUnsubscribe, paymentsUnsubscribe,
+    topupsUnsubscribe, couponsUnsubscribe, pricingUnsubscribe, paymentsUnsubscribe,
     ratingsUnsubscribe
   );
 }
@@ -546,6 +583,13 @@ document.addEventListener("click", async event => {
       const topup=state.topupRequests.find(x=>x.firestoreId===id);if(!topup)throw new Error("NOT_FOUND");
       if(button.dataset.action === "approve-topup"){const received=Number(prompt(`المبلغ المطلوب ${money(topup.amount)}. أدخل المبلغ الذي وصل فعليًا إلى بطاقتك:`,String(Number(topup.amount||0)))||0);if(!Number.isFinite(received)||received<=0){toast("أدخل مبلغًا صحيحًا");return;}if(!confirm(`سيضاف ${money(received)} إلى رصيد العميل. تأكيد؟`))return;await reviewTopupFirestore(id,"approve",received);toast(`تمت إضافة ${money(received)} إلى رصيد العميل`);}
       else {const note=prompt("سبب الرفض (اختياري)","")||"";await reviewTopupFirestore(id,"reject",0,note);toast("تم رفض طلب الشحن");}
+    } else if (button.dataset.action === "toggle-coupon") {
+      const coupon=state.coupons.find(x=>x.firestoreId===id);if(!coupon)throw new Error("NOT_FOUND");
+      await updateDoc(doc(db,"coupons",id),{active:coupon.active===false,updatedAt:serverTimestamp(),updatedBy:state.user.uid});
+      toast(coupon.active===false?"تم تفعيل كود الخصم":"تم إيقاف كود الخصم");
+    } else if (button.dataset.action === "delete-coupon") {
+      if(!confirm(`حذف كود الخصم ${id} نهائيًا؟`))return;
+      await deleteDoc(doc(db,"coupons",id));toast("تم حذف كود الخصم");
     } else if (button.dataset.action === "delete-account") {
       const account = state.users.find(item => item.firestoreId === id);
       if (!account) throw new Error("NOT_FOUND");

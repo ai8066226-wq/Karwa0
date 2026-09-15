@@ -116,6 +116,25 @@
         </div>
 
         <div class="card admin-panel">
+          <div class="card-heading"><h2>أكواد الخصم والدعوات</h2><span class="status-chip active">تحكم من الإدارة</span></div>
+          <p class="muted">أنشئ كود خصم ثابت أو نسبي. كود الدعوة الخاص بالعميل يُشارك من التطبيق، ومكافآته تُحدد من قسم الدعوات أعلاه بعد أول طلب مكتمل للمدعو.</p>
+          <div class="admin-settings-grid">
+            <fieldset><legend>إنشاء/تعديل كود خصم</legend>
+              <label>الكود<input id="couponCodeAdmin" maxlength="24" placeholder="KARWA10" autocomplete="off"></label>
+              <label>نوع الخصم<select id="couponTypeAdmin"><option value="fixed">مبلغ ثابت</option><option value="percent">نسبة مئوية</option></select></label>
+              <label>قيمة الخصم<input id="couponValueAdmin" type="number" min="0" step="250" placeholder="1000 أو 10"></label>
+              <label>أقصى خصم للنسبة<input id="couponMaxAdmin" type="number" min="0" step="250" placeholder="0 = بدون حد"></label>
+              <label>أقل أجرة لاستخدامه<input id="couponMinFareAdmin" type="number" min="0" step="250" value="0"></label>
+              <label>تاريخ الانتهاء<input id="couponExpiryAdmin" type="date"></label>
+              <label><input id="couponActiveAdmin" type="checkbox" checked> الكود فعال</label>
+            </fieldset>
+          </div>
+          <div class="order-actions"><button class="primary" id="saveCouponAdmin" type="button">حفظ كود الخصم</button></div>
+          <div class="card-heading" style="margin-top:16px"><h3>الأكواد الحالية</h3><span class="status-chip pending" id="couponCountBadge">0 كود</span></div>
+          <div class="orders" id="couponsList"><div class="empty">لا توجد أكواد خصم بعد.</div></div>
+        </div>
+
+        <div class="card admin-panel">
           <div class="card-heading"><h2>شحن المحفظة المحلي — MasterCard</h2><span class="status-chip approved">اعتماد يدوي آمن</span></div>
           <p class="muted">لا يجمع التطبيق بيانات بطاقة العميل. العميل يحوّل إلى بطاقتك خارج التطبيق، ثم ترصد وصول المبلغ وتعتمد الطلب هنا.</p>
           <div class="admin-settings-grid">

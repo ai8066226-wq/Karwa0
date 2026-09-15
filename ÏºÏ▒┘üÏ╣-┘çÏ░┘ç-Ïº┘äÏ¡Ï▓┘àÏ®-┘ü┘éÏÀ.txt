@@ -1,0 +1,17 @@
+حزمة Karwa Phase 54 — جميع الملفات ما عدا التطبيق
+
+المحتويات:
+- private-admin/ : لوحة الإدارة الخاصة
+- firestore.rules : قواعد Firestore المحدثة
+- storage.rules : قواعد Storage
+- firebase.json : إعداد النشر لـ Firestore
+- ملفات التعليمات
+
+لا يوجد داخل هذه الحزمة ملف التطبيق .caproj.
+لا توجد Cloud Functions.
+
+لنشر Firestore فقط:
+firebase use karwa0
+firebase deploy --only firestore
+
+لوحة الإدارة تبقى خاصة ولا تُضمّن داخل التطبيق.
