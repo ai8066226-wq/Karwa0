@@ -1,35 +1,14 @@
-KARWA PHASE 54 — FIRESTORE ONLY
+Karwa Phase 51 private backend + admin portal.
 
-لا توجد Cloud Functions في هذه النسخة.
+IMPORTANT
+- The administration UI remains OUTSIDE the Android APK.
+- Only a Firebase user whose users/{uid}.role == "admin" can open/use admin operations.
+- deleteAccountCompletely is a privileged Cloud Function using Firebase Admin SDK. It deletes Auth + linked Firestore/Storage data and refuses to delete the current admin or any admin-role account.
 
-النشر المطلوب للقواعد فقط:
-  firebase deploy --only firestore
+Deploy from this server folder (after Firebase CLI login and project selection):
+  cd functions && npm install && cd ..
+  firebase deploy --only functions:deleteAccountCompletely,firestore:rules,storage,hosting
 
-لوحة الإدارة موجودة في private-admin/ وتعمل مباشرة مع Firestore.
-
-التسعير الديناميكي للتكسي:
-- فتح عداد + سعر لكل كم + سعر لكل دقيقة + حد أدنى.
-- معامل ازدحام تقديري ووقت ذروة.
-- إعداد مستقل لفئات اقتصادي / تكسي / عائلي.
-
-العمولات:
-- عمولة مستقلة لكل فئة تكسي.
-- عمولة مستقلة لتوصيل الأغراض والطعام والخدمات.
-
-الشحن المحلي MasterCard:
-- الإدارة تحدد بطاقة الاستلام.
-- العميل يحول خارج التطبيق ثم يرسل المبلغ ورقم العملية.
-- الإدارة تدخل المبلغ الذي وصل فعليًا، ويضاف نفس المبلغ إلى رصيد العميل داخل Firestore Transaction.
-
-الدعوات والخصومات:
-- لكل عميل كود دعوة قابل للمشاركة.
-- مكافأة الداعي والمدعو تحددها الإدارة وتضاف بعد أول طلب مكتمل للمدعو.
-- الإدارة تستطيع إنشاء أكواد خصم ثابتة أو نسبية، مع حد أدنى للأجرة وسقف وتاريخ انتهاء.
-
-الدفع:
-- لا يوجد اختيار طريقة دفع في صفحة حجز العميل.
-- رصيد كروة يطبق تلقائيًا على الطلب المؤهل، والمتبقي فقط يبقى مستحقًا.
-
-حذف الحساب:
-- الإدارة تعطل المستخدم داخل كروة وتحذف بيانات Firestore المرتبطة.
-- حذف سجل Firebase Authentication نفسه يحتاج Firebase Console لأن النسخة Firestore-only.
+If you already host the admin portal elsewhere, deploy only:
+  firebase deploy --only functions:deleteAccountCompletely,firestore:rules,storage
+and copy private-admin/ to your existing private admin hosting location.
