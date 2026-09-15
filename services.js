@@ -73,6 +73,16 @@ let roleUnsubscribe = null;
 let contentUnsubscribe = null;
 let requestsUnsubscribe = null;
 const pickupOtpBackfillIds = new Set();
+let pricingSettings = {};
+
+function serviceCommissionRate(category="") {
+  const categoryKey={restaurant:"commissionRestaurant",grocery:"commissionGrocery",retail:"commissionRetail",maintenance:"commissionMaintenance",home:"commissionHome",health:"commissionHealth",other:"commissionOther"}[category];
+  const fallback=Number.isFinite(Number(pricingSettings.commissionServiceDelivery))?Number(pricingSettings.commissionServiceDelivery):0.15;
+  const raw=categoryKey&&Number.isFinite(Number(pricingSettings[categoryKey]))?Number(pricingSettings[categoryKey]):fallback;
+  return Math.min(.5,Math.max(0,raw));
+}
+
+onSnapshot(doc(db,"appSettings","pricing"),snapshot=>{pricingSettings=snapshot.exists()?snapshot.data():{};},error=>console.warn("تعذر تحميل إعدادات عمولة الخدمات",error));
 
 function showView(id) {
   views.forEach(view => byId(view)?.classList.toggle("hidden", view !== id));
@@ -615,7 +625,7 @@ byId("providerRequestsList").addEventListener("click", async event => {
             pickupLocation: request.providerLocation, destinationLocation: request.customerLocation,
             serviceCity: request.providerCity || currentProfile?.city || "", requiredDriverService: "delivery",
             distanceKm: 0, durationMin: 0, routeSource: "serviceDelivery",
-            commissionRate: 0.15, commissionAmount: Math.round(deliveryFee * 0.15), driverEarnings: deliveryFee - Math.round(deliveryFee * 0.15),
+            commissionRate: serviceCommissionRate(request.providerCategory || "restaurant"), commissionAmount: Math.round(deliveryFee * serviceCommissionRate(request.providerCategory || "restaurant")), driverEarnings: deliveryFee - Math.round(deliveryFee * serviceCommissionRate(request.providerCategory || "restaurant")),
             tripOtp: String(Math.floor(1000 + Math.random() * 9000)), paymentStatus: "pending",
             acceptedAt: null, arrivedAt: null, startedAt: null, completedAt: null, cancellationReason: "",
             statusIndex: 0, cancelled: false, createdAt: serverTimestamp(), createdAtISO: new Date().toISOString(), updatedAt: serverTimestamp()

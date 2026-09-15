@@ -13,7 +13,9 @@ import {
   getFirestore,
   increment,
   onSnapshot,
+  runTransaction,
   serverTimestamp,
+  setDoc,
   updateDoc,
   writeBatch
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
@@ -51,6 +53,8 @@ const state = {
   drivers: [],
   ratings: [],
   orders: [],
+  topupRequests: [],
+  pricingSettings: {},
   roleUnsubscribe: null,
   dashboardUnsubscribes: []
 };
@@ -405,6 +409,41 @@ function repairLegacyCaptainService(collectionName, record) {
   }).catch(error => console.warn("تعذر تصحيح نوع خدمة الكابتن القديم", record.firestoreId, error));
 }
 
+function percentToRate(value){const n=Number(value);return Math.max(0,Math.min(.5,Number.isFinite(n)?n/100:.15));}
+function rateToPercent(value){const n=Number(value);return Number.isFinite(n)?Math.round(n*1000)/10:15;}
+function renderPricingSettings(){
+  const c=state.pricingSettings||{};
+  const rateIds=["commissionRide","commissionParcel","commissionFood","commissionServiceDelivery","commissionRestaurant","commissionGrocery","commissionRetail","commissionMaintenance","commissionHome","commissionHealth","commissionOther"];
+  rateIds.forEach(id=>{const el=byId(id);if(el&&document.activeElement!==el)el.value=String(rateToPercent(c[id]));});
+  ["topupTransferLabel","topupTransferId","topupCardHolder"].forEach(id=>{const el=byId(id);if(el&&document.activeElement!==el)el.value=String(c[id]||"");});
+  if(byId("referralDiscountPercent")&&document.activeElement!==byId("referralDiscountPercent"))byId("referralDiscountPercent").value=String(Number(c.referralDiscountPercent??10));
+  if(byId("referralMaxDiscount")&&document.activeElement!==byId("referralMaxDiscount"))byId("referralMaxDiscount").value=String(Number(c.referralMaxDiscount??3000));
+}
+function renderTopupRequests(){
+  const box=byId("topupRequestsAdmin"); if(!box)return;
+  const rows=[...state.topupRequests].sort((a,b)=>Number(b.createdAt?.seconds||0)-Number(a.createdAt?.seconds||0));
+  const pending=rows.filter(x=>(x.status||"pending")==="pending").length;
+  if(byId("pendingTopupsBadge"))byId("pendingTopupsBadge").textContent=`${pending} بانتظار المراجعة`;
+  if(!rows.length){box.innerHTML='<p class="muted">لا توجد طلبات شحن بعد.</p>';return;}
+  const labels={pending:"قيد المراجعة",approved:"معتمد",rejected:"مرفوض"};
+  box.innerHTML=rows.map(x=>{const status=x.status||"pending";const date=x.createdAt?.seconds?new Date(x.createdAt.seconds*1000).toLocaleString("ar-IQ"):"—";return `<article class="topup-admin-row ${escapeHtml(status)}"><div class="topup-admin-head"><div><strong>${escapeHtml(x.customerName||"عميل")}</strong><small> • ${escapeHtml(x.email||"")}</small></div><span class="status-chip ${status==='approved'?'approved':status==='rejected'?'cancelled':'pending'}">${labels[status]||escapeHtml(status)}</span></div><div class="order-meta"><span>المبلغ: <b>${money(x.amount)}</b></span><span>المرجع: <b>${escapeHtml(x.transferReference||"—")}</b></span><span>${date}</span></div>${status==='pending'?`<div class="topup-admin-actions"><button class="primary" data-action="approve-topup" data-id="${x.firestoreId}">اعتماد وإضافة الرصيد</button><button class="danger" data-action="reject-topup" data-id="${x.firestoreId}">رفض</button></div>`:`${x.reviewNote?`<p class="admin-note">${escapeHtml(x.reviewNote)}</p>`:""}`}</article>`;}).join("");
+}
+
+byId("pricingSettingsForm")?.addEventListener("submit",async event=>{
+  event.preventDefault(); if(!state.user)return;
+  const button=byId("savePricingSettings"); busy(button,true,"جارٍ الحفظ…");
+  try{
+    const payload={updatedAt:serverTimestamp(),updatedBy:state.user.uid};
+    ["commissionRide","commissionParcel","commissionFood","commissionServiceDelivery","commissionRestaurant","commissionGrocery","commissionRetail","commissionMaintenance","commissionHome","commissionHealth","commissionOther"].forEach(id=>payload[id]=percentToRate(byId(id)?.value));
+    payload.topupTransferLabel=(byId("topupTransferLabel")?.value||"Mastercard محلي").trim().slice(0,60);
+    payload.topupTransferId=(byId("topupTransferId")?.value||"").trim().slice(0,80);
+    payload.topupCardHolder=(byId("topupCardHolder")?.value||"").trim().slice(0,80);
+    payload.referralDiscountPercent=Math.max(0,Math.min(100,Number(byId("referralDiscountPercent")?.value||10)));
+    payload.referralMaxDiscount=Math.max(0,Math.min(100000,Math.round(Number(byId("referralMaxDiscount")?.value||3000))));
+    await setDoc(doc(db,"appSettings","pricing"),payload,{merge:true}); toast("تم حفظ العمولات وإعدادات الشحن والدعوات");
+  }catch(error){console.error(error);toast("تعذر حفظ الإعدادات");}finally{busy(button,false);}
+});
+
 function openDashboard() {
   clearDashboardListeners();
   showView("dashboard");
@@ -450,6 +489,14 @@ function openDashboard() {
     renderDrivers();
     renderRatings();
   });
+  const topupsUnsubscribe = onSnapshot(collection(db,"topupRequests"), snapshot => {
+    state.topupRequests = snapshot.docs.map(item=>({...item.data(),firestoreId:item.id}));
+    renderTopupRequests();
+  });
+  const pricingUnsubscribe = onSnapshot(doc(db,"appSettings","pricing"), snapshot => {
+    state.pricingSettings = snapshot.exists()?snapshot.data():{};
+    renderPricingSettings();
+  });
   state.dashboardUnsubscribes.push(
     usersUnsubscribe,
     applicationsUnsubscribe,
@@ -458,7 +505,9 @@ function openDashboard() {
     restaurantsUnsubscribe,
     ordersUnsubscribe,
     driversUnsubscribe,
-    ratingsUnsubscribe
+    ratingsUnsubscribe,
+    topupsUnsubscribe,
+    pricingUnsubscribe
   );
 }
 
@@ -468,7 +517,28 @@ document.addEventListener("click", async event => {
   const id = button.dataset.id;
   busy(button, true);
   try {
-    if (button.dataset.action === "approve-service") {
+    if (button.dataset.action === "approve-topup") {
+      await runTransaction(db, async transaction => {
+        const requestRef=doc(db,"topupRequests",id);
+        const requestSnap=await transaction.get(requestRef);
+        if(!requestSnap.exists())throw new Error("TOPUP_NOT_FOUND");
+        const request=requestSnap.data();
+        if((request.status||"pending")!=="pending")throw new Error("TOPUP_ALREADY_REVIEWED");
+        const amount=Math.round(Number(request.amount||0));
+        if(!Number.isFinite(amount)||amount<=0)throw new Error("BAD_AMOUNT");
+        const userRef=doc(db,"users",request.userId);
+        const userSnap=await transaction.get(userRef);
+        if(!userSnap.exists())throw new Error("USER_NOT_FOUND");
+        const currentBalance=Number(userSnap.data().balance||0);
+        transaction.update(userRef,{balance:currentBalance+amount,updatedAt:serverTimestamp()});
+        transaction.update(requestRef,{status:"approved",creditedAmount:amount,reviewedBy:state.user.uid,reviewedAt:serverTimestamp(),updatedAt:serverTimestamp()});
+      });
+      toast("تم اعتماد الشحن وإضافة نفس المبلغ إلى رصيد العميل");
+    } else if (button.dataset.action === "reject-topup") {
+      const note=prompt("سبب الرفض:","تعذر مطابقة التحويل")?.trim(); if(!note)return;
+      await updateDoc(doc(db,"topupRequests",id),{status:"rejected",reviewNote:note.slice(0,200),reviewedBy:state.user.uid,reviewedAt:serverTimestamp(),updatedAt:serverTimestamp()});
+      toast("تم رفض طلب الشحن");
+    } else if (button.dataset.action === "approve-service") {
       const legacy = button.dataset.source === "legacy";
       const application = legacy
         ? state.applications.find(item => item.firestoreId === id && normalizeCaptainServiceType(item) === "other")

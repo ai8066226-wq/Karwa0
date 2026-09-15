@@ -10,6 +10,10 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <meta name="theme-color" content="#0b6f75">
   <link rel="icon" href="./karwa-icon.svg" type="image/svg+xml">
+
+  <style>
+    .admin-settings-form{display:grid;gap:12px}.admin-settings-form h3{margin:8px 0 0}.admin-settings-grid{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:10px}.admin-settings-grid label{display:grid;gap:6px;color:#52637a;font-size:11px;font-weight:800}.admin-settings-grid input{min-height:42px;padding:8px 10px;border:1px solid #d8e2e8;border-radius:10px;background:#fff}.wide-fields{grid-template-columns:repeat(2,minmax(180px,1fr))}.topup-admin-row{display:grid;gap:8px;padding:13px;border:1px solid #dfe7ef;border-radius:14px;background:#fff}.topup-admin-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.topup-admin-actions{display:flex;gap:8px;flex-wrap:wrap}.topup-admin-actions button{min-height:36px}.topup-admin-row.approved{border-color:#b9e5d6;background:#f5fcf9}.topup-admin-row.rejected{opacity:.72}@media(max-width:800px){.admin-settings-grid,.wide-fields{grid-template-columns:1fr 1fr}}@media(max-width:520px){.admin-settings-grid,.wide-fields{grid-template-columns:1fr}}
+  </style>
 </head>
 <body>
   <header class="topbar">
@@ -83,6 +87,45 @@
       <section class="admin-main-column">
         <div class="section-title compact"><div><small>الإدارة اليومية</small><h2>الخدمات والتشغيل والكباتن</h2></div></div>
         <div class="card admin-panel">
+          <div class="card-heading"><h2>التسعير والعمولات والشحن</h2><span class="status-chip approved">تحكم مباشر</span></div>
+          <p class="muted">حدد عمولة المنصة لكل نوع خدمة ولكل فئة نشاط، واضبط بيانات التحويل المحلي وكود الدعوات.</p>
+          <form id="pricingSettingsForm" class="admin-settings-form">
+            <h3>عمولات أنواع الطلبات</h3>
+            <div class="admin-settings-grid">
+              <label>تكسي %<input id="commissionRide" type="number" min="0" max="50" step="0.5" value="15"></label>
+              <label>توصيل أغراض %<input id="commissionParcel" type="number" min="0" max="50" step="0.5" value="15"></label>
+              <label>طعام %<input id="commissionFood" type="number" min="0" max="50" step="0.5" value="15"></label>
+              <label>توصيل خدمات %<input id="commissionServiceDelivery" type="number" min="0" max="50" step="0.5" value="15"></label>
+            </div>
+            <h3>عمولات فئات الخدمات</h3>
+            <div class="admin-settings-grid">
+              <label>مطاعم %<input id="commissionRestaurant" type="number" min="0" max="50" step="0.5" value="15"></label>
+              <label>بقالة %<input id="commissionGrocery" type="number" min="0" max="50" step="0.5" value="15"></label>
+              <label>تسوق %<input id="commissionRetail" type="number" min="0" max="50" step="0.5" value="15"></label>
+              <label>صيانة %<input id="commissionMaintenance" type="number" min="0" max="50" step="0.5" value="15"></label>
+              <label>منزل %<input id="commissionHome" type="number" min="0" max="50" step="0.5" value="15"></label>
+              <label>صحة %<input id="commissionHealth" type="number" min="0" max="50" step="0.5" value="15"></label>
+              <label>أخرى %<input id="commissionOther" type="number" min="0" max="50" step="0.5" value="15"></label>
+            </div>
+            <h3>Mastercard محلي والدعوات</h3>
+            <div class="admin-settings-grid wide-fields">
+              <label>اسم طريقة التحويل<input id="topupTransferLabel" maxlength="60" value="Mastercard محلي"></label>
+              <label>معرف/رقم التحويل<input id="topupTransferId" maxlength="80" placeholder="معرف تحويل أو رقم حساب مخصص"></label>
+              <label>اسم المستلم<input id="topupCardHolder" maxlength="80" placeholder="اسم حامل الحساب"></label>
+              <label>خصم الدعوة %<input id="referralDiscountPercent" type="number" min="0" max="100" step="1" value="10"></label>
+              <label>أقصى خصم دعوة (د.ع)<input id="referralMaxDiscount" type="number" min="0" max="100000" step="250" value="3000"></label>
+            </div>
+            <p class="muted">استخدم معرف تحويل أو رقم حساب مناسب للاستلام. لا تحفظ CVV أو PIN أو كلمة مرور بطاقة داخل النظام.</p>
+            <button class="primary wide" id="savePricingSettings" type="submit">حفظ إعدادات التسعير</button>
+          </form>
+        </div>
+
+        <div class="card admin-panel">
+          <div class="card-heading"><h2>طلبات شحن الرصيد</h2><span class="status-chip pending" id="pendingTopupsBadge">0 بانتظار المراجعة</span></div>
+          <p class="muted">بعد التحقق من وصول التحويل، اضغط اعتماد. سيضاف نفس المبلغ إلى رصيد العميل مرة واحدة.</p>
+          <div class="orders" id="topupRequestsAdmin"></div>
+        </div>
+        <div class="card admin-panel">
           <div class="card-heading"><h2>طلبات مزودي الخدمات</h2><span class="status-chip pending">اعتماد مستقل</span></div>
           <p class="muted">راجع بيانات النشاط ثم اقبل الطلب لفتح لوحة الخدمات الخاصة بالحساب.</p>
           <div class="orders" id="serviceApplicationsList"></div>
@@ -124,7 +167,7 @@
   </main>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./admin.js?v=44"></script>
-  <script src="./pwa.js?v=48"></script>
+  <script type="module" src="./admin.js?v=49"></script>
+  <script src="./pwa.js?v=49"></script>
 </body>
 </html>

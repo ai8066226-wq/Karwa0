@@ -13,10 +13,17 @@ service cloud.firestore { match /databases/{database}/documents {
  function validServiceCategory(value){return value in ['restaurant','grocery','retail','maintenance','home','health','other'];}
  function validDriverApplication(data){return data.serviceType in ['taxi','delivery','other']&&((data.serviceType=='taxi'&&data.vehicleType!='دراجة')||data.serviceType=='delivery'||data.serviceType=='other');}
  match /users/{uid}{
-   allow create:if own(uid)&&(request.resource.data.role=='customer'||request.resource.data.role=='driverApplicant'||request.resource.data.role=='serviceApplicant');
+   allow create:if own(uid)
+     && (request.resource.data.role=='customer'||request.resource.data.role=='driverApplicant'||request.resource.data.role=='serviceApplicant')
+     && request.resource.data.balance is number
+     && request.resource.data.balance==0;
    allow read:if own(uid)||admin();
    allow update:if admin()||(own(uid)&&(
-     request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','email','notifications','savedAddresses','balance','updatedAt'])
+     (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','email','notifications','savedAddresses','updatedAt']))
+     || (!resource.data.keys().hasAny(['referralCode'])
+       && request.resource.data.referralCode is string
+       && request.resource.data.referralCode.size()>=6 && request.resource.data.referralCode.size()<=24
+       && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['referralCode','updatedAt']))
      || (!resource.data.keys().hasAny(['role'])
        && request.resource.data.role=='customer'
        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role','email','updatedAt']))
@@ -77,6 +84,35 @@ service cloud.firestore { match /databases/{database}/documents {
  }
  match /orders/{id}{
    function linkedServiceRequest(){return getAfter(/databases/$(database)/documents/serviceRequests/$(request.resource.data.serviceRequestId)).data;}
+   function pricingExists(){return exists(/databases/$(database)/documents/appSettings/pricing);}
+   function pricing(){return get(/databases/$(database)/documents/appSettings/pricing).data;}
+   function typeCommissionRate(data){
+     return !pricingExists()?0.15:
+       data.type=='ride'?pricing().get('commissionRide',0.15):
+       data.type=='parcel'?pricing().get('commissionParcel',0.15):
+       data.type=='food'?pricing().get('commissionFood',0.15):
+       pricing().get('commissionServiceDelivery',0.15);
+   }
+   function serviceCommissionRate(){
+     let fallback=!pricingExists()?0.15:pricing().get('commissionServiceDelivery',0.15);
+     let category=linkedServiceRequest().get('providerCategory','other');
+     return !pricingExists()?fallback:
+       category=='restaurant'?pricing().get('commissionRestaurant',fallback):
+       category=='grocery'?pricing().get('commissionGrocery',fallback):
+       category=='retail'?pricing().get('commissionRetail',fallback):
+       category=='maintenance'?pricing().get('commissionMaintenance',fallback):
+       category=='home'?pricing().get('commissionHome',fallback):
+       category=='health'?pricing().get('commissionHealth',fallback):
+       pricing().get('commissionOther',fallback);
+   }
+   function validCommission(data, rate){
+     return data.commissionRate==rate
+       && data.commissionAmount is number && data.commissionAmount>=0
+       && data.driverEarnings is number && data.driverEarnings>=0
+       && data.commissionAmount+data.driverEarnings==data.price
+       && data.commissionAmount>=data.price*rate-1
+       && data.commissionAmount<=data.price*rate+1;
+   }
    function currentDriver(){return get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data;}
    function pickupOtpMatches(){
      return resource.data.type=='serviceDelivery'
@@ -110,7 +146,8 @@ service cloud.firestore { match /databases/{database}/documents {
        && request.resource.data.type!='serviceDelivery'
        && request.resource.data.driverId==null
        && request.resource.data.statusIndex==0
-       && request.resource.data.cancelled==false)
+       && request.resource.data.cancelled==false
+       && validCommission(request.resource.data,typeCommissionRate(request.resource.data)))
      || (customer()
        && request.resource.data.type=='serviceDelivery'
        && request.resource.data.userId==request.auth.uid
@@ -122,10 +159,7 @@ service cloud.firestore { match /databases/{database}/documents {
        && request.resource.data.cancelled==false
        && request.resource.data.requiredDriverService=='delivery'
        && request.resource.data.payment=='نقدًا'
-       && request.resource.data.commissionRate==0.15
-       && request.resource.data.commissionAmount is number&&request.resource.data.commissionAmount>=0
-       && request.resource.data.driverEarnings is number&&request.resource.data.driverEarnings>=0
-       && request.resource.data.commissionAmount+request.resource.data.driverEarnings==request.resource.data.price
+       && validCommission(request.resource.data,serviceCommissionRate())
        && linkedServiceRequest().customerId==request.auth.uid
        && linkedServiceRequest().providerId==request.resource.data.providerId
        && linkedServiceRequest().status=='accepted'
@@ -147,10 +181,7 @@ service cloud.firestore { match /databases/{database}/documents {
        && request.resource.data.cancelled==false
        && request.resource.data.requiredDriverService=='delivery'
        && request.resource.data.payment=='نقدًا'
-       && request.resource.data.commissionRate==0.15
-       && request.resource.data.commissionAmount is number&&request.resource.data.commissionAmount>=0
-       && request.resource.data.driverEarnings is number&&request.resource.data.driverEarnings>=0
-       && request.resource.data.commissionAmount+request.resource.data.driverEarnings==request.resource.data.price
+       && validCommission(request.resource.data,serviceCommissionRate())
        && linkedServiceRequest().providerCategory=='restaurant'
        && linkedServiceRequest().providerId==request.auth.uid
        && linkedServiceRequest().customerId==request.resource.data.userId
@@ -187,6 +218,46 @@ service cloud.firestore { match /databases/{database}/documents {
      && request.resource.data.tripOtp.matches('^[0-9]{4}$')
      && getAfter(/databases/$(database)/documents/orders/$(id)).data.userId==request.auth.uid;
    allow update,delete:if false;
+ }
+ match /appSettings/{id}{allow read:if true;allow create,update,delete:if admin();}
+ match /topupRequests/{id}{
+   allow create:if customer()
+     && request.resource.data.keys().hasOnly(['userId','customerName','email','amount','transferReference','method','status','createdAt','updatedAt'])
+     && request.resource.data.userId==request.auth.uid
+     && request.resource.data.customerName is string && request.resource.data.customerName.size()<=80
+     && request.resource.data.email is string && request.resource.data.email.size()<=160
+     && request.resource.data.amount is number && request.resource.data.amount>=1000 && request.resource.data.amount<=1000000
+     && request.resource.data.transferReference is string && request.resource.data.transferReference.size()>=3 && request.resource.data.transferReference.size()<=80
+     && request.resource.data.method=='mastercard_local'
+     && request.resource.data.status=='pending';
+   allow read:if admin()||(signed()&&resource.data.userId==request.auth.uid);
+   allow update,delete:if admin();
+ }
+ match /referralCodes/{code}{
+   allow read:if signed();
+   allow create:if signed()
+     && request.resource.data.ownerId==request.auth.uid
+     && request.resource.data.code==code
+     && code.size()>=6 && code.size()<=24;
+   allow update:if admin()||(signed()
+     && resource.data.ownerId==request.auth.uid
+     && request.resource.data.ownerId==request.auth.uid
+     && request.resource.data.code==code
+     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ownerName','active','updatedAt']));
+   allow delete:if admin();
+ }
+ match /referralRedemptions/{uid}{
+   allow read:if own(uid)||admin();
+   allow create:if own(uid)
+     && request.resource.data.keys().hasOnly(['userId','code','inviterId','discountAmount','createdAt'])
+     && request.resource.data.userId==uid
+     && request.resource.data.inviterId is string && request.resource.data.inviterId!=uid
+     && request.resource.data.code is string
+     && request.resource.data.discountAmount is number && request.resource.data.discountAmount>=0
+     && exists(/databases/$(database)/documents/referralCodes/$(request.resource.data.code))
+     && get(/databases/$(database)/documents/referralCodes/$(request.resource.data.code)).data.ownerId==request.resource.data.inviterId;
+   allow update:if false;
+   allow delete:if admin();
  }
  match /supportTickets/{id}{allow create:if signed()&&request.resource.data.userId==request.auth.uid;allow read:if signed()&&(resource.data.userId==request.auth.uid||admin());allow update:if admin();allow delete:if admin();}
  match /coupons/{id}{allow read:if signed();allow write:if admin();}

@@ -93,7 +93,7 @@ const state = {
   role: "customer",
   authMode: "login",
   vehicle: "اقتصادي",
-  ridePrice: 6500,
+  ridePrice: 0,
   payment: "نقدًا",
   cart: [],
   restaurants: [],
@@ -147,18 +147,90 @@ const state = {
   lastLiveRouteAt: 0,
   lastLiveRoutePoint: null,
   driverAnimationFrame: null,
-  profileRetryTimer: null
+  profileRetryTimer: null,
+  appSettings: {},
+  topupRequests: [],
+  unsubscribeTopups: null,
+  referralCode: "",
+  appliedCoupon: null,
+  fareSubtotal: 0,
+  trafficMultiplier: 1,
+  trafficLabel: "طبيعي",
+  routeRequestToken: 0,
+  reverseRequestTokens: { pickup: 0, destination: 0 },
+  routeDebounceTimer: null,
+  mapTapLockedUntil: 0
 };
 
 const formatMoney = value => Number(value || 0).toLocaleString("ar-IQ") + " د.ع";
-const COMMISSION_RATE = 0.15;
+const DEFAULT_COMMISSION_RATE = 0.15;
 const vehiclePricing = {
-  "اقتصادي": { base: 2000, perKm: 700, perMin: 80, minimum: 3500 },
-  "تكسي": { base: 2500, perKm: 850, perMin: 95, minimum: 4500 },
-  "عائلي": { base: 3200, perKm: 1050, perMin: 110, minimum: 5500 }
+  "اقتصادي": { base: 1800, perKm: 650, perMin: 55, minimum: 3000, speedFactor: 1.08 },
+  "تكسي": { base: 2300, perKm: 800, perMin: 65, minimum: 4000, speedFactor: 1.00 },
+  "عائلي": { base: 3000, perKm: 980, perMin: 75, minimum: 5000, speedFactor: 1.05 }
 };
 function haversineKm(a,b){const R=6371,toRad=v=>v*Math.PI/180;const dLat=toRad(b.latitude-a.latitude),dLon=toRad(b.longitude-a.longitude);const x=Math.sin(dLat/2)**2+Math.cos(toRad(a.latitude))*Math.cos(toRad(b.latitude))*Math.sin(dLon/2)**2;return 2*R*Math.asin(Math.sqrt(x));}
-function calculateRidePrice(){const cfg=vehiclePricing[state.vehicle]||vehiclePricing["اقتصادي"];const raw=cfg.base+state.routeDistanceKm*cfg.perKm+state.routeDurationMin*cfg.perMin;state.ridePrice=Math.max(cfg.minimum,Math.ceil(raw/250)*250);byId("ridePrice").textContent=formatMoney(state.ridePrice);}
+function commissionRateFor(type, category="") {
+  const cfg=state.appSettings||{};
+  const categoryKey={restaurant:"commissionRestaurant",grocery:"commissionGrocery",retail:"commissionRetail",maintenance:"commissionMaintenance",home:"commissionHome",health:"commissionHealth",other:"commissionOther"}[category];
+  const typeKey={ride:"commissionRide",parcel:"commissionParcel",food:"commissionFood",serviceDelivery:"commissionServiceDelivery"}[type];
+  const raw=categoryKey && Number.isFinite(Number(cfg[categoryKey])) ? Number(cfg[categoryKey]) : Number(cfg[typeKey]);
+  return Math.min(.5,Math.max(0,Number.isFinite(raw)?raw:DEFAULT_COMMISSION_RATE));
+}
+function trafficProfile(km, mins) {
+  if(!km || !mins) return {multiplier:1,label:"طبيعي",ratio:1};
+  const freeFlow=Math.max(1,(km/42)*60);
+  const ratio=Math.max(.75,mins/freeFlow);
+  if(ratio<=1.12)return {multiplier:1,label:"خفيف",ratio};
+  if(ratio<=1.35)return {multiplier:1.06,label:"متوسط",ratio};
+  if(ratio<=1.7)return {multiplier:1.13,label:"مزدحم",ratio};
+  return {multiplier:1.22,label:"ازدحام شديد",ratio};
+}
+function fareForVehicle(vehicle) {
+  const cfg=vehiclePricing[vehicle]||vehiclePricing["اقتصادي"];
+  const traffic=trafficProfile(state.routeDistanceKm,state.routeDurationMin);
+  const adjustedMinutes=state.routeDurationMin*Number(cfg.speedFactor||1);
+  const raw=(cfg.base+state.routeDistanceKm*cfg.perKm+adjustedMinutes*cfg.perMin)*traffic.multiplier;
+  return Math.max(cfg.minimum,Math.ceil(raw/250)*250);
+}
+function couponDiscountFor(subtotal) {
+  const c=state.appliedCoupon; if(!c)return 0;
+  if(c.minFare && subtotal<Number(c.minFare))return 0;
+  let d=c.type==="fixed"?Number(c.value||0):subtotal*(Number(c.value||0)/100);
+  if(Number(c.maxDiscount||0)>0)d=Math.min(d,Number(c.maxDiscount));
+  return Math.max(0,Math.min(subtotal,Math.round(d/250)*250));
+}
+function updateVehicleFareCards(){
+  const traffic=trafficProfile(state.routeDistanceKm,state.routeDurationMin);
+  state.trafficMultiplier=traffic.multiplier; state.trafficLabel=traffic.label;
+  document.querySelectorAll(".vehicle-button").forEach(button=>{
+    const fare=state.routeDistanceKm?fareForVehicle(button.dataset.vehicle):Number(button.dataset.price||0);
+    const small=button.querySelector("small");
+    if(small){
+      const eta=state.routeDurationMin?Math.max(1,Math.round(state.routeDurationMin*Number((vehiclePricing[button.dataset.vehicle]||{}).speedFactor||1))):0;
+      small.innerHTML=state.routeDistanceKm?`<b>${formatMoney(fare)}</b><span>${eta} د • ${traffic.label}</span>`:`<b>من ${formatMoney(fare)}</b><span>حدد المسار للسعر الدقيق</span>`;
+    }
+  });
+  const trafficEl=byId("rideTrafficInfo");
+  if(trafficEl){
+    const arrival=state.routeDurationMin?new Date(Date.now()+state.routeDurationMin*60000).toLocaleTimeString("ar-IQ",{hour:"2-digit",minute:"2-digit"}):"—";
+    trafficEl.textContent=state.routeDistanceKm?`الازدحام: ${traffic.label} • الوصول المتوقع ${arrival}`:"يظهر تقدير الازدحام ووقت الوصول بعد تحديد المسار";
+  }
+}
+function calculateRidePrice(){
+  if(!state.routeDistanceKm){
+    state.fareSubtotal=0;state.ridePrice=0;
+    if(byId("ridePrice"))byId("ridePrice").textContent="حدد المسار";
+    updateVehicleFareCards();return;
+  }
+  const subtotal=fareForVehicle(state.vehicle);
+  state.fareSubtotal=subtotal;
+  const discount=couponDiscountFor(subtotal);
+  state.ridePrice=Math.max(0,subtotal-discount);
+  byId("ridePrice").textContent=formatMoney(state.ridePrice);
+  if(byId("couponStatus")&&state.appliedCoupon)byId("couponStatus").textContent=`تم تطبيق ${state.appliedCoupon.code} • خصم ${formatMoney(discount)}`;
+  updateVehicleFareCards();
+}
 function pointLabel(prefix,p){return p?.label || `${prefix} (${p.latitude.toFixed(5)}, ${p.longitude.toFixed(5)})`;}
 function cleanPlaceLabel(x){
   const a=x?.address||{}; const parts=[x?.name||a.amenity||a.shop||a.tourism||a.road,a.neighbourhood||a.suburb||a.quarter,a.city||a.town||a.village||a.county,a.state].filter(Boolean);
@@ -174,19 +246,40 @@ function decodeValhallaShape(encoded){let index=0,lat=0,lng=0,out=[];while(index
 async function valhallaRoute(a,b,timeout=6500){const body={locations:[{lat:Number(a.latitude),lon:Number(a.longitude)},{lat:Number(b.latitude),lon:Number(b.longitude)}],costing:"auto",units:"kilometers",language:"ar-IQ",directions_options:{units:"kilometers",language:"ar-IQ"},alternates:1};const r=await fetch("https://valhalla1.openstreetmap.de/route",{method:"POST",headers:{"Content-Type":"application/json","X-Client-Id":"karwa0.app"},body:JSON.stringify(body),signal:AbortSignal.timeout(timeout)});if(!r.ok)throw new Error("VALHALLA_"+r.status);const x=await r.json(),leg=x.trip?.legs?.[0],sum=x.trip?.summary;if(!leg||!sum)throw new Error("VALHALLA_NO_ROUTE");return{coords:decodeValhallaShape(leg.shape),km:Number(sum.length||0),mins:Number(sum.time||0)/60,maneuvers:leg.maneuvers||[],provider:"Valhalla"};}
 async function calculateBookingRoute(){
   if(!state.pickupLocation||!state.destinationLocation)return;
-  initializeCustomerMap(); const a=state.pickupLocation,b=state.destinationLocation; let coords=null;
-  try{const route=await valhallaRoute(a,b);state.routeDistanceKm=route.km;state.routeDurationMin=route.mins;state.routeSource="valhalla";coords=route.coords;}
-  catch(primary){try{const url=`https://router.project-osrm.org/route/v1/driving/${a.longitude},${a.latitude};${b.longitude},${b.latitude}?overview=full&geometries=geojson`;const r=await fetch(url,{signal:AbortSignal.timeout(5500)});if(!r.ok)throw 0;const data=await r.json(),route=data.routes?.[0];if(!route)throw 0;state.routeDistanceKm=route.distance/1000;state.routeDurationMin=route.duration/60;state.routeSource="osrm";coords=route.geometry.coordinates.map(([lng,lat])=>[lat,lng]);}
-  catch(e){const straight=haversineKm(a,b);state.routeDistanceKm=straight*1.28;state.routeDurationMin=(state.routeDistanceKm/28)*60;state.routeSource="fallback";coords=[[a.latitude,a.longitude],[b.latitude,b.longitude]];}}
-  if(state.bookingRouteLine)state.bookingRouteLine.setLatLngs(coords);else state.bookingRouteLine=window.L.polyline(coords,{color:"#087b75",weight:7,opacity:.94,lineCap:"round"}).addTo(state.map);state.map.fitBounds(state.bookingRouteLine.getBounds(),{padding:[35,35]});calculateRidePrice();updateRouteSummary();
+  initializeCustomerMap();
+  const token=++state.routeRequestToken;
+  const a={...state.pickupLocation},b={...state.destinationLocation}; let coords=null;
+  try{const route=await valhallaRoute(a,b,5200);if(token!==state.routeRequestToken)return;state.routeDistanceKm=route.km;state.routeDurationMin=route.mins;state.routeSource="valhalla";coords=route.coords;}
+  catch(primary){
+    if(token!==state.routeRequestToken)return;
+    try{const url=`https://router.project-osrm.org/route/v1/driving/${a.longitude},${a.latitude};${b.longitude},${b.latitude}?overview=full&geometries=geojson`;const r=await fetch(url,{signal:AbortSignal.timeout(4200)});if(!r.ok)throw 0;const data=await r.json(),route=data.routes?.[0];if(!route)throw 0;if(token!==state.routeRequestToken)return;state.routeDistanceKm=route.distance/1000;state.routeDurationMin=route.duration/60;state.routeSource="osrm";coords=route.geometry.coordinates.map(([lng,lat])=>[lat,lng]);}
+    catch(e){if(token!==state.routeRequestToken)return;const straight=haversineKm(a,b);state.routeDistanceKm=straight*1.28;state.routeDurationMin=(state.routeDistanceKm/28)*60;state.routeSource="fallback";coords=[[a.latitude,a.longitude],[b.latitude,b.longitude]];}
+  }
+  if(token!==state.routeRequestToken||!state.map)return;
+  if(state.bookingRouteLine)state.bookingRouteLine.setLatLngs(coords);else state.bookingRouteLine=window.L.polyline(coords,{color:"#087b75",weight:6,opacity:.92,lineCap:"round",interactive:false}).addTo(state.map);
+  calculateRidePrice();updateRouteSummary();
+}
+function scheduleBookingRoute(){
+  clearTimeout(state.routeDebounceTimer);
+  state.routeDebounceTimer=setTimeout(()=>calculateBookingRoute().catch(console.warn),220);
 }
 async function setBookingPoint(type,lat,lng,label=""){
-  initializeCustomerMap(); const p={latitude:Number(lat),longitude:Number(lng),label:label||""};
-  const input=byId(type==="pickup"?"rideFrom":"rideTo"); input.value=label||"جارٍ تحديد اسم المكان…";
-  if(type==="pickup"){state.pickupLocation=p;state.customerLocation=p;if(state.pickupMarker)state.pickupMarker.setLatLng([p.latitude,p.longitude]);else state.pickupMarker=window.L.marker([p.latitude,p.longitude],{icon:bookingIcon("pickup"),draggable:true}).addTo(state.map);state.pickupMarker.off("dragend").on("dragend",e=>{const q=e.target.getLatLng();setBookingPoint("pickup",q.lat,q.lng)});state.mapPickMode="destination";}
-  else{state.destinationLocation=p;if(state.destinationMarker)state.destinationMarker.setLatLng([p.latitude,p.longitude]);else state.destinationMarker=window.L.marker([p.latitude,p.longitude],{icon:bookingIcon("destination"),draggable:true}).addTo(state.map);state.destinationMarker.off("dragend").on("dragend",e=>{const q=e.target.getLatLng();setBookingPoint("destination",q.lat,q.lng)});}
-  if(!label){const found=await reverseGeocode(p.latitude,p.longitude);p.label=found||pointLabel(type==="pickup"?"نقطة الانطلاق":"الوجهة",p);input.value=p.label;}else input.value=label;
-  document.querySelectorAll(".map-pick-button").forEach(b=>b.classList.toggle("active",b.id===(state.mapPickMode==="pickup"?"pickRideFrom":"pickRideTo")));calculateBookingRoute();
+  initializeCustomerMap();
+  const p={latitude:Number(lat),longitude:Number(lng),label:label||""};
+  const input=byId(type==="pickup"?"rideFrom":"rideTo");
+  if(!input)return;
+  input.value=label||"جارٍ تحديد اسم المكان…";
+  if(type==="pickup"){state.pickupLocation=p;state.customerLocation=p;if(state.pickupMarker)state.pickupMarker.setLatLng([p.latitude,p.longitude]);else state.pickupMarker=window.L.marker([p.latitude,p.longitude],{icon:bookingIcon("pickup"),draggable:true,riseOnHover:true}).addTo(state.map);state.pickupMarker.off("dragend").on("dragend",e=>{const q=e.target.getLatLng();setBookingPoint("pickup",q.lat,q.lng)});state.mapPickMode="destination";}
+  else{state.destinationLocation=p;if(state.destinationMarker)state.destinationMarker.setLatLng([p.latitude,p.longitude]);else state.destinationMarker=window.L.marker([p.latitude,p.longitude],{icon:bookingIcon("destination"),draggable:true,riseOnHover:true}).addTo(state.map);state.destinationMarker.off("dragend").on("dragend",e=>{const q=e.target.getLatLng();setBookingPoint("destination",q.lat,q.lng)});}
+  document.querySelectorAll(".map-pick-button").forEach(b=>b.classList.toggle("active",b.id===(state.mapPickMode==="pickup"?"pickRideFrom":"pickRideTo")));
+  state.routeRequestToken++;
+  scheduleBookingRoute();
+  if(label){input.value=label;return;}
+  const token=++state.reverseRequestTokens[type];
+  const found=await reverseGeocode(p.latitude,p.longitude);
+  if(token!==state.reverseRequestTokens[type])return;
+  p.label=found||pointLabel(type==="pickup"?"نقطة الانطلاق":"الوجهة",p);
+  input.value=p.label;
 }
 
 
@@ -211,9 +304,13 @@ function mapIcon(type) {
 
 function initializeCustomerMap() {
   if (!window.L || state.map) return;
-  state.map = window.L.map("customerMap", { zoomControl: false, attributionControl: false }).setView([36.34, 43.13], 13);
+  state.map = window.L.map("customerMap", { zoomControl: false, attributionControl: false, preferCanvas: true, zoomAnimation: true, fadeAnimation: false }).setView([36.34, 43.13], 13);
   window.L.control.zoom({position:"bottomleft"}).addTo(state.map);
-  state.map.on("click", e => { if(!state.centerPickActive) setBookingPoint(state.mapPickMode, e.latlng.lat, e.latlng.lng); });
+  state.map.on("click", e => {
+    if(state.centerPickActive)return;
+    const now=performance.now(); if(now<state.mapTapLockedUntil)return; state.mapTapLockedUntil=now+180;
+    setBookingPoint(state.mapPickMode,e.latlng.lat,e.latlng.lng).catch(console.warn);
+  });
   state.map.on("move",()=>{if(!state.centerPickActive)return;clearTimeout(state.centerPickTimer);byId("mapCenterLabel").textContent="جارٍ تحديد العنوان…";state.centerPickTimer=setTimeout(async()=>{const c=state.map.getCenter();const name=await reverseGeocode(c.lat,c.lng);byId("mapCenterLabel").textContent=name||`الموقع: ${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`;},1250);});
   // خريطة متجهية بلا مفتاح API، ويتحكم العميل بمظهرها من لوحة الإعدادات.
   state.baseLayer = window.L.maplibreGL({ style: CUSTOMER_MAP_STYLES[state.mapTheme] }).addTo(state.map);
@@ -443,6 +540,7 @@ function setAuthMode(mode) {
   byId("registerTab").classList.toggle("active", registering);
   byId("nameField").hidden = !registering;
   byId("roleField").hidden = !registering;
+  if(byId("inviteField"))byId("inviteField").hidden=!registering;
   byId("authName").required = registering;
   byId("authPassword").autocomplete = registering ? "new-password" : "current-password";
   byId("authSubmit").textContent = registering ? "إنشاء الحساب" : "تسجيل الدخول";
@@ -464,6 +562,46 @@ function authErrorMessage(error) {
   return messages[error.code] || "تعذر إكمال العملية. حاول مرة أخرى.";
 }
 
+function makeReferralCode(uid){return `KW${String(uid||"").replace(/[^a-z0-9]/gi,"").slice(0,12).toUpperCase()}`;}
+async function ensureReferralCode(user, existingCode=""){
+  if(!user)return "";
+  const code=(existingCode||makeReferralCode(user.uid)).toUpperCase();
+  state.referralCode=code;
+  try{
+    const batch=writeBatch(db);
+    if(!existingCode)batch.set(doc(db,"users",user.uid),{referralCode:code,updatedAt:serverTimestamp()},{merge:true});
+    batch.set(doc(db,"referralCodes",code),{code,ownerId:user.uid,ownerName:state.name||"",active:true,updatedAt:serverTimestamp()},{merge:true});
+    await batch.commit();
+  }catch(error){console.warn("تعذر تجهيز كود الدعوة",error);}
+  renderReferralCard();
+  return code;
+}
+function renderReferralCard(){
+  if(byId("referralCodeValue"))byId("referralCodeValue").textContent=state.referralCode||"—";
+  if(byId("referralDiscountValue"))byId("referralDiscountValue").textContent=`خصم ${Number(state.appSettings.referralDiscountPercent||10)}% حتى ${formatMoney(state.appSettings.referralMaxDiscount||3000)}`;
+}
+function renderTopupDestination(){
+  const cfg=state.appSettings||{};
+  if(byId("topupTransferLabel"))byId("topupTransferLabel").textContent=cfg.topupTransferLabel||"Mastercard محلي";
+  if(byId("topupTransferId"))byId("topupTransferId").textContent=cfg.topupTransferId||"أضف معرف التحويل من لوحة الإدارة";
+  if(byId("topupCardHolder"))byId("topupCardHolder").textContent=cfg.topupCardHolder||"إدارة كروة";
+}
+function subscribeToAppSettings(){
+  onSnapshot(doc(db,"appSettings","pricing"),snap=>{state.appSettings=snap.exists()?snap.data():{};calculateRidePrice();renderReferralCard();renderTopupDestination();},error=>console.warn("تعذر تحميل إعدادات التسعير",error));
+}
+function renderTopupRequests(){
+  const box=byId("topupRequestsList"); if(!box)return;
+  if(!state.user){box.innerHTML='<p class="muted">سجّل الدخول لعرض طلبات الشحن.</p>';return;}
+  if(!state.topupRequests.length){box.innerHTML='<p class="muted">لا توجد طلبات شحن بعد.</p>';return;}
+  const labels={pending:"قيد المراجعة",approved:"تمت الإضافة",rejected:"مرفوض"};
+  const safe=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  box.innerHTML=state.topupRequests.map(x=>`<div class="topup-history-row"><div><strong>${formatMoney(x.amount)}</strong><small>${safe(x.transferReference||"بدون مرجع")}</small></div><span class="topup-status ${safe(x.status||"pending")}">${labels[x.status]||safe(x.status)}</span></div>`).join("");
+}
+function subscribeToTopups(user){
+  if(state.unsubscribeTopups)state.unsubscribeTopups();
+  state.unsubscribeTopups=onSnapshot(query(collection(db,"topupRequests"),where("userId","==",user.uid)),snap=>{state.topupRequests=snap.docs.map(d=>({...d.data(),firestoreId:d.id})).sort((a,b)=>Number(b.createdAt?.seconds||0)-Number(a.createdAt?.seconds||0));renderTopupRequests();},error=>console.warn("تعذر تحميل طلبات الشحن",error));
+}
+
 async function saveUserData(values) {
   if (!state.user) return;
   await setDoc(doc(db, "users", state.user.uid), {
@@ -480,11 +618,13 @@ async function loadUserProfile(user) {
   if (snapshot.exists()) {
     const data = snapshot.data();
     const storedName = typeof data.name === "string" ? data.name.trim() : "";
-    const storedBalance = Number(data.balance ?? 25000);
+    const storedBalance = Number(data.balance ?? 0);
     state.role = typeof data.role === "string" && data.role ? data.role : "customer";
     state.name = storedName || user.displayName || user.email?.split("@")[0] || "مستخدم كروة";
-    state.balance = Number.isFinite(storedBalance) ? storedBalance : 25000;
+    state.balance = Number.isFinite(storedBalance) ? storedBalance : 0;
     state.notifications = data.notifications !== false;
+    state.referralCode = typeof data.referralCode === "string" ? data.referralCode : "";
+    if(data.invitedByCode && byId("couponCode") && !byId("couponCode").value){byId("couponCode").value=String(data.invitedByCode).toUpperCase();if(byId("couponStatus"))byId("couponStatus").textContent="كود الدعوة محفوظ — حدّد المسار ثم اضغط تطبيق";}
     if (!data.role) {
       try {
         await setDoc(userRef, {
@@ -512,7 +652,7 @@ async function loadUserProfile(user) {
   } else {
     state.role = "customer";
     state.name = user.displayName || user.email?.split("@")[0] || "مستخدم كروة";
-    state.balance = 25000;
+    state.balance = 0;
     state.notifications = true;
     await setDoc(userRef, {
       name: state.name,
@@ -524,9 +664,11 @@ async function loadUserProfile(user) {
       updatedAt: serverTimestamp()
     });
   }
+  await ensureReferralCode(user,state.referralCode);
   renderProfile();
   renderNotificationSwitch();
   renderBalance();
+  renderTopupDestination();
   return { profileNeedsMigration };
 }
 
@@ -616,6 +758,7 @@ byId("authForm").addEventListener("submit", async event => {
   const password = byId("authPassword").value;
   const name = byId("authName").value.trim();
   const selectedRole = byId("authRole")?.value || "customer";
+  const inviteCode = byId("authInviteCode")?.value.trim().toUpperCase() || "";
   if (selectedRole === "driverApplicant") {
     window.location.assign(`./driver.html?mode=${state.authMode}`);
     return;
@@ -633,19 +776,22 @@ byId("authForm").addEventListener("submit", async event => {
     if (state.authMode === "register") {
       const credential = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(credential.user, { displayName: name });
-      await setDoc(doc(db, "users", credential.user.uid), {
-        name,
-        email,
-        role: selectedRole,
-        balance: selectedRole === "customer" ? 25000 : 0,
-        notifications: true,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
+      const ownReferral=makeReferralCode(credential.user.uid);
+      let invitedByUserId="";
+      if(selectedRole==="customer"&&inviteCode){try{const rs=await getDoc(doc(db,"referralCodes",inviteCode));if(rs.exists()&&rs.data().ownerId!==credential.user.uid)invitedByUserId=rs.data().ownerId;}catch(_){}}
+      const registerBatch=writeBatch(db);
+      registerBatch.set(doc(db, "users", credential.user.uid), {
+        name,email,role:selectedRole,balance:0,notifications:true,referralCode:ownReferral,
+        ...(inviteCode&&invitedByUserId?{invitedByCode:inviteCode,invitedByUserId}:{}),createdAt:serverTimestamp(),updatedAt:serverTimestamp()
       });
+      registerBatch.set(doc(db,"referralCodes",ownReferral),{code:ownReferral,ownerId:credential.user.uid,ownerName:name,active:true,createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
+      await registerBatch.commit();
       state.name = name;
       state.role = selectedRole;
-      state.balance = selectedRole === "customer" ? 25000 : 0;
+      state.balance = 0;
       state.notifications = true;
+      state.referralCode = ownReferral;
+      if(inviteCode&&invitedByUserId&&byId("couponCode")){byId("couponCode").value=inviteCode;if(byId("couponStatus"))byId("couponStatus").textContent="كود الدعوة محفوظ — حدّد المسار ثم اضغط تطبيق";}
       renderProfile();
       renderBalance();
       renderNotificationSwitch();
@@ -701,15 +847,7 @@ document.querySelectorAll(".vehicle-button").forEach(button => {
     document.querySelectorAll(".vehicle-button").forEach(item => item.classList.remove("active"));
     button.classList.add("active");
     state.vehicle = button.dataset.vehicle;
-    if (state.routeDistanceKm) calculateRidePrice(); else { state.ridePrice = Number(button.dataset.price); byId("ridePrice").textContent = formatMoney(state.ridePrice); }
-  });
-});
-
-document.querySelectorAll(".payment-button").forEach(button => {
-  button.addEventListener("click", () => {
-    document.querySelectorAll(".payment-button").forEach(item => item.classList.remove("active"));
-    button.classList.add("active");
-    state.payment = button.dataset.payment;
+    calculateRidePrice();
   });
 });
 
@@ -724,7 +862,7 @@ function setCenterPick(active=true){
   byId("mapCenterPick")?.classList.toggle("active",active);
   if(active){const c=state.map.getCenter();state.map.fire("move");showToast(state.mapPickMode==="pickup"?"حرّك الخريطة لتحديد نقطة الانطلاق":"حرّك الخريطة لتحديد الوجهة");}
 }
-async function confirmCenterPick(){if(!state.centerPickActive)return;const c=state.map.getCenter();const label=await reverseGeocode(c.lat,c.lng);await setBookingPoint(state.mapPickMode,c.lat,c.lng,label||"");setCenterPick(false);}
+async function confirmCenterPick(){if(!state.centerPickActive)return;const c=state.map.getCenter();setCenterPick(false);await setBookingPoint(state.mapPickMode,c.lat,c.lng);}
 function distanceFromMapCenter(x){const c=state.map?.getCenter();if(!c)return null;return haversineKm({latitude:c.lat,longitude:c.lng},{latitude:Number(x.lat),longitude:Number(x.lon)});}
 
 function locateUser(targetInput) {
@@ -738,15 +876,15 @@ function locateUser(targetInput) {
     const latitude = position.coords.latitude;
     const longitude = position.coords.longitude;
     targetInput.value = `موقعي الحالي (${latitude.toFixed(3)}, ${longitude.toFixed(3)})`;
-    setCustomerLocation(latitude, longitude);
-    if (targetInput.id === "rideFrom") setBookingPoint("pickup", latitude, longitude);
+    if (targetInput.id === "rideFrom") setBookingPoint("pickup", latitude, longitude).catch(console.warn);
+    else setCustomerLocation(latitude, longitude);
     byId("cityLabel").textContent = "الموقع محدد";
     renderCustomerSettingsInfo();
     showToast("تم تحديد موقعك");
   }, () => {
     targetInput.value = "موقعي الحالي — بغداد";
     showToast("تعذر تحديد الموقع؛ تم اختيار بغداد");
-  }, { enableHighAccuracy: true, timeout: 7000 });
+  }, { enableHighAccuracy: false, timeout: 7000, maximumAge: 30000 });
 }
 
 byId("useRideLocation").addEventListener("click", () => locateUser(byId("rideFrom")));
@@ -786,9 +924,12 @@ async function createOrder(type, title, route, price, options = {}) {
     distanceKm: Number(options.distanceKm || 0),
     durationMin: Number(options.durationMin || 0),
     routeSource: options.routeSource || "",
-    commissionRate: COMMISSION_RATE,
-    commissionAmount: Math.round(Number(price) * COMMISSION_RATE),
-    driverEarnings: Math.round(Number(price) * (1 - COMMISSION_RATE)),
+    fareSubtotal: Number(options.fareSubtotal || price),
+    discountAmount: Number(options.discountAmount || 0),
+    couponCode: options.couponCode || "",
+    commissionRate: commissionRateFor(type, options.providerCategory || ""),
+    commissionAmount: Math.round(Number(price) * commissionRateFor(type, options.providerCategory || "")),
+    driverEarnings: Number(price) - Math.round(Number(price) * commissionRateFor(type, options.providerCategory || "")),
     tripOtp: String(Math.floor(1000 + Math.random() * 9000)),
     paymentStatus: options.payment === "المحفظة" ? "paid" : "pending",
     acceptedAt: null, arrivedAt: null, startedAt: null, completedAt: null,
@@ -802,6 +943,15 @@ async function createOrder(type, title, route, price, options = {}) {
 
   const batch = writeBatch(db);
   batch.set(orderRef, order);
+  if(options.referralRedemption){
+    batch.set(doc(db,"referralRedemptions",state.user.uid),{
+      userId:state.user.uid,
+      code:options.referralRedemption.code,
+      inviterId:options.referralRedemption.inviterId,
+      discountAmount:Number(options.referralRedemption.discountAmount||0),
+      createdAt:serverTimestamp()
+    });
+  }
   if (options.walletCharge) {
     const newBalance = state.balance - Number(options.walletCharge);
     batch.set(doc(db, "users", state.user.uid), {
@@ -823,11 +973,28 @@ async function createOrder(type, title, route, price, options = {}) {
   return true;
 }
 
-byId("applyCoupon")?.addEventListener("click", () => {
+byId("applyCoupon")?.addEventListener("click", async () => {
   if (!requireUser() || !state.routeDistanceKm) return showToast("حدد المسار أولًا");
-  const code = byId("couponCode").value.trim();
-  byId("couponStatus").textContent = code ? "الكوبونات المتقدمة تحتاج الخادم؛ تم اعتماد السعر المحلي للمشوار." : "أدخل رمز الكوبون";
-  calculateRidePrice();
+  const code = byId("couponCode").value.trim().toUpperCase();
+  if(!code){state.appliedCoupon=null;calculateRidePrice();byId("couponStatus").textContent="أدخل رمز الخصم أو الدعوة";return;}
+  byId("couponStatus").textContent="جارٍ التحقق من الرمز…";
+  try{
+    const couponSnap=await getDoc(doc(db,"coupons",code));
+    if(couponSnap.exists()){
+      const c=couponSnap.data();
+      const expired=c.expiresAt?.toMillis?.() && c.expiresAt.toMillis()<Date.now();
+      if(c.active!==true||expired)throw new Error("INVALID");
+      state.appliedCoupon={code,type:c.type==="fixed"?"fixed":"percent",value:Number(c.value||0),maxDiscount:Number(c.maxDiscount||0),minFare:Number(c.minFare||0),kind:"coupon"};
+      calculateRidePrice();return;
+    }
+    const referralSnap=await getDoc(doc(db,"referralCodes",code));
+    if(!referralSnap.exists()||referralSnap.data().active===false||referralSnap.data().ownerId===state.user.uid)throw new Error("INVALID");
+    const used=await getDoc(doc(db,"referralRedemptions",state.user.uid));
+    if(used.exists())throw new Error("USED");
+    const pct=Math.max(0,Math.min(100,Number(state.appSettings.referralDiscountPercent||10)));
+    state.appliedCoupon={code,type:"percent",value:pct,maxDiscount:Number(state.appSettings.referralMaxDiscount||3000),minFare:0,kind:"referral",ownerId:referralSnap.data().ownerId};
+    calculateRidePrice();
+  }catch(error){state.appliedCoupon=null;calculateRidePrice();byId("couponStatus").textContent=error.message==="USED"?"استخدمت كود دعوة سابقًا":"الرمز غير صالح أو منتهي";}
 });
 
 byId("bookRide").addEventListener("click", async event => {
@@ -838,20 +1005,18 @@ byId("bookRide").addEventListener("click", async event => {
     showToast("أدخل نقطة الانطلاق والوجهة");
     return;
   }
-  if (state.payment === "المحفظة" && state.balance < state.ridePrice) {
-    showToast("رصيد المحفظة غير كافٍ");
-    return;
-  }
   const button = event.currentTarget;
   setButtonBusy(button, true, "جاري الحجز…");
   try {
     await createOrder("ride", `مشوار ${state.vehicle}`, `${from} ← ${to}`, state.ridePrice, {
-      payment: state.payment,
-      walletCharge: state.payment === "المحفظة" ? state.ridePrice : 0,
+      payment: "نقدًا",
       pickupLocation: state.pickupLocation, destinationLocation: state.destinationLocation,
       distanceKm: state.routeDistanceKm, durationMin: state.routeDurationMin, routeSource: state.routeSource,
+      fareSubtotal: state.fareSubtotal, discountAmount: Math.max(0,state.fareSubtotal-state.ridePrice), couponCode: state.appliedCoupon?.code || "",
+      referralRedemption: state.appliedCoupon?.kind==="referral" ? {code:state.appliedCoupon.code,inviterId:state.appliedCoupon.ownerId,discountAmount:Math.max(0,state.fareSubtotal-state.ridePrice)} : null,
       scheduledAt: byId("scheduleRideAt")?.value || null
     });
+    state.appliedCoupon=null; if(byId("couponCode"))byId("couponCode").value="";
   } catch (error) {
     console.error(error);
     showToast(customerCallableMessage(error, "تأكيد الحجز"));
@@ -1420,9 +1585,9 @@ byId("myServiceRequests")?.addEventListener("click", async event => {
         distanceKm: 0,
         durationMin: 0,
         routeSource: "serviceDelivery",
-        commissionRate: COMMISSION_RATE,
-        commissionAmount: Math.round(deliveryFee * COMMISSION_RATE),
-        driverEarnings: deliveryFee - Math.round(deliveryFee * COMMISSION_RATE),
+        commissionRate: commissionRateFor("serviceDelivery", request.providerCategory || ""),
+        commissionAmount: Math.round(deliveryFee * commissionRateFor("serviceDelivery", request.providerCategory || "")),
+        driverEarnings: deliveryFee - Math.round(deliveryFee * commissionRateFor("serviceDelivery", request.providerCategory || "")),
         tripOtp: String(Math.floor(1000 + Math.random() * 9000)),
         paymentStatus: "pending",
         acceptedAt: null,
@@ -1532,7 +1697,7 @@ function renderTracking() {
     : (orderStatuses[statusIndex] || "قيد المتابعة");
   byId("tripOtpBox").classList.toggle("hidden", !(order.driverId && (order.type === "serviceDelivery" ? statusIndex < 4 : statusIndex < 3)));
   byId("tripOtp").textContent = order.tripOtp || "—";
-  byId("paymentTripStatus").textContent = order.paymentStatus === "paid" ? "مدفوع" : "الدفع عند الإكمال";
+  byId("paymentTripStatus").textContent = order.paymentStatus === "paid" ? "مكتمل" : "يُسوّى عند الإكمال";
   byId("progressBar").style.width = `${((statusIndex + 1) / orderStatuses.length) * 100}%`;
   const completed = statusIndex >= orderStatuses.length - 1;
   byId("advanceOrder").disabled = true;
@@ -1722,23 +1887,22 @@ function renderBalance() {
   renderCustomerSettingsInfo();
 }
 
-byId("addBalance").addEventListener("click", async event => {
-  if (!requireUser()) return;
-  const button = event.currentTarget;
-  setButtonBusy(button, true);
-  try {
-    state.balance += 10000;
-    await saveUserData({ balance: state.balance });
-    renderBalance();
-    showToast("تمت إضافة 10,000 د.ع كرصيد تجريبي");
-  } catch (error) {
-    state.balance -= 10000;
-    console.error(error);
-    showToast("تعذر تحديث الرصيد");
-  } finally {
-    setButtonBusy(button, false);
-  }
+byId("topupForm")?.addEventListener("submit",async event=>{
+  event.preventDefault(); if(!requireUser())return;
+  const amount=Math.round(Number(byId("topupAmount")?.value||0));
+  const transferReference=byId("topupReference")?.value.trim()||"";
+  if(!Number.isFinite(amount)||amount<1000||amount>1000000)return showToast("أدخل مبلغًا بين 1,000 و1,000,000 د.ع");
+  if(transferReference.length<3)return showToast("اكتب رقم/مرجع التحويل أو آخر أرقام العملية");
+  const button=event.submitter||byId("submitTopup"); setButtonBusy(button,true,"جارٍ إرسال الطلب…");
+  try{await addDoc(collection(db,"topupRequests"),{userId:state.user.uid,customerName:state.name,email:state.user.email||"",amount,transferReference:transferReference.slice(0,80),method:"mastercard_local",status:"pending",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});event.currentTarget.reset();showToast("تم إرسال طلب الشحن. سيضاف نفس المبلغ بعد موافقة الإدارة.");}
+  catch(error){console.error(error);showToast("تعذر إرسال طلب الشحن");}finally{setButtonBusy(button,false);}
 });
+byId("shareReferral")?.addEventListener("click",async()=>{
+  if(!requireUser())return; const code=state.referralCode||await ensureReferralCode(state.user);
+  const text=`حمّل كروة واستخدم كود الدعوة ${code} للحصول على خصم على أول مشوار.`;
+  try{if(navigator.share)await navigator.share({title:"دعوة كروة",text});else await navigator.clipboard.writeText(text);showToast("تم تجهيز كود الدعوة للمشاركة");}catch(error){if(error?.name!=="AbortError")showToast("تعذر فتح المشاركة");}
+});
+byId("copyReferral")?.addEventListener("click",async()=>{if(!state.referralCode)return;try{await navigator.clipboard.writeText(state.referralCode);showToast("تم نسخ كود الدعوة");}catch(_){showToast(state.referralCode);}});
 
 function renderProfile() {
   const firstName = state.name.trim().split(" ")[0] || "ضيف";
@@ -2060,6 +2224,7 @@ function setupCustomerMapPlaceTool() {
 }
 
 setupCustomerMapPlaceTool();
+subscribeToAppSettings();
 
 setAuthMode("login");
 document.body.classList.add("customer-map-mode");
@@ -2092,6 +2257,7 @@ async function startVerifiedCustomerSession(user) {
   }
   subscribeToOrders(user);
   subscribeToRatings(user);
+  subscribeToTopups(user);
   subscribeRestaurants();
   subscribeServiceProfiles();
   subscribeServiceRequests(user);
@@ -2152,9 +2318,12 @@ onAuthStateChanged(auth, async user => {
       state.unsubscribeServiceRequests();
       state.unsubscribeServiceRequests = null;
     }
+    if(state.unsubscribeTopups){state.unsubscribeTopups();state.unsubscribeTopups=null;}
     state.name = "ضيف";
     state.role = "customer";
     state.balance = 0;
+    state.referralCode = "";
+    state.topupRequests = [];
     state.orders = [];
     state.ratings = [];
     state.restaurants = [];
