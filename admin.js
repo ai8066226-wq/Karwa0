@@ -9,19 +9,12 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
 import {
   collection,
-  deleteDoc,
   doc,
-  getDoc,
-  getDocs,
   getFirestore,
   increment,
   onSnapshot,
-  query,
-  runTransaction,
   serverTimestamp,
-  setDoc,
   updateDoc,
-  where,
   writeBatch
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 
@@ -58,46 +51,11 @@ const state = {
   drivers: [],
   ratings: [],
   orders: [],
-  topupRequests: [],
-  coupons: [],
-  pricingSettings: null,
-  paymentSettings: null,
   roleUnsubscribe: null,
   dashboardUnsubscribes: []
 };
 
 const money = value => Number(value || 0).toLocaleString("ar-IQ") + " د.ع";
-
-async function reviewTopupFirestore(requestId, decision, approvedAmount=0, note="") {
-  const requestRef=doc(db,"topupRequests",requestId);
-  await runTransaction(db,async tx=>{
-    const snap=await tx.get(requestRef);if(!snap.exists())throw new Error("TOPUP_NOT_FOUND");
-    const data=snap.data();if(data.status!=="pending")throw new Error("TOPUP_ALREADY_REVIEWED");
-    if(decision==="reject"){tx.update(requestRef,{status:"rejected",reviewNote:String(note||"").slice(0,250),reviewedBy:state.user.uid,reviewedAt:serverTimestamp(),updatedAt:serverTimestamp()});return;}
-    const amount=Math.max(0,Math.round(Number(approvedAmount||0)));
-    const maximum=Math.max(1,Math.round(Number(state.paymentSettings?.maxTopup||1000000)));
-    if(!amount||amount>maximum)throw new Error("BAD_AMOUNT");
-    const userRef=doc(db,"users",data.userId), userSnap=await tx.get(userRef);if(!userSnap.exists())throw new Error("USER_NOT_FOUND");
-    const before=Math.max(0,Number(userSnap.data().balance||0)),after=before+amount;
-    tx.update(userRef,{balance:after,lastTopupRequestId:requestId,updatedAt:serverTimestamp()});
-    tx.update(requestRef,{status:"approved",approvedAmount:amount,reviewedBy:state.user.uid,reviewedAt:serverTimestamp(),updatedAt:serverTimestamp()});
-    tx.set(doc(collection(db,"walletTransactions")),{userId:data.userId,type:"mastercard_topup",topupRequestId:requestId,amount,balanceAfter:after,approvedBy:state.user.uid,createdAt:serverTimestamp()});
-  });
-}
-async function docsMatching(collectionName, field, uid){try{return (await getDocs(query(collection(db,collectionName),where(field,"==",uid)))).docs;}catch(e){console.warn("cleanup query",collectionName,field,e);return [];}}
-async function deleteRefsInChunks(refs){const unique=[...new Map(refs.map(r=>[r.path,r])).values()];for(let i=0;i<unique.length;i+=350){const batch=writeBatch(db);unique.slice(i,i+350).forEach(ref=>batch.delete(ref));await batch.commit();}return unique.length;}
-async function disableAndCleanAccountFirestore(uid){
-  if(uid===state.user.uid)throw new Error("ADMIN_PROTECTED");
-  const userRef=doc(db,"users",uid), snap=await getDoc(userRef);if(!snap.exists())throw new Error("USER_NOT_FOUND");if(snap.data().role==="admin")throw new Error("ADMIN_PROTECTED");
-  await setDoc(userRef,{role:"blocked",disabled:true,disabledReason:"deleted_by_admin",name:"حساب محذوف",email:"",balance:0,deletedAt:serverTimestamp(),deletedBy:state.user.uid,updatedAt:serverTimestamp()},{merge:true});
-  const refs=[];
-  const orderMap=new Map();for(const field of ["userId","driverId","providerId"]){for(const d of await docsMatching("orders",field,uid))orderMap.set(d.id,d);}
-  for(const d of orderMap.values()){try{const tracks=await getDocs(collection(db,"orders",d.id,"tracking"));tracks.docs.forEach(t=>refs.push(t.ref));}catch(_){}refs.push(doc(db,"orderSecrets",d.id),d.ref);}
-  for(const [name,fields] of [["serviceRequests",["customerId","providerId"]],["ratings",["customerId","driverId"]],["customerRatings",["customerId","driverId"]],["walletTransactions",["userId","driverId"]],["topupRequests",["userId"]],["referrals",["inviteeUid","inviterUid"]],["referralCodes",["ownerUid"]],["supportTickets",["userId"]],["safetyEvents",["reportedBy"]],["roadReports",["reportedBy"]],["landmarks",["createdBy"]],["tripShares",["userId","driverId","customerId"]]]){for(const field of fields){for(const d of await docsMatching(name,field,uid))refs.push(d.ref);}}
-  for(const name of ["driverApplications","drivers","publicDrivers","serviceApplications","serviceProfiles","restaurants"]){refs.push(doc(db,name,uid));}
-  const deleted=await deleteRefsInChunks(refs);
-  return {deletedDocuments:deleted,authAccountRetained:true};
-}
 
 function isBikeVehicle(record = {}) {
   return String(record.vehicleType || "").trim().includes("دراجة");
@@ -186,90 +144,6 @@ byId("loginForm").addEventListener("submit", async event => {
 
 byId("logoutButton").addEventListener("click", () => signOut(auth));
 byId("deniedLogout").addEventListener("click", () => signOut(auth));
-
-
-function accountRoleLabel(role) {
-  return ({customer:"عميل",driverApplicant:"طلب كابتن",driver:"كابتن",serviceApplicant:"طلب خدمة",serviceProvider:"مزود خدمة",admin:"إدارة",blocked:"معطّل"})[role] || role || "عميل";
-}
-
-function renderAccounts() {
-  const host = byId("accountsList");
-  if (!host) return;
-  const sorted = [...state.users].sort((a,b) => String(a.name || a.email || "").localeCompare(String(b.name || b.email || ""), "ar"));
-  host.innerHTML = sorted.length ? sorted.map(account => {
-    const protectedAccount = account.role === "admin" || account.firestoreId === state.user?.uid;
-    const disabledAccount = account.disabled === true || account.role === "blocked";
-    return `<div class="order-card">
-      <div class="order-top"><span class="order-icon">${account.role === "driver" ? "🚕" : account.role === "serviceProvider" ? "🧰" : account.role === "admin" ? "🔐" : "👤"}</span><div><strong>${escapeHtml(account.name || "حساب كروة")}</strong><small>${escapeHtml(account.email || "بدون بريد محفوظ")}</small></div><span class="status-chip ${protectedAccount ? "approved" : "pending"}">${escapeHtml(accountRoleLabel(account.role))}</span></div>
-      <div class="order-meta"><span>UID: <b>${escapeHtml(account.firestoreId)}</b></span>${account.createdAt?.seconds ? `<span>الإنشاء: ${new Date(account.createdAt.seconds*1000).toLocaleDateString("ar-IQ")}</span>` : ""}</div>
-      <div class="order-actions">${protectedAccount ? `<span class="notice success" style="margin:0;flex:1">حساب محمي من الحذف</span>` : disabledAccount ? `<span class="notice" style="margin:0;flex:1">الحساب معطّل وتم تنظيف بياناته</span>` : `<button class="danger" data-action="delete-account" data-id="${escapeHtml(account.firestoreId)}">تعطيل الحساب وحذف بيانات Firestore</button>`}</div>
-    </div>`;
-  }).join("") : `<div class="empty"><span>👤</span>لا توجد حسابات.</div>`;
-}
-
-const DEFAULT_ADMIN_PRICING={taxi:{economy:{baseFare:1500,perKm:650,perMinute:65,minimumFare:3000,commissionRate:.15},taxi:{baseFare:2000,perKm:800,perMinute:80,minimumFare:4000,commissionRate:.15},family:{baseFare:2750,perKm:975,perMinute:95,minimumFare:5000,commissionRate:.15}},traffic:{pricingMode:"dynamic",freeFlowSpeedKph:38,trafficWeight:.35,maxMultiplier:1.45,peakExtra:.08,peakWindows:["07:00-09:30","13:30-17:30"]},deliveryCommissions:{parcel:.15,food:.15,serviceDelivery:.15},serviceCommissions:{restaurant:.15,grocery:.15,retail:.15,maintenance:.15,home:.15,health:.15,other:.15},referral:{enabled:true,inviterReward:2000,inviteeReward:1000}};
-function deepMergeAdmin(base,extra){const out={...base};for(const [k,v] of Object.entries(extra||{})){out[k]=v&&typeof v==="object"&&!Array.isArray(v)&&base?.[k]&&typeof base[k]==="object"&&!Array.isArray(base[k])?deepMergeAdmin(base[k],v):v;}return out;}
-function fieldNumber(id,fallback){const n=Number(byId(id)?.value);return Number.isFinite(n)?n:fallback;}
-function fieldBetween(id,fallback,min,max){return Math.max(min,Math.min(max,fieldNumber(id,fallback)));}
-function moneyField(id,fallback){return Math.max(0,Math.round(fieldNumber(id,fallback)));}
-function rateField(id,fallback=15){return fieldBetween(id,fallback,0,80)/100;}
-function renderPricingSettings(){const p=deepMergeAdmin(DEFAULT_ADMIN_PRICING,state.pricingSettings||{});const map=[['fareEconomyBase',p.taxi.economy.baseFare],['fareEconomyKm',p.taxi.economy.perKm],['fareEconomyMin',p.taxi.economy.perMinute],['fareEconomyMinimum',p.taxi.economy.minimumFare],['commissionEconomy',p.taxi.economy.commissionRate*100],['fareTaxiBase',p.taxi.taxi.baseFare],['fareTaxiKm',p.taxi.taxi.perKm],['fareTaxiMin',p.taxi.taxi.perMinute],['fareTaxiMinimum',p.taxi.taxi.minimumFare],['commissionTaxi',p.taxi.taxi.commissionRate*100],['fareFamilyBase',p.taxi.family.baseFare],['fareFamilyKm',p.taxi.family.perKm],['fareFamilyMin',p.taxi.family.perMinute],['fareFamilyMinimum',p.taxi.family.minimumFare],['commissionFamily',p.taxi.family.commissionRate*100],['commissionParcel',p.deliveryCommissions.parcel*100],['commissionFood',p.deliveryCommissions.food*100],['commissionServiceDelivery',p.deliveryCommissions.serviceDelivery*100],['commissionRestaurant',p.serviceCommissions.restaurant*100],['commissionGrocery',p.serviceCommissions.grocery*100],['commissionRetail',p.serviceCommissions.retail*100],['commissionMaintenance',p.serviceCommissions.maintenance*100],['commissionHome',p.serviceCommissions.home*100],['commissionHealth',p.serviceCommissions.health*100],['commissionOtherService',p.serviceCommissions.other*100],['freeFlowSpeed',p.traffic.freeFlowSpeedKph],['trafficWeight',p.traffic.trafficWeight],['maxTrafficMultiplier',p.traffic.maxMultiplier],['peakExtra',p.traffic.peakExtra],['inviterReward',p.referral.inviterReward],['inviteeReward',p.referral.inviteeReward]];map.forEach(([id,v])=>{if(document.activeElement!==byId(id)&&byId(id))byId(id).value=v;});if(byId('taxiPricingMode'))byId('taxiPricingMode').value=p.traffic.pricingMode==='distance'?'distance':'dynamic';if(byId('peakWindows'))byId('peakWindows').value=(p.traffic.peakWindows||[]).join(', ');}
-function renderPaymentSettings(){const p=state.paymentSettings||{};if(byId('mastercardEnabled'))byId('mastercardEnabled').checked=p.mastercardEnabled===true;[['adminMastercardNumber',p.mastercardNumber||''],['adminMastercardHolder',p.cardHolder||''],['adminMinTopup',p.minTopup||5000],['adminMaxTopup',p.maxTopup||1000000],['adminTopupInstructions',p.instructions||'']].forEach(([id,v])=>{if(document.activeElement!==byId(id)&&byId(id))byId(id).value=v;});}
-function renderTopupRequests(){const host=byId('topupRequestsList');if(!host)return;const list=[...state.topupRequests].sort((a,b)=>{if(a.status==='pending'&&b.status!=='pending')return -1;if(b.status==='pending'&&a.status!=='pending')return 1;return Number(b.createdAt?.seconds||0)-Number(a.createdAt?.seconds||0)});const pending=list.filter(x=>x.status==='pending').length;byId('pendingTopupsBadge').textContent=`${pending} بانتظار التحقق`;host.innerHTML=list.length?list.map(x=>{const id=escapeHtml(x.firestoreId);return `<article class="order-card topup-admin-card ${escapeHtml(x.status||'pending')}"><div class="order-top"><h3>💳 ${escapeHtml(x.customerName||'عميل كروة')}</h3><span class="status-chip ${x.status==='approved'?'approved':x.status==='rejected'?'rejected':'pending'}">${x.status==='approved'?'تمت الإضافة':x.status==='rejected'?'مرفوض':'قيد التحقق'}</span></div><div class="order-meta"><span>المبلغ المرسل: <b>${money(x.amount)}</b></span><span>مرجع: <b>${escapeHtml(x.reference||'—')}</b></span><span>${escapeHtml(x.customerEmail||'')}</span></div>${x.status==='pending'?`<label class="topup-received-field">المبلغ الواصل فعليًا<input type="number" min="1" max="${Math.max(1,Number(state.paymentSettings?.maxTopup||1000000))}" step="250" value="${Math.max(0,Number(x.amount||0))}" data-topup-received="${id}" inputmode="numeric"></label><div class="order-actions"><button class="primary" data-action="approve-topup" data-id="${id}">تأكيد الوصول وإضافة الرصيد</button><button class="danger" data-action="reject-topup" data-id="${id}">رفض</button></div>`:''}</article>`;}).join(''):`<div class="empty"><span>💳</span>لا توجد طلبات شحن.</div>`;}
-
-function normalizeCouponCode(value){return String(value||"").trim().toUpperCase().replace(/[^A-Z0-9_-]/g,"").slice(0,24);}
-function renderCoupons(){
-  const host=byId("couponsList"); if(!host)return;
-  const list=[...state.coupons].sort((a,b)=>String(a.firestoreId).localeCompare(String(b.firestoreId)));
-  if(byId("couponCountBadge"))byId("couponCountBadge").textContent=`${list.length} كود`;
-  host.innerHTML=list.length?list.map(c=>{
-    const pct=Math.max(0,Number(c.discountPercent||c.percent||0));
-    const fixed=Math.max(0,Number(c.discountAmount||c.amount||0));
-    const value=pct>0?`${pct}%`:money(fixed);
-    const expiry=c.validUntilISO?new Date(c.validUntilISO):null;
-    const expired=expiry&&!Number.isNaN(expiry.getTime())&&expiry.getTime()<Date.now();
-    const active=c.active!==false&&!expired;
-    return `<article class="order-card"><div class="order-top"><h3>🎟️ ${escapeHtml(c.firestoreId)}</h3><span class="status-chip ${active?'approved':'rejected'}">${active?'فعال':'متوقف'}</span></div><div class="order-meta"><span>الخصم: <b>${escapeHtml(value)}</b></span><span>أقل أجرة: ${money(c.minFare||0)}</span>${pct>0&&Number(c.maxDiscount||0)>0?`<span>أقصى خصم: ${money(c.maxDiscount)}</span>`:''}${c.validUntilISO?`<span>ينتهي: ${escapeHtml(c.validUntilISO.slice(0,10))}</span>`:''}</div><div class="order-actions"><button class="secondary" data-action="toggle-coupon" data-id="${escapeHtml(c.firestoreId)}">${active?'إيقاف':'تفعيل'}</button><button class="danger" data-action="delete-coupon" data-id="${escapeHtml(c.firestoreId)}">حذف</button></div></article>`;
-  }).join(""):`<div class="empty"><span>🎟️</span>لا توجد أكواد خصم بعد.</div>`;
-}
-byId("saveCouponAdmin")?.addEventListener("click",async event=>{
-  const button=event.currentTarget; busy(button,true,"جاري الحفظ…");
-  try{
-    const code=normalizeCouponCode(byId("couponCodeAdmin")?.value);
-    const type=byId("couponTypeAdmin")?.value||"fixed";
-    const value=Math.max(0,Number(byId("couponValueAdmin")?.value||0));
-    const maxDiscount=Math.max(0,Number(byId("couponMaxAdmin")?.value||0));
-    const minFare=Math.max(0,Number(byId("couponMinFareAdmin")?.value||0));
-    const expiry=byId("couponExpiryAdmin")?.value||"";
-    if(code.length<3){toast("اكتب كودًا من 3 أحرف أو أرقام على الأقل");return;}
-    if(value<=0){toast("أدخل قيمة خصم أكبر من صفر");return;}
-    if(type==="percent"&&value>100){toast("نسبة الخصم لا يمكن أن تتجاوز 100%");return;}
-    const payload={active:byId("couponActiveAdmin")?.checked!==false,minFare,updatedAt:serverTimestamp(),updatedBy:state.user.uid};
-    if(type==="percent"){payload.discountPercent=value;payload.discountAmount=0;payload.maxDiscount=maxDiscount;}else{payload.discountAmount=Math.round(value);payload.discountPercent=0;payload.maxDiscount=0;}
-    if(expiry)payload.validUntilISO=new Date(`${expiry}T23:59:59`).toISOString();else payload.validUntilISO="";
-    await setDoc(doc(db,"coupons",code),payload,{merge:true});
-    byId("couponCodeAdmin").value="";byId("couponValueAdmin").value="";toast("تم حفظ كود الخصم");
-  }catch(e){console.error(e);toast("تعذر حفظ كود الخصم");}finally{busy(button,false);}
-});
-byId('savePricingSettings')?.addEventListener('click',async event=>{
-  const button=event.currentTarget;busy(button,true,'جاري الحفظ…');
-  try{
-    const peakWindows=String(byId('peakWindows')?.value||'').split(',').map(x=>x.trim()).filter(x=>/^\d{2}:\d{2}-\d{2}:\d{2}$/.test(x));
-    const data={
-      taxi:{
-        economy:{label:'اقتصادي',baseFare:moneyField('fareEconomyBase',1500),perKm:moneyField('fareEconomyKm',650),perMinute:moneyField('fareEconomyMin',65),minimumFare:moneyField('fareEconomyMinimum',3000),commissionRate:rateField('commissionEconomy')},
-        taxi:{label:'تكسي',baseFare:moneyField('fareTaxiBase',2000),perKm:moneyField('fareTaxiKm',800),perMinute:moneyField('fareTaxiMin',80),minimumFare:moneyField('fareTaxiMinimum',4000),commissionRate:rateField('commissionTaxi')},
-        family:{label:'عائلي',baseFare:moneyField('fareFamilyBase',2750),perKm:moneyField('fareFamilyKm',975),perMinute:moneyField('fareFamilyMin',95),minimumFare:moneyField('fareFamilyMinimum',5000),commissionRate:rateField('commissionFamily')}
-      },
-      traffic:{pricingMode:byId('taxiPricingMode')?.value==='distance'?'distance':'dynamic',freeFlowSpeedKph:fieldBetween('freeFlowSpeed',38,10,100),trafficWeight:fieldBetween('trafficWeight',.35,0,1.5),maxMultiplier:fieldBetween('maxTrafficMultiplier',1.45,1,3),peakExtra:fieldBetween('peakExtra',.08,0,.5),peakWindows:peakWindows.length?peakWindows:DEFAULT_ADMIN_PRICING.traffic.peakWindows},
-      deliveryCommissions:{parcel:rateField('commissionParcel'),food:rateField('commissionFood'),serviceDelivery:rateField('commissionServiceDelivery')},
-      serviceCommissions:{restaurant:rateField('commissionRestaurant'),grocery:rateField('commissionGrocery'),retail:rateField('commissionRetail'),maintenance:rateField('commissionMaintenance'),home:rateField('commissionHome'),health:rateField('commissionHealth'),other:rateField('commissionOtherService')},
-      referral:{enabled:true,inviterReward:moneyField('inviterReward',2000),inviteeReward:moneyField('inviteeReward',1000)},updatedAt:serverTimestamp(),updatedBy:state.user.uid
-    };
-    await setDoc(doc(db,'platformSettings','pricing'),data,{merge:true});toast('تم حفظ التسعير والعمولات للطلبات الجديدة');
-  }catch(e){console.error(e);toast('تعذر حفظ التسعير');}finally{busy(button,false);}
-});
-byId('savePaymentSettings')?.addEventListener('click',async event=>{const button=event.currentTarget;busy(button,true,'جاري الحفظ…');try{const card=byId('adminMastercardNumber').value.trim(),minTopup=Math.max(1,moneyField('adminMinTopup',5000)),maxTopup=Math.max(1,moneyField('adminMaxTopup',1000000));if(byId('mastercardEnabled').checked&&card.replace(/\D/g,'').length<12){toast('أدخل رقم بطاقة صالح قبل تفعيل الشحن');return;}if(minTopup>maxTopup){toast('أقل مبلغ للشحن يجب ألا يتجاوز أعلى مبلغ');return;}await setDoc(doc(db,'platformSettings','payments'),{mastercardEnabled:byId('mastercardEnabled').checked,mastercardNumber:card,cardHolder:byId('adminMastercardHolder').value.trim().slice(0,80),minTopup,maxTopup,instructions:byId('adminTopupInstructions').value.trim().slice(0,300),updatedAt:serverTimestamp(),updatedBy:state.user.uid},{merge:true});toast('تم حفظ إعدادات ماستر كارد');}catch(e){console.error(e);toast('تعذر حفظ إعدادات الشحن');}finally{busy(button,false);}});
 
 function renderMetrics() {
   byId("usersCount").textContent = state.users.filter(user => !user.role || user.role === "customer").length;
@@ -499,7 +373,6 @@ function orderCard(order) {
           <span>${order.driverName ? `الكابتن: ${escapeHtml(order.driverName)}` : "بانتظار كابتن"}</span>
         </div>
         <span class="order-price">${money(order.price)}</span>
-        ${order.type==="ride"?`<div class="order-meta"><span>المسافة ${Number(order.distanceKm||0).toFixed(1)} كم</span><span>وقت الطريق ${Math.round(Number(order.durationMin||0))} د</span><span>ازدحام ${escapeHtml(order.congestion||"—")} ×${Number(order.trafficMultiplier||1).toFixed(2)}</span></div>`:""}
         ${Number(order.surgeMultiplier||1)>1?`<div class="order-meta"><span>طلب مرتفع ×${Number(order.surgeMultiplier).toFixed(2)}</span></div>`:""}
         ${Number(order.discountAmount||0)>0?`<div class="order-meta"><span>خصم ${money(order.discountAmount)}</span><span>${escapeHtml(order.couponCode||"")}</span></div>`:""}
         ${Array.isArray(order.dispatchCandidateIds)?`<div class="order-meta"><span>مرشحو التوزيع: ${order.dispatchCandidateIds.length}</span><span>الجولة ${Number(order.dispatchRound||1)}</span></div>`:""}
@@ -537,7 +410,6 @@ function openDashboard() {
   showView("dashboard");
   const usersUnsubscribe = onSnapshot(collection(db, "users"), snapshot => {
     state.users = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
-    renderAccounts();
     renderMetrics();
   });
   const applicationsUnsubscribe = onSnapshot(collection(db, "driverApplications"), snapshot => {
@@ -573,10 +445,6 @@ function openDashboard() {
     renderDrivers();
     renderMetrics();
   });
-  const topupsUnsubscribe = onSnapshot(collection(db, "topupRequests"), snapshot => { state.topupRequests = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id })); renderTopupRequests(); });
-  const couponsUnsubscribe = onSnapshot(collection(db, "coupons"), snapshot => { state.coupons = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id })); renderCoupons(); });
-  const pricingUnsubscribe = onSnapshot(doc(db, "platformSettings", "pricing"), snapshot => { state.pricingSettings = snapshot.exists() ? snapshot.data() : null; renderPricingSettings(); });
-  const paymentsUnsubscribe = onSnapshot(doc(db, "platformSettings", "payments"), snapshot => { state.paymentSettings = snapshot.exists() ? snapshot.data() : null; renderPaymentSettings(); });
   const ratingsUnsubscribe = onSnapshot(collection(db, "ratings"), snapshot => {
     state.ratings = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
     renderDrivers();
@@ -590,7 +458,6 @@ function openDashboard() {
     restaurantsUnsubscribe,
     ordersUnsubscribe,
     driversUnsubscribe,
-    topupsUnsubscribe, couponsUnsubscribe, pricingUnsubscribe, paymentsUnsubscribe,
     ratingsUnsubscribe
   );
 }
@@ -601,28 +468,7 @@ document.addEventListener("click", async event => {
   const id = button.dataset.id;
   busy(button, true);
   try {
-    if (button.dataset.action === "approve-topup" || button.dataset.action === "reject-topup") {
-      const topup=state.topupRequests.find(x=>x.firestoreId===id);if(!topup)throw new Error("NOT_FOUND");
-      if(button.dataset.action === "approve-topup"){const input=button.closest(".topup-admin-card")?.querySelector("[data-topup-received]"),received=Math.round(Number(input?.value||0)),maximum=Math.max(1,Math.round(Number(state.paymentSettings?.maxTopup||1000000)));if(!Number.isFinite(received)||received<=0||received>maximum){toast(`أدخل مبلغًا صحيحًا لا يتجاوز ${money(maximum)}`);input?.focus();return;}const differs=received!==Math.round(Number(topup.amount||0));if(!confirm(`${differs?`المبلغ الواصل يختلف عن المبلغ الذي أدخله العميل (${money(topup.amount)}).\n`:""}سيضاف ${money(received)} إلى رصيد العميل مرة واحدة. تأكيد؟`))return;await reviewTopupFirestore(id,"approve",received);toast(`تمت إضافة ${money(received)} إلى رصيد العميل`);}
-      else {const note=prompt("سبب الرفض (اختياري)","")||"";await reviewTopupFirestore(id,"reject",0,note);toast("تم رفض طلب الشحن");}
-    } else if (button.dataset.action === "toggle-coupon") {
-      const coupon=state.coupons.find(x=>x.firestoreId===id);if(!coupon)throw new Error("NOT_FOUND");
-      await updateDoc(doc(db,"coupons",id),{active:coupon.active===false,updatedAt:serverTimestamp(),updatedBy:state.user.uid});
-      toast(coupon.active===false?"تم تفعيل كود الخصم":"تم إيقاف كود الخصم");
-    } else if (button.dataset.action === "delete-coupon") {
-      if(!confirm(`حذف كود الخصم ${id} نهائيًا؟`))return;
-      await deleteDoc(doc(db,"coupons",id));toast("تم حذف كود الخصم");
-    } else if (button.dataset.action === "delete-account") {
-      const account = state.users.find(item => item.firestoreId === id);
-      if (!account) throw new Error("NOT_FOUND");
-      if (account.role === "admin" || id === state.user.uid) { toast("حساب الإدارة محمي من الحذف"); return; }
-      const name = account.name || account.email || "هذا الحساب";
-      const confirmation = prompt(`سيتم تعطيل ${name} نهائيًا داخل كروة وحذف بيانات Firestore المرتبطة. حساب Firebase Authentication نفسه سيبقى موجودًا في نسخة Firestore-only.\n\nاكتب كلمة حذف للتأكيد:`)?.trim();
-      if (confirmation !== "حذف") { toast("تم إلغاء الحذف"); return; }
-      button.textContent = "جاري التعطيل والتنظيف…";
-      const result = await disableAndCleanAccountFirestore(id);
-      toast(`تم تعطيل الحساب وحذف بيانات Firestore المرتبطة • ${result.deletedDocuments} سجل`);
-    } else if (button.dataset.action === "approve-service") {
+    if (button.dataset.action === "approve-service") {
       const legacy = button.dataset.source === "legacy";
       const application = legacy
         ? state.applications.find(item => item.firestoreId === id && normalizeCaptainServiceType(item) === "other")
