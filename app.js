@@ -159,7 +159,8 @@ const state = {
   routeRequestToken: 0,
   reverseRequestTokens: { pickup: 0, destination: 0 },
   routeDebounceTimer: null,
-  mapTapLockedUntil: 0
+  mapTapLockedUntil: 0,
+  locationRequestToken: 0
 };
 
 const formatMoney = value => Number(value || 0).toLocaleString("ar-IQ") + " د.ع";
@@ -865,26 +866,64 @@ function setCenterPick(active=true){
 async function confirmCenterPick(){if(!state.centerPickActive)return;const c=state.map.getCenter();setCenterPick(false);await setBookingPoint(state.mapPickMode,c.lat,c.lng);}
 function distanceFromMapCenter(x){const c=state.map?.getCenter();if(!c)return null;return haversineKm({latitude:c.lat,longitude:c.lng},{latitude:Number(x.lat),longitude:Number(x.lon)});}
 
+function locationErrorMessage(error) {
+  if (error?.code === 1) return "فعّل إذن الموقع للتطبيق ثم اضغط علامة الموقع مرة أخرى";
+  if (error?.code === 2) return "تعذر الحصول على إشارة GPS. تأكد من تشغيل الموقع في جهازك";
+  if (error?.code === 3) return "تأخر تحديد الموقع. حاول مرة أخرى في مكان تكون فيه إشارة GPS أفضل";
+  return "تعذر تحديد موقعك الحالي";
+}
+
 function locateUser(targetInput) {
+  initializeCustomerMap();
   if (!navigator.geolocation) {
-    targetInput.value = "موقعي الحالي — بغداد";
-    showToast("تم اختيار موقع تقريبي");
+    showToast("هذا الجهاز أو المتصفح لا يدعم تحديد الموقع");
     return;
   }
-  showToast("جاري تحديد موقعك…");
+
+  const requestToken = ++state.locationRequestToken;
+  showToast("جارٍ جلب موقعك الحالي…");
+
   navigator.geolocation.getCurrentPosition(position => {
-    const latitude = position.coords.latitude;
-    const longitude = position.coords.longitude;
-    targetInput.value = `موقعي الحالي (${latitude.toFixed(3)}, ${longitude.toFixed(3)})`;
-    if (targetInput.id === "rideFrom") setBookingPoint("pickup", latitude, longitude).catch(console.warn);
-    else setCustomerLocation(latitude, longitude);
-    byId("cityLabel").textContent = "الموقع محدد";
+    if (requestToken !== state.locationRequestToken) return;
+
+    const latitude = Number(position.coords.latitude);
+    const longitude = Number(position.coords.longitude);
+    const accuracy = Math.round(Number(position.coords.accuracy || 0));
+    const point = [latitude, longitude];
+
+    // أولاً: انقل الخريطة إلى GPS فوراً، قبل أي reverse-geocoding أو حساب مسار شبكي.
+    setCenterPick(false);
+    state.customerLocation = { latitude, longitude };
+    if (state.map) {
+      state.map.stop();
+      state.map.setView(point, Math.max(16, state.map.getZoom() || 16), { animate: false });
+    }
+
+    if (targetInput) {
+      targetInput.value = `موقعي الحالي (${latitude.toFixed(5)}, ${longitude.toFixed(5)})`;
+      if (targetInput.id === "rideFrom") {
+        // المؤشر يظهر مباشرة، واسم المكان يُحدّث لاحقاً في الخلفية.
+        setBookingPoint("pickup", latitude, longitude).catch(console.warn);
+      } else {
+        setCustomerLocation(latitude, longitude);
+      }
+    } else {
+      setCustomerLocation(latitude, longitude);
+    }
+
+    const cityLabel = byId("cityLabel");
+    if (cityLabel) cityLabel.textContent = "موقعك الحالي";
     renderCustomerSettingsInfo();
-    showToast("تم تحديد موقعك");
-  }, () => {
-    targetInput.value = "موقعي الحالي — بغداد";
-    showToast("تعذر تحديد الموقع؛ تم اختيار بغداد");
-  }, { enableHighAccuracy: false, timeout: 7000, maximumAge: 30000 });
+    showToast(accuracy ? `تم جلب موقعك مباشرة • دقة ${accuracy} م` : "تم جلب موقعك مباشرة");
+  }, error => {
+    if (requestToken !== state.locationRequestToken) return;
+    // لا نضع موقعاً افتراضياً حتى لا يظهر للعميل مكان غير حقيقي.
+    showToast(locationErrorMessage(error));
+  }, {
+    enableHighAccuracy: true,
+    timeout: 10000,
+    maximumAge: 5000
+  });
 }
 
 byId("useRideLocation").addEventListener("click", () => locateUser(byId("rideFrom")));
