@@ -1,0 +1,5 @@
+نفذ فقط:
+
+firebase deploy --only firestore
+
+لا تنفذ firebase deploy --only functions لأن هذه النسخة لا تحتوي Functions ولا تحتاجها.

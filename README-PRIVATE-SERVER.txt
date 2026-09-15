@@ -1,14 +1,23 @@
-Karwa Phase 51 private backend + admin portal.
+KARWA PHASE 53 — FIRESTORE ONLY
 
-IMPORTANT
-- The administration UI remains OUTSIDE the Android APK.
-- Only a Firebase user whose users/{uid}.role == "admin" can open/use admin operations.
-- deleteAccountCompletely is a privileged Cloud Function using Firebase Admin SDK. It deletes Auth + linked Firestore/Storage data and refuses to delete the current admin or any admin-role account.
+لا توجد Cloud Functions في هذه النسخة.
 
-Deploy from this server folder (after Firebase CLI login and project selection):
-  cd functions && npm install && cd ..
-  firebase deploy --only functions:deleteAccountCompletely,firestore:rules,storage,hosting
+النشر المطلوب للقواعد فقط:
+  firebase deploy --only firestore
 
-If you already host the admin portal elsewhere, deploy only:
-  firebase deploy --only functions:deleteAccountCompletely,firestore:rules,storage
-and copy private-admin/ to your existing private admin hosting location.
+لوحة الإدارة موجودة في private-admin/ وتعمل مباشرة مع Firestore.
+
+الشحن المحلي:
+- العميل يرسل amount + reference إلى topupRequests.
+- الإدارة تتحقق من التحويل ثم تعتمد الطلب.
+- الاعتماد يزيد balance داخل Firestore Transaction مباشرة.
+
+حذف الحساب:
+- الإدارة تعطل المستخدم داخل كروة وتحذف بيانات Firestore المرتبطة.
+- Firebase Authentication لا يمكن حذف مستخدم آخر منه عبر Web SDK فقط.
+- إذا أردت حذف سجل Auth نفسه، احذفه يدويًا من Firebase Console > Authentication > Users.
+
+التسعير والعمولات:
+- تحفظ في platformSettings/pricing.
+- الدفع المحلي يحفظ في platformSettings/payments.
+- لا يلزم Functions لتطبيقها في هذه النسخة.

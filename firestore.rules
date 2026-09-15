@@ -4,7 +4,7 @@ service cloud.firestore { match /databases/{database}/documents {
  function own(id){return signed()&&request.auth.uid==id;}
  function userDoc(){return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;}
  function userExists(){return signed()&&exists(/databases/$(database)/documents/users/$(request.auth.uid));}
- function role(){return userExists()?userDoc().get('role',null):null;}
+ function role(){return userExists()&&userDoc().get('disabled',false)!=true?userDoc().get('role',null):null;}
  function admin(){return signed()&&role()=='admin';}
  function driver(){return signed()&&role()=='driver';}
  function customer(){return signed()&&role()=='customer';}
@@ -13,16 +13,81 @@ service cloud.firestore { match /databases/{database}/documents {
  function validServiceCategory(value){return value in ['restaurant','grocery','retail','maintenance','home','health','other'];}
  function validDriverApplication(data){return data.serviceType in ['taxi','delivery','other']&&((data.serviceType=='taxi'&&data.vehicleType!='دراجة')||data.serviceType=='delivery'||data.serviceType=='other');}
  match /users/{uid}{
-   allow create:if own(uid)&&(request.resource.data.role=='customer'||request.resource.data.role=='driverApplicant'||request.resource.data.role=='serviceApplicant');
+   function changedOnly(fields){return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);}
+   function walletDebitValid(){
+     let oid=request.resource.data.get('lastWalletOrderId','');
+     return oid is string && oid.size()>0
+       && changedOnly(['balance','lastWalletOrderId','updatedAt'])
+       && request.resource.data.balance is number && request.resource.data.balance>=0
+       && resource.data.get('balance',0)>=request.resource.data.balance
+       && existsAfter(/databases/$(database)/documents/orders/$(oid))
+       && getAfter(/databases/$(database)/documents/orders/$(oid)).data.userId==uid
+       && getAfter(/databases/$(database)/documents/orders/$(oid)).data.get('walletApplied',false)==true
+       && getAfter(/databases/$(database)/documents/orders/$(oid)).data.get('walletUsed',0)==resource.data.get('balance',0)-request.resource.data.balance
+       && getAfter(/databases/$(database)/documents/orders/$(oid)).data.cancelled==false;
+   }
+   function walletRefundValid(){
+     let oid=request.resource.data.get('lastWalletRefundOrderId','');
+     return oid is string && oid.size()>0
+       && changedOnly(['balance','lastWalletRefundOrderId','updatedAt'])
+       && request.resource.data.balance is number && request.resource.data.balance>=resource.data.get('balance',0)
+       && exists(/databases/$(database)/documents/orders/$(oid))
+       && get(/databases/$(database)/documents/orders/$(oid)).data.userId==uid
+       && get(/databases/$(database)/documents/orders/$(oid)).data.cancelled==false
+       && getAfter(/databases/$(database)/documents/orders/$(oid)).data.cancelled==true
+       && get(/databases/$(database)/documents/orders/$(oid)).data.get('walletUsed',0)==request.resource.data.balance-resource.data.get('balance',0);
+   }
+   function referralCodeSetupValid(){
+     let code=request.resource.data.get('referralCode','');
+     return changedOnly(['referralCode','updatedAt'])
+       && !resource.data.keys().hasAny(['referralCode'])
+       && code is string && code.matches('^[A-Z0-9]{4,14}$')
+       && existsAfter(/databases/$(database)/documents/referralCodes/$(code))
+       && getAfter(/databases/$(database)/documents/referralCodes/$(code)).data.ownerUid==uid
+       && getAfter(/databases/$(database)/documents/referralCodes/$(code)).data.active==true;
+   }
+   function referralAttachValid(){
+     let code=request.resource.data.get('referralCodeUsed','');
+     return changedOnly(['referredBy','referralCodeUsed','updatedAt'])
+       && !resource.data.keys().hasAny(['referredBy','referralCodeUsed'])
+       && existsAfter(/databases/$(database)/documents/referrals/$(uid))
+       && getAfter(/databases/$(database)/documents/referrals/$(uid)).data.inviteeUid==uid
+       && getAfter(/databases/$(database)/documents/referrals/$(uid)).data.inviterUid==request.resource.data.referredBy
+       && getAfter(/databases/$(database)/documents/referrals/$(uid)).data.code==code;
+   }
+   function inviteeRewardValid(){
+     let rb=get(/databases/$(database)/documents/referrals/$(uid)).data;
+     let ra=getAfter(/databases/$(database)/documents/referrals/$(uid)).data;
+     let cfg=get(/databases/$(database)/documents/platformSettings/pricing).data.referral;
+     return changedOnly(['balance','lastReferralRewardId','updatedAt'])
+       && request.resource.data.lastReferralRewardId==uid
+       && rb.status=='pending' && ra.status=='rewarded'
+       && ra.inviteeUid==uid
+       && request.resource.data.balance-resource.data.get('balance',0)==cfg.inviteeReward;
+   }
+   function inviterRewardValid(){
+     let rid=request.auth.uid;
+     let rb=get(/databases/$(database)/documents/referrals/$(rid)).data;
+     let ra=getAfter(/databases/$(database)/documents/referrals/$(rid)).data;
+     let cfg=get(/databases/$(database)/documents/platformSettings/pricing).data.referral;
+     return signed() && uid!=request.auth.uid
+       && changedOnly(['balance','lastReferralRewardId','updatedAt'])
+       && request.resource.data.lastReferralRewardId==rid
+       && rb.status=='pending' && ra.status=='rewarded'
+       && ra.inviterUid==uid
+       && request.resource.data.balance-resource.data.get('balance',0)==cfg.inviterReward;
+   }
+   allow create:if own(uid)&&(request.resource.data.get('disabled',false)!=true)&&(request.resource.data.role=='driverApplicant'||request.resource.data.role=='serviceApplicant'||(request.resource.data.role=='customer'&&request.resource.data.get('balance',0)==0));
    allow read:if own(uid)||admin();
-   allow update:if admin()||(own(uid)&&(
-     request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','email','notifications','savedAddresses','balance','updatedAt'])
-     || (!resource.data.keys().hasAny(['role'])
-       && request.resource.data.role=='customer'
-       && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role','email','updatedAt']))
-   ));
+   allow update:if admin()
+     || (own(uid)&&resource.data.get('disabled',false)!=true&&(
+       changedOnly(['name','email','notifications','savedAddresses','updatedAt'])
+       || (!resource.data.keys().hasAny(['role'])&&request.resource.data.role=='customer'&&changedOnly(['role','email','updatedAt']))
+       || walletDebitValid() || walletRefundValid() || referralCodeSetupValid() || referralAttachValid() || inviteeRewardValid()
+     ))
+     || inviterRewardValid();
    allow delete:if admin();
-   match /pushTokens/{id}{allow read:if own(uid)||admin();allow write:if own(uid);}
+   match /pushTokens/{id}{allow read:if own(uid)||admin();allow write:if own(uid)&&get(/databases/$(database)/documents/users/$(uid)).data.get('disabled',false)!=true;}
  }
  match /driverApplications/{uid}{allow create:if own(uid)&&request.resource.data.userId==request.auth.uid&&request.resource.data.status=='pending'&&validDriverApplication(request.resource.data);allow read:if own(uid)||admin();allow update:if admin()||(own(uid)&&resource.data.status!='approved'&&request.resource.data.userId==request.auth.uid&&request.resource.data.status=='pending'&&validDriverApplication(request.resource.data)&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','email','phone','serviceType','vehicleType','vehicleMake','vehicleModel','vehicleCondition','plate','city','status','profileComplete','submittedAt','updatedAt']));allow delete:if admin();}
  match /drivers/{uid}{
@@ -75,8 +140,55 @@ service cloud.firestore { match /databases/{database}/documents {
      && request.resource.data.updatedAt is timestamp;
    allow delete:if admin()||(own(uid)&&driver());
  }
+ match /platformSettings/{id}{allow read:if signed();allow create,update,delete:if admin();}
+ match /topupRequests/{id}{
+   allow read:if admin()||(customer()&&resource.data.userId==request.auth.uid);
+   allow create:if customer()
+     && request.resource.data.userId==request.auth.uid
+     && request.resource.data.status=='pending'
+     && request.resource.data.amount is number && request.resource.data.amount>=1000 && request.resource.data.amount<=100000000
+     && request.resource.data.reference is string && request.resource.data.reference.size()>=3 && request.resource.data.reference.size()<=80
+     && get(/databases/$(database)/documents/platformSettings/payments).data.get('mastercardEnabled',false)==true;
+   allow update,delete:if admin();
+ }
+ match /walletTransactions/{id}{allow read:if signed()&&((resource.data.get('userId','')==request.auth.uid)||(resource.data.get('driverId','')==request.auth.uid)||admin());allow create,update,delete:if admin();}
+ match /referrals/{id}{
+   function referralCfg(){return get(/databases/$(database)/documents/platformSettings/pricing).data.referral;}
+   allow read:if signed()&&(id==request.auth.uid||resource.data.get('inviterUid','')==request.auth.uid||admin());
+   allow create:if customer()&&id==request.auth.uid
+     && request.resource.data.inviteeUid==request.auth.uid
+     && request.resource.data.inviterUid is string&&request.resource.data.inviterUid!=request.auth.uid
+     && request.resource.data.code is string
+     && request.resource.data.status=='pending'
+     && exists(/databases/$(database)/documents/referralCodes/$(request.resource.data.code))
+     && get(/databases/$(database)/documents/referralCodes/$(request.resource.data.code)).data.ownerUid==request.resource.data.inviterUid
+     && get(/databases/$(database)/documents/referralCodes/$(request.resource.data.code)).data.active==true;
+   allow update:if admin()||(customer()&&id==request.auth.uid
+     && resource.data.status=='pending'&&request.resource.data.status=='rewarded'
+     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','rewardedOrderId','rewardedAt','inviterReward','inviteeReward'])
+     && request.resource.data.inviterReward==referralCfg().inviterReward
+     && request.resource.data.inviteeReward==referralCfg().inviteeReward
+     && exists(/databases/$(database)/documents/orders/$(request.resource.data.rewardedOrderId))
+     && get(/databases/$(database)/documents/orders/$(request.resource.data.rewardedOrderId)).data.userId==request.auth.uid
+     && get(/databases/$(database)/documents/orders/$(request.resource.data.rewardedOrderId)).data.cancelled==false
+     && get(/databases/$(database)/documents/orders/$(request.resource.data.rewardedOrderId)).data.statusIndex>=4);
+   allow delete:if admin();
+ }
+ match /referralCodes/{id}{allow read:if signed();allow create:if customer()&&request.resource.data.ownerUid==request.auth.uid&&request.resource.data.active==true;allow update:if admin();allow delete:if admin();}
+ match /promoCodes/{id}{allow read:if admin();allow write:if admin();}
  match /orders/{id}{
    function linkedServiceRequest(){return getAfter(/databases/$(database)/documents/serviceRequests/$(request.resource.data.serviceRequestId)).data;}
+   function customerPaymentValid(){
+     let w=request.resource.data.get('walletUsed',0);
+     let c=request.resource.data.get('cashDue',request.resource.data.price);
+     let before=userDoc().get('balance',0);
+     let after=getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+     return request.resource.data.price is number&&request.resource.data.price>=0
+       && w is number&&w>=0&&w<=before
+       && c is number&&c>=0&&c==request.resource.data.price-w
+       && request.resource.data.get('walletApplied',false)==true
+       && ((w==0&&after.get('balance',0)==before)||(w>0&&after.get('balance',0)==before-w&&after.get('lastWalletOrderId','')==id));
+   }
    function currentDriver(){return get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data;}
    function pickupOtpMatches(){
      return resource.data.type=='serviceDelivery'
@@ -110,7 +222,8 @@ service cloud.firestore { match /databases/{database}/documents {
        && request.resource.data.type!='serviceDelivery'
        && request.resource.data.driverId==null
        && request.resource.data.statusIndex==0
-       && request.resource.data.cancelled==false)
+       && request.resource.data.cancelled==false
+       && customerPaymentValid())
      || (customer()
        && request.resource.data.type=='serviceDelivery'
        && request.resource.data.userId==request.auth.uid
@@ -121,8 +234,8 @@ service cloud.firestore { match /databases/{database}/documents {
        && request.resource.data.statusIndex==0
        && request.resource.data.cancelled==false
        && request.resource.data.requiredDriverService=='delivery'
-       && request.resource.data.payment=='نقدًا'
-       && request.resource.data.commissionRate==0.15
+       && customerPaymentValid()
+       && request.resource.data.commissionRate is number&&request.resource.data.commissionRate>=0&&request.resource.data.commissionRate<=0.8
        && request.resource.data.commissionAmount is number&&request.resource.data.commissionAmount>=0
        && request.resource.data.driverEarnings is number&&request.resource.data.driverEarnings>=0
        && request.resource.data.commissionAmount+request.resource.data.driverEarnings==request.resource.data.price
@@ -147,7 +260,7 @@ service cloud.firestore { match /databases/{database}/documents {
        && request.resource.data.cancelled==false
        && request.resource.data.requiredDriverService=='delivery'
        && request.resource.data.payment=='نقدًا'
-       && request.resource.data.commissionRate==0.15
+       && request.resource.data.commissionRate is number&&request.resource.data.commissionRate>=0&&request.resource.data.commissionRate<=0.8
        && request.resource.data.commissionAmount is number&&request.resource.data.commissionAmount>=0
        && request.resource.data.driverEarnings is number&&request.resource.data.driverEarnings>=0
        && request.resource.data.commissionAmount+request.resource.data.driverEarnings==request.resource.data.price
@@ -164,7 +277,7 @@ service cloud.firestore { match /databases/{database}/documents {
        && linkedServiceRequest().totalPrice==request.resource.data.serviceTotal
        && linkedServiceRequest().deliveryFee==request.resource.data.price);
    allow update:if admin()
-     || (customer()&&resource.data.userId==request.auth.uid&&resource.data.cancelled==false&&request.resource.data.cancelled==true&&request.resource.data.cancelledBy=='customer'&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cancelled','cancellationReason','cancelledBy','cancelledAt','updatedAt']))
+     || (customer()&&resource.data.userId==request.auth.uid&&resource.data.cancelled==false&&request.resource.data.cancelled==true&&request.resource.data.cancelledBy=='customer'&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cancelled','cancellationReason','cancelledBy','cancelledAt','updatedAt'])&&(resource.data.get('walletUsed',0)==0||(getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('balance',0)==userDoc().get('balance',0)+resource.data.get('walletUsed',0)&&getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('lastWalletRefundOrderId','')==id)))
      || (driver() && (
        (resource.data.driverId==null && resource.data.cancelled==false && resource.data.statusIndex==0 && request.resource.data.driverId==request.auth.uid && request.resource.data.statusIndex==resource.data.statusIndex && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['driverId','driverName','driverPhone','assignmentStatus','acceptedAt','updatedAt'])
          && ((resource.data.type=='ride' && currentDriver().get('serviceType','')=='taxi' && currentDriver().get('vehicleType','')!='دراجة')
@@ -190,12 +303,19 @@ service cloud.firestore { match /databases/{database}/documents {
  }
  match /supportTickets/{id}{allow create:if signed()&&request.resource.data.userId==request.auth.uid;allow read:if signed()&&(resource.data.userId==request.auth.uid||admin());allow update:if admin();allow delete:if admin();}
  match /coupons/{id}{allow read:if signed();allow write:if admin();}
- match /walletTransactions/{id}{allow read:if signed()&&(resource.data.driverId==request.auth.uid||admin());allow write:if false;}
  match /auditLogs/{id}{allow read:if admin();allow write:if false;}
  match /notificationQueue/{id}{allow read:if admin();allow write:if false;}
  match /authChallenges/{id}{allow read,write:if false;}
  match /authRateLimits/{id}{allow read,write:if false;}
- match /safetyEvents/{id}{allow read:if admin()||(signed()&&(resource.data.reportedBy==request.auth.uid));allow write:if false;}
+ match /safetyEvents/{id}{
+   function linked(){return get(/databases/$(database)/documents/orders/$(request.resource.data.orderId)).data;}
+   allow read:if admin()||(signed()&&(resource.data.reportedBy==request.auth.uid));
+   allow create:if signed()&&request.resource.data.reportedBy==request.auth.uid
+     && request.resource.data.orderId is string
+     && exists(/databases/$(database)/documents/orders/$(request.resource.data.orderId))
+     && (linked().userId==request.auth.uid||linked().driverId==request.auth.uid);
+   allow update,delete:if admin();
+ }
 
  match /serviceApplications/{uid}{
    function validApplication(data){return data.userId==uid
@@ -439,7 +559,25 @@ service cloud.firestore { match /databases/{database}/documents {
    allow create:if signed()&&request.resource.data.createdBy==request.auth.uid;
    allow update,delete:if admin()||(signed()&&resource.data.createdBy==request.auth.uid);
  }
- match /tripShares/{id}{allow read,write:if false;}
- match /customerRatings/{id}{allow read:if admin()||(signed()&&(resource.data.customerId==request.auth.uid||resource.data.driverId==request.auth.uid));allow write:if false;}
+ match /tripShares/{id}{
+   allow read:if admin()||(signed()&&resource.data.userId==request.auth.uid);
+   allow create:if customer()&&request.resource.data.userId==request.auth.uid
+     && request.resource.data.orderId is string
+     && exists(/databases/$(database)/documents/orders/$(request.resource.data.orderId))
+     && get(/databases/$(database)/documents/orders/$(request.resource.data.orderId)).data.userId==request.auth.uid;
+   allow update,delete:if admin()||(customer()&&resource.data.userId==request.auth.uid);
+ }
+ match /customerRatings/{id}{
+   allow read:if admin()||(signed()&&(resource.data.customerId==request.auth.uid||resource.data.driverId==request.auth.uid));
+   allow create:if driver()
+     && request.resource.data.driverId==request.auth.uid
+     && request.resource.data.orderId==id
+     && request.resource.data.score is number&&request.resource.data.score>=1&&request.resource.data.score<=5
+     && exists(/databases/$(database)/documents/orders/$(id))
+     && get(/databases/$(database)/documents/orders/$(id)).data.driverId==request.auth.uid
+     && get(/databases/$(database)/documents/orders/$(id)).data.userId==request.resource.data.customerId
+     && get(/databases/$(database)/documents/orders/$(id)).data.statusIndex>=4;
+   allow update:if false;allow delete:if admin();
+ }
  match /ratings/{id}{function o(){return get(/databases/$(database)/documents/orders/$(id)).data;}allow create:if signed()&&o().userId==request.auth.uid&&o().statusIndex>=4&&request.resource.data.customerId==request.auth.uid;allow read:if signed()&&(resource.data.customerId==request.auth.uid||resource.data.driverId==request.auth.uid||admin());allow update:if false;allow delete:if admin();}
 }}
