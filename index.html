@@ -2195,6 +2195,262 @@ body.customer-map-mode #home>.welcome::after { display: none; }
   .card,.primary-button,#ordersList .order-item { transition: none; }
 }
 </style>
+
+<style id="phase55-professional-auth-ui">
+/* Phase 55 — Professional registration and sign-in flow. */
+#authModal {
+  padding: clamp(12px,3vw,34px);
+  align-items: center;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 12% 18%,rgba(44,201,184,.2),transparent 24rem),
+    radial-gradient(circle at 88% 86%,rgba(26,103,145,.28),transparent 28rem),
+    rgba(4,22,37,.88);
+  backdrop-filter: blur(12px);
+}
+#authModal::before,#authModal::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 50%;
+}
+#authModal::before { width: 360px; height: 360px; top: -190px; left: -120px; }
+#authModal::after { width: 260px; height: 260px; right: -120px; bottom: -120px; }
+#authModal .role-auth-modal {
+  position: relative;
+  z-index: 1;
+  width: min(1080px,100%);
+  max-width: 1080px;
+  max-height: min(780px,calc(100dvh - 32px));
+  min-height: 560px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 310px minmax(0,1fr);
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.82);
+  border-radius: 32px;
+  background: #f8fbfc;
+  box-shadow: 0 42px 120px rgba(0,15,28,.42);
+}
+#authModal .auth-brand {
+  position: relative;
+  grid-column: 1;
+  grid-row: 1;
+  height: 100%;
+  min-height: 560px;
+  margin: 0;
+  padding: 38px 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0;
+  overflow: hidden;
+  border: 0;
+  color: #fff;
+  background:
+    radial-gradient(circle at 20% 82%,rgba(63,221,203,.22),transparent 15rem),
+    linear-gradient(155deg,#0b2944,#0b4f70 58%,#087b75 128%);
+}
+#authModal .auth-brand::before {
+  content: "منصة كروة";
+  margin-bottom: 22px;
+  padding: 6px 10px;
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 999px;
+  color: #c9fff6;
+  background: rgba(255,255,255,.08);
+  font-size: 10px;
+  font-weight: 900;
+}
+#authModal .auth-brand::after {
+  content: "";
+  position: absolute;
+  left: -76px;
+  bottom: -92px;
+  width: 235px;
+  height: 235px;
+  border: 38px solid rgba(255,255,255,.045);
+  border-radius: 50%;
+}
+#authModal .auth-brand .brand-logo {
+  width: 66px;
+  height: 66px;
+  margin-bottom: 19px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(255,255,255,.3);
+  border-radius: 21px;
+  color: #fff;
+  background: linear-gradient(145deg,#1cb2a5,#087b75);
+  box-shadow: 0 16px 34px rgba(0,24,39,.28);
+  font-size: 31px;
+}
+#authModal .auth-brand-copy h2 { margin: 0; color: #fff; font-size: 27px; line-height: 1.35; }
+#authModal .auth-brand-copy p { margin: 8px 0 0; color: #cfe1e8; font-size: 12px; line-height: 1.8; }
+.auth-brand-points { position: relative; z-index: 1; width: 100%; margin-top: 28px; display: grid; gap: 10px; }
+.auth-brand-points span { display: flex; align-items: center; gap: 9px; color: #e9f5f7; font-size: 11px; font-weight: 800; }
+.auth-brand-points b { width: 25px; height: 25px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 9px; color: #073f4b; background: #bff6ed; }
+.auth-brand-foot { position: relative; z-index: 1; margin-top: 27px; color: #aecaD4; font-size: 9px; line-height: 1.7; }
+
+#authModal .role-entry-grid {
+  grid-column: 2;
+  grid-row: 1;
+  padding: 34px;
+  display: grid;
+  grid-template-columns: repeat(3,minmax(0,1fr));
+  align-content: center;
+  gap: 14px;
+  overflow: auto;
+}
+#authModal .role-entry-grid[hidden],#authModal #authFormPanel[hidden] { display: none!important; }
+.role-entry-heading { grid-column: 1/-1; margin-bottom: 8px; text-align: right; }
+.role-entry-heading small { color: #087b75; font-size: 10px; font-weight: 900; }
+.role-entry-heading h3 { margin: 2px 0 4px; color: #102a45; font-size: 25px; letter-spacing: -.025em; }
+.role-entry-heading p { margin: 0; color: #6d7e90; font-size: 11px; }
+#authModal .role-entry-card {
+  position: relative;
+  min-width: 0;
+  min-height: 315px;
+  padding: 22px 16px 17px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #dbe5ea;
+  border-radius: 23px;
+  background: linear-gradient(180deg,#fff,#f8fbfc);
+  box-shadow: 0 12px 30px rgba(13,34,59,.06);
+  text-align: center;
+  transition: transform .2s ease,border-color .2s ease,box-shadow .2s ease;
+}
+#authModal .role-entry-card:hover { transform: translateY(-4px); border-color: #9fcfc9; box-shadow: 0 20px 42px rgba(13,34,59,.11); }
+#authModal .role-entry-card::before { height: 4px; background: linear-gradient(90deg,#0b4f70,#087b75); }
+#authModal .role-entry-card.captain::before { background: linear-gradient(90deg,#175882,#0b4f70); }
+#authModal .role-entry-card.services::before { background: linear-gradient(90deg,#68569b,#8b6db8); }
+#authModal .role-entry-icon {
+  width: 68px;
+  height: 68px;
+  margin: 4px auto 15px;
+  border: 1px solid #dce8eb;
+  border-radius: 21px;
+  color: #075f5b;
+  background: linear-gradient(145deg,#e5f8f4,#f5fbfa);
+  box-shadow: 0 9px 20px rgba(8,123,117,.09);
+  font-size: 31px;
+}
+#authModal .captain .role-entry-icon { background: linear-gradient(145deg,#e7f2f8,#f7fafc); }
+#authModal .services .role-entry-icon { background: linear-gradient(145deg,#f0ebf8,#fbf9fd); }
+#authModal .role-entry-card h3 { color: #102a45; font-size: 19px; }
+#authModal .role-entry-card p { min-height: 64px; color: #68798b; font-size: 11px; line-height: 1.75; }
+#authModal .role-entry-actions { width: 100%; margin-top: auto; gap: 7px; }
+#authModal .role-entry-actions button { min-height: 42px; padding: 8px 10px; border-radius: 12px; font-size: 10px; }
+#authModal .role-entry-actions .secondary-button { border-color: #cfdee5; color: #244158; background: #fff; }
+
+#authModal #authFormPanel {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: center;
+  justify-self: center;
+  width: min(570px,100%);
+  max-height: 100%;
+  padding: 36px;
+  overflow: auto;
+}
+#authModal .auth-back-button {
+  min-height: 38px;
+  margin: 0 0 18px;
+  padding: 7px 10px;
+  border: 1px solid #d9e4e9;
+  border-radius: 11px;
+  color: #496076;
+  background: #fff;
+  font-size: 11px;
+}
+.auth-form-heading { margin-bottom: 17px; }
+.auth-form-heading small { color: #087b75; font-size: 10px; font-weight: 900; }
+.auth-form-heading h3 { margin: 2px 0 4px; color: #102a45; font-size: 25px; }
+.auth-form-heading p { margin: 0; color: #6d7e90; font-size: 11px; }
+#authModal .selected-role-banner {
+  margin-bottom: 18px;
+  padding: 13px 14px;
+  border: 1px solid #cfe3e2;
+  border-radius: 16px;
+  background: linear-gradient(145deg,#eaf8f5,#f8fcfb);
+}
+#authModal .selected-role-banner>span { width: 43px; height: 43px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 13px; background: #fff; box-shadow: 0 6px 15px rgba(13,34,59,.06); font-size: 23px; }
+#authModal #authForm { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
+#authModal #authForm .field { min-width: 0; margin: 0; }
+#authModal #authForm label { margin-bottom: 6px; color: #284359; font-size: 11px; }
+#authModal #authForm input,#authModal #authForm select {
+  min-height: 51px;
+  border: 1.5px solid #cfdae2;
+  border-radius: 14px;
+  color: #102a45;
+  background: #fff;
+}
+#authModal #authForm input::placeholder { color: #91a0ad; }
+#authModal #authForm input:focus,#authModal #authForm select:focus { border-color: #087b75; box-shadow: 0 0 0 4px rgba(8,123,117,.11); }
+#authModal .auth-message,#authModal .auth-submit,#authModal .auth-note { grid-column: 1/-1; }
+#authModal .auth-message { min-height: 18px; margin: -2px 0 0; padding: 0 3px; font-size: 11px; }
+#authModal .auth-submit { min-height: 50px; border-radius: 14px; }
+#authModal .auth-note { margin: 0; padding: 10px 12px; border-radius: 12px; color: #68798b; background: #eef4f6; font-size: 9px; text-align: center; }
+
+@media(max-width:850px) {
+  #authModal { padding: 12px; }
+  #authModal .role-auth-modal { grid-template-columns: 245px minmax(0,1fr); }
+  #authModal .auth-brand { padding: 30px 22px; }
+  #authModal .role-entry-grid { padding: 24px 20px; grid-template-columns: 1fr; align-content: start; }
+  #authModal .role-entry-card { min-height: 0; display: grid; grid-template-columns: 58px minmax(0,1fr); column-gap: 12px; text-align: right; }
+  #authModal .role-entry-icon { grid-row: 1/3; width: 54px; height: 54px; margin: 0; border-radius: 17px; font-size: 25px; }
+  #authModal .role-entry-card h3 { align-self: end; margin-bottom: 2px; }
+  #authModal .role-entry-card p { min-height: 0; margin: 0 0 12px; }
+  #authModal .role-entry-actions { grid-column: 1/-1; grid-template-columns: 1fr 1fr; }
+  #authModal #authFormPanel { padding: 28px 23px; }
+  #authModal #authForm { grid-template-columns: 1fr; }
+  #authModal .auth-message,#authModal .auth-submit,#authModal .auth-note { grid-column: auto; }
+}
+@media(max-width:620px) {
+  #authModal { padding: 7px; }
+  #authModal .role-auth-modal { max-height: calc(100dvh - 14px); min-height: 0; grid-template-columns: 1fr; grid-template-rows: auto minmax(0,1fr); border-radius: 24px; }
+  #authModal .auth-brand {
+    grid-column: 1;
+    grid-row: 1;
+    min-height: 0;
+    height: auto;
+    padding: 15px;
+    display: grid;
+    grid-template-columns: 48px minmax(0,1fr);
+    gap: 10px;
+    align-items: center;
+  }
+  #authModal .auth-brand::before,#authModal .auth-brand::after,.auth-brand-points,.auth-brand-foot { display: none; }
+  #authModal .auth-brand .brand-logo { width: 48px; height: 48px; margin: 0; border-radius: 15px; font-size: 23px; }
+  #authModal .auth-brand-copy h2 { font-size: 18px; }
+  #authModal .auth-brand-copy p { margin-top: 2px; font-size: 9px; line-height: 1.55; }
+  #authModal .role-entry-grid { grid-column: 1; grid-row: 2; padding: 14px; gap: 9px; }
+  .role-entry-heading { margin-bottom: 2px; }
+  .role-entry-heading h3 { font-size: 20px; }
+  .role-entry-heading p { font-size: 9px; }
+  #authModal .role-entry-card { padding: 13px; border-radius: 17px; }
+  #authModal .role-entry-card p { font-size: 9px; line-height: 1.55; }
+  #authModal .role-entry-actions button { min-height: 39px; padding: 6px 7px; font-size: 9px; }
+  #authModal #authFormPanel { grid-column: 1; grid-row: 2; align-self: start; padding: 17px 15px; }
+  #authModal .auth-back-button { margin-bottom: 12px; }
+  .auth-form-heading { margin-bottom: 12px; }
+  .auth-form-heading h3 { font-size: 21px; }
+  #authModal .selected-role-banner { margin-bottom: 13px; padding: 10px 11px; }
+  #authModal #authForm { gap: 10px; }
+  #authModal #authForm input,#authModal #authForm select { min-height: 48px; }
+}
+@media(max-width:360px) {
+  #authModal .role-entry-card { grid-template-columns: 46px minmax(0,1fr); column-gap: 9px; }
+  #authModal .role-entry-icon { width: 44px; height: 44px; border-radius: 14px; font-size: 21px; }
+  #authModal .role-entry-actions { grid-template-columns: 1fr; }
+}
+@media(prefers-reduced-motion:reduce) {
+  #authModal .role-entry-card { transition: none; }
+}
+</style>
 </head>
 
 <body>
@@ -2777,15 +3033,23 @@ body.customer-map-mode #home>.welcome::after { display: none; }
     <div class="modal auth-modal role-auth-modal">
       <div class="auth-brand">
         <div class="brand-logo">ك</div>
-        <div><h2 id="authTitle">مرحبًا بك في كروة</h2><p>اختر نوع حسابك، ثم سجّل الدخول أو أنشئ حسابًا جديدًا.</p></div>
+        <div class="auth-brand-copy"><h2 id="authTitle">مرحبًا بك في كروة</h2><p>وجهتك الأقرب للرحلات والتوصيل والخدمات اليومية.</p></div>
+        <div class="auth-brand-points" aria-label="مزايا كروة">
+          <span><b>✓</b> تسجيل آمن وسريع</span>
+          <span><b>⌖</b> تتبع مباشر للطلبات</span>
+          <span><b>☆</b> خدمات موثوقة في مكان واحد</span>
+        </div>
+        <small class="auth-brand-foot">بمتابعة التسجيل فأنت تستخدم بوابة الحساب المناسبة لصلاحياتك.</small>
       </div>
-      <div class="role-entry-grid" id="roleEntryGrid">
+      <div class="role-entry-grid" id="roleEntryGrid" aria-labelledby="accountTypeTitle">
+        <div class="role-entry-heading"><small>ابدأ الآن</small><h3 id="accountTypeTitle">اختر نوع حسابك</h3><p>اختر البوابة المناسبة، ثم سجّل الدخول أو أنشئ حسابًا جديدًا.</p></div>
         <article class="role-entry-card customer"><div class="role-entry-icon">👤</div><h3>عميل</h3><p>اطلب تكسي أو توصيل وتابع طلباتك بسهولة.</p><div class="role-entry-actions"><button type="button" class="primary-button role-auth-action" data-role="customer" data-mode="login">تسجيل الدخول</button><button type="button" class="secondary-button role-auth-action" data-role="customer" data-mode="register">إنشاء حساب</button></div></article>
         <article class="role-entry-card captain"><div class="role-entry-icon">🚕</div><h3>كابتن</h3><p>استقبل الرحلات والطلبات المناسبة لنوع خدمتك.</p><div class="role-entry-actions"><button type="button" class="primary-button role-auth-action" data-role="driverApplicant" data-mode="login">تسجيل الدخول</button><button type="button" class="secondary-button role-auth-action" data-role="driverApplicant" data-mode="register">إنشاء حساب</button></div></article>
         <article class="role-entry-card services"><div class="role-entry-icon">🧰</div><h3>خدمات أخرى</h3><p>سجّل نشاطك وأرسل طلب الاعتماد، ثم أدر خدماتك من لوحة مستقلة.</p><div class="role-entry-actions"><button type="button" class="primary-button role-auth-action" data-role="serviceApplicant" data-mode="login">دخول بوابة الخدمات</button><button type="button" class="secondary-button role-auth-action" data-role="serviceApplicant" data-mode="register">تسجيل خدمة جديدة</button></div></article>
       </div>
       <div id="authFormPanel" hidden>
         <button type="button" class="auth-back-button" id="authBackToRoles">→ العودة لاختيار نوع الحساب</button>
+        <div class="auth-form-heading"><small>بيانات الحساب</small><h3>دخول واضح وآمن</h3><p>أدخل بياناتك لإكمال الخطوة والمتابعة إلى حسابك.</p></div>
         <div class="selected-role-banner"><span id="selectedRoleIcon">👤</span><div><small>نوع الحساب</small><strong id="selectedRoleLabel">عميل</strong></div></div>
         <form id="authForm">
           <div class="field" id="nameField" hidden><label for="authName">الاسم الكامل</label><input id="authName" autocomplete="name" placeholder="مثال: محمد علي"></div>
@@ -2806,8 +3070,8 @@ body.customer-map-mode #home>.welcome::after { display: none; }
   <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
   <script>try{if(window.maplibregl&&maplibregl.setRTLTextPlugin&&(!maplibregl.getRTLTextPluginStatus||maplibregl.getRTLTextPluginStatus()==="unavailable")){maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",true).catch(()=>{});}}catch(e){}</script>
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
-  <script type="module" src="./app.js?v=54"></script>
-  <script src="./pwa.js?v=54"></script>
+  <script type="module" src="./app.js?v=55"></script>
+  <script src="./pwa.js?v=55"></script>
 
 <script id="phase20-map-first-js">
 window.addEventListener("DOMContentLoaded",()=>{
