@@ -1,0 +1,3 @@
+{
+  "name":"كروة | Karwa","short_name":"كروة","description":"منصة كروة لحجز وإدارة الرحلات والخدمات","lang":"ar","dir":"rtl","start_url":"./admin.html","scope":"./","display":"standalone","background_color":"#f4f7fb","theme_color":"#0b6f75","icons":[{"src":"./karwa-icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+}
