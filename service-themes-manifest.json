@@ -1,0 +1,103 @@
+{
+  "phase": 65,
+  "version": "2.1.6",
+  "textInArtwork": false,
+  "themes": [
+    {
+      "key": "ac",
+      "file": "theme-ac.webp"
+    },
+    {
+      "key": "bakery",
+      "file": "theme-bakery.webp"
+    },
+    {
+      "key": "cafe",
+      "file": "theme-cafe.webp"
+    },
+    {
+      "key": "carwash",
+      "file": "theme-carwash.webp"
+    },
+    {
+      "key": "cleaning",
+      "file": "theme-cleaning.webp"
+    },
+    {
+      "key": "clinic",
+      "file": "theme-clinic.webp"
+    },
+    {
+      "key": "delivery",
+      "file": "theme-delivery.webp"
+    },
+    {
+      "key": "dessert",
+      "file": "theme-dessert.webp"
+    },
+    {
+      "key": "electrical",
+      "file": "theme-electrical.webp"
+    },
+    {
+      "key": "fastfood",
+      "file": "theme-fastfood.webp"
+    },
+    {
+      "key": "fitness",
+      "file": "theme-fitness.webp"
+    },
+    {
+      "key": "grocery",
+      "file": "theme-grocery.webp"
+    },
+    {
+      "key": "maintenance",
+      "file": "theme-maintenance.webp"
+    },
+    {
+      "key": "parcel",
+      "file": "theme-parcel.webp"
+    },
+    {
+      "key": "pest",
+      "file": "theme-pest.webp"
+    },
+    {
+      "key": "pets",
+      "file": "theme-pets.webp"
+    },
+    {
+      "key": "pharmacy",
+      "file": "theme-pharmacy.webp"
+    },
+    {
+      "key": "pizza",
+      "file": "theme-pizza.webp"
+    },
+    {
+      "key": "plumbing",
+      "file": "theme-plumbing.webp"
+    },
+    {
+      "key": "retail",
+      "file": "theme-retail.webp"
+    },
+    {
+      "key": "salon",
+      "file": "theme-salon.webp"
+    },
+    {
+      "key": "spa",
+      "file": "theme-spa.webp"
+    },
+    {
+      "key": "taxi",
+      "file": "theme-taxi.webp"
+    },
+    {
+      "key": "travel",
+      "file": "theme-travel.webp"
+    }
+  ]
+}

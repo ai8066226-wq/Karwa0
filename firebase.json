@@ -63,6 +63,15 @@
             "value": "no-cache, no-store, max-age=0, must-revalidate"
           }
         ]
+      },
+      {
+        "source": "theme-*.webp",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, max-age=0, must-revalidate"
+          }
+        ]
       }
     ]
   },

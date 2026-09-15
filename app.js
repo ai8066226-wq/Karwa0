@@ -1178,6 +1178,14 @@ function restaurantSafeText(value) {
   return String(value ?? "").replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[char]));
 }
 
+function karwaServiceTheme(input = {}) {
+  return window.KarwaServiceThemes?.resolve?.(input) || { key:"parcel", image:"./theme-parcel.webp?v=65", accent:"#087b75", icon:"🧰" };
+}
+function karwaServiceThemeStyle(input = {}) {
+  const theme = karwaServiceTheme(input);
+  return `--karwa-service-theme:url('${theme.image}');--karwa-service-accent:${theme.accent};`;
+}
+
 function renderRestaurantDraftMeals() {
   const host = byId("draftMeals"); if (!host) return;
   host.innerHTML = state.restaurantDraftMeals.map((meal, index) => `<span class="draft-meal"><strong>${restaurantSafeText(meal.name)}</strong><span>${formatMoney(meal.price)}</span><button type="button" data-remove-draft-meal="${index}" aria-label="حذف">×</button></span>`).join("");
@@ -1203,7 +1211,9 @@ function renderRestaurants() {
   if (!restaurants.length) { host.innerHTML = '<div class="restaurant-empty">لا توجد مطاعم معلنة ومعتمدة حاليًا.</div>'; return; }
   host.innerHTML = restaurants.map(restaurant => {
     const meals = Array.isArray(restaurant.meals) ? restaurant.meals : [];
-    return `<article class="restaurant-card open" data-restaurant-card="${restaurantSafeText(restaurant.firestoreId)}"><header class="restaurant-card-head"><h3>🍴 ${restaurantSafeText(restaurant.name)}</h3><div class="restaurant-card-meta"><span>📍 ${restaurantSafeText(restaurant.address || "العنوان غير محدد")}</span><span>• ${meals.length} وجبة متوفرة</span></div></header><div class="restaurant-card-contact"><span>📍 العنوان بالتفصيل: ${restaurantSafeText(restaurant.address || "غير محدد")}</span><span>☎️ رقم الهاتف: ${restaurantSafeText(restaurant.phone || "غير محدد")}</span></div><div class="restaurant-meals">${meals.map((meal, index) => { const normalized = normalizedClientItem(meal); return `<button type="button" class="restaurant-meal-card" data-restaurant-id="${restaurantSafeText(restaurant.firestoreId)}" data-meal-index="${index}"><span class="restaurant-meal-icon">🍽️</span><span><strong>${restaurantSafeText(normalized.name)}</strong><small>${restaurantSafeText(normalized.description || `اضغط لعرض تفاصيل الوجبة`)}</small></span><span class="restaurant-meal-price">${formatMoney(normalized.price)}<small>/${restaurantSafeText(otherItemUnitLabels[normalized.unit])}</small></span></button>`; }).join("") || '<small>لا توجد وجبات متاحة حاليًا</small>'}</div></article>`;
+    const themeInput = { category:"restaurant", serviceType:"restaurant", description:restaurant.description || "", items:meals };
+    const theme = karwaServiceTheme(themeInput);
+    return `<article class="restaurant-card open" data-theme="${restaurantSafeText(theme.key)}" data-restaurant-card="${restaurantSafeText(restaurant.firestoreId)}" style="${karwaServiceThemeStyle(themeInput)}"><header class="restaurant-card-head"><h3>${theme.icon} ${restaurantSafeText(restaurant.name)}</h3><div class="restaurant-card-meta"><span>📍 ${restaurantSafeText(restaurant.address || "العنوان غير محدد")}</span><span>• ${meals.length} وجبة متوفرة</span></div></header><div class="restaurant-card-contact"><span>📍 العنوان بالتفصيل: ${restaurantSafeText(restaurant.address || "غير محدد")}</span><span>☎️ رقم الهاتف: ${restaurantSafeText(restaurant.phone || "غير محدد")}</span></div><div class="restaurant-meals">${meals.map((meal, index) => { const normalized = normalizedClientItem(meal); return `<button type="button" class="restaurant-meal-card" data-restaurant-id="${restaurantSafeText(restaurant.firestoreId)}" data-meal-index="${index}"><span class="restaurant-meal-icon">${theme.icon}</span><span><strong>${restaurantSafeText(normalized.name)}</strong><small>${restaurantSafeText(normalized.description || `اضغط لعرض تفاصيل الوجبة`)}</small></span><span class="restaurant-meal-price">${formatMoney(normalized.price)}<small>/${restaurantSafeText(otherItemUnitLabels[normalized.unit])}</small></span></button>`; }).join("") || '<small>لا توجد وجبات متاحة حاليًا</small>'}</div></article>`;
   }).join("");
   host.querySelectorAll(".restaurant-meal-card").forEach(button => button.addEventListener("click", () => {
     const restaurant = state.restaurants.find(item => item.firestoreId === button.dataset.restaurantId);
@@ -1316,7 +1326,7 @@ function professionIcon(profile = {}) { return (otherServiceCategories[profile.c
 function renderProfessionTabs() {
   const host = byId("professionServiceTabs"); if (!host) return;
   const professions = [...new Set(state.serviceProfiles.filter(p => p.category !== "restaurant").map(p => professionLabel(p)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"ar"));
-  host.innerHTML = professions.map(name => `<button class="service-button" data-service="profession" data-profession="${restaurantSafeText(name)}"><span>🧰</span>${restaurantSafeText(name)}</button>`).join("");
+  host.innerHTML = professions.map(name => { const sample=state.serviceProfiles.find(p=>professionLabel(p)===name); const theme=karwaServiceTheme(sample||{category:"other"}); return `<button class="service-button" data-service="profession" data-profession="${restaurantSafeText(name)}"><span>${theme.icon}</span>${restaurantSafeText(name)}</button>`; }).join("");
   if (state.selectedProfession && !professions.includes(state.selectedProfession)) state.selectedProfession = "";
 }
 
@@ -1333,11 +1343,13 @@ function renderOtherServices() {
     return;
   }
   host.innerHTML = visibleProfiles.map(profile => {
-    const icon = professionIcon(profile), category = professionLabel(profile);
+    const category = professionLabel(profile);
     const items = Array.isArray(profile.items) ? profile.items.map(normalizedClientItem) : [];
+    const theme = karwaServiceTheme({ ...profile, items });
+    const icon = theme.icon || professionIcon(profile);
     const locationAvailable = validServiceLocation(profile.location);
-    return `<article class="other-service-card">
-      <div class="other-service-icon">${icon}</div>
+    return `<article class="other-service-card" data-theme="${restaurantSafeText(theme.key)}" style="${karwaServiceThemeStyle({ ...profile, items })}">
+      <div class="other-service-theme" aria-hidden="true"><span class="other-service-theme-icon">${icon}</span></div>
       <div class="other-service-copy">
         <small>${restaurantSafeText(category)} • مزود معتمد</small>
         <h3>${restaurantSafeText(profile.businessName || "نشاط كروة")}</h3>
@@ -1368,7 +1380,7 @@ function updateSelectedServicePrice() {
     if (deliveryNote) deliveryNote.innerHTML = "<b>اختيار التوصيل بعد الموافقة</b><small>اختر خدمة أولًا لمعرفة إمكانية التوصيل.</small>";
     return;
   }
-  byId("selectedItemImage").textContent = professionIcon(profile) || "🧰";
+  byId("selectedItemImage").textContent = karwaServiceTheme({ ...profile, items:profile.items || [] }).icon || professionIcon(profile) || "🧰";
   byId("selectedItemName").textContent = item.name;
   byId("selectedItemDescription").textContent = item.description || "لا توجد تفاصيل إضافية.";
   byId("selectedServicePrice").textContent = `${formatMoney(item.price)} لكل ${otherItemUnitLabels[item.unit]}`;
