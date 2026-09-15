@@ -1,0 +1,8 @@
+كروة Phase 63 / v2.1.4
+
+التعديل الرئيسي في تطبيق Android: الحفاظ على جلسة Firebase/WebView عند الانتقال للخلفية وعدم Reload إلا عند وجود version.json أحدث.
+
+لنشر ملفات الويب والقواعد:
+firebase deploy --only hosting,firestore:rules
+
+ملاحظة: خدمة الاتصال الخلفية نفسها جزء من تطبيق Android وتحتاج بناء CAPROJ/APK الجديد مرة واحدة.

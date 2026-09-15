@@ -443,6 +443,27 @@ async function drawPickupRoute(force=false) {
   byId("offRouteAlert").classList.add("hidden");if(force)state.map.fitBounds(state.routeLine.getBounds(),{padding:[40,40],maxZoom:17});
 }
 
+async function getDriverPrecisePosition(options = {}) {
+  if (window.KarwaGeo?.getPrecisePosition) {
+    return window.KarwaGeo.getPrecisePosition({ targetAccuracy: 20, acceptableAccuracy: 35, maxWait: 18000, ...options });
+  }
+  if (!navigator.geolocation) throw Object.assign(new Error("GPS غير مدعوم"), { code: "UNSUPPORTED" });
+  return new Promise((resolve,reject)=>navigator.geolocation.getCurrentPosition(resolve,reject,{enableHighAccuracy:true,timeout:18000,maximumAge:0}));
+}
+
+function handleDriverLocationError(error) {
+  console.warn("driver precise location", error);
+  const code=String(error?.code||"");
+  if(code==="PRECISE_PERMISSION_REQUIRED"||code==="PERMISSION_DENIED"||error?.code===1){
+    toast("فعّل «الموقع الدقيق» لكروة حتى يظهر موقعك الحقيقي");
+    window.KarwaGeo?.promptPreciseSettings?.("الكابتن يحتاج الموقع الدقيق للملاحة والطلبات وبلاغات الطريق. فعّل «استخدام الموقع الدقيق» ثم عد إلى كروة.");
+    return;
+  }
+  if(code==="GPS_DISABLED"){toast("شغّل GPS للحصول على موقع دقيق");try{window.KarwaNative?.openLocationSettings?.();}catch{}return;}
+  if(code==="ACCURACY_TOO_LOW"){const a=Number(error?.bestAccuracy||0);toast(a?`GPS غير دقيق حاليًا (${Math.round(a)} م). انتقل لمكان مفتوح.`:"بانتظار إشارة GPS أدق");return;}
+  toast("تعذر تحديد الموقع بدقة؛ تحقق من GPS والصلاحيات");
+}
+
 function showOwnPosition(position) {
   initializeDriverMap();
   const latitude = position.coords.latitude;
@@ -454,8 +475,9 @@ function showOwnPosition(position) {
     .bindPopup("موقعك الحالي");
   if (state.autoFollow) state.map.setView(point, 15);
   const acc=Math.round(position.coords.accuracy||0);
-  setLocationStatus(acc>100?"GPS ضعيف":"الموقع مباشر", acc>100?"pending":"approved");
-  byId("locationHint").textContent = acc>100?`دقة الموقع منخفضة (${acc} م). انتقل لمكان مفتوح لتحسين التتبع.`:`دقة الموقع نحو ${acc} متر.`;
+  const excellent=acc>0&&acc<=15, precise=acc>0&&acc<=30;
+  setLocationStatus(excellent?"GPS ممتاز":(precise?"GPS دقيق":"GPS مقبول"), "approved");
+  byId("locationHint").textContent = excellent?`دقة ممتازة • ${acc} م`:precise?`دقة عالية • ${acc} م`:`دقة الموقع ${acc} م — سيواصل كروة تحسينها تلقائيًا.`;
   if(Number.isFinite(position.coords.heading)){const el=state.driverMarker?.getElement()?.querySelector(".portal-map-marker");if(el)el.style.transform=`rotate(${position.coords.heading}deg)`;}
   drawPickupRoute();
   checkRoadReportProximity(position);
@@ -463,6 +485,11 @@ function showOwnPosition(position) {
 
 async function sharePosition(position, force = false) {
   if (!state.user || !state.driverData?.online || !position) return;
+  const locationAccuracy=Number(position.coords?.accuracy||9999);
+  if (!Number.isFinite(locationAccuracy) || locationAccuracy > 45) {
+    byId("locationHint").textContent=`جاري تحسين GPS… الدقة الحالية ${Math.round(locationAccuracy)} م`;
+    return;
+  }
   const now = Date.now();
   if (!force && now - state.lastLocationWrite < 5000) return;
   const activeOrders = state.orders.filter(order =>
@@ -491,32 +518,43 @@ async function sharePosition(position, force = false) {
 function startLocationSharing() {
   if (state.locationWatchId !== null) return;
   initializeDriverMap();
-  if (!navigator.geolocation) {
-    setLocationStatus("غير مدعوم", "rejected");
-    byId("locationHint").textContent = "هذا المتصفح لا يدعم تحديد الموقع.";
-    return;
-  }
-  setLocationStatus("جاري التحديد", "pending");
-  state.locationWatchId = navigator.geolocation.watchPosition(position => {
+  setLocationStatus("جاري تثبيت GPS", "pending");
+  const onPosition = position => {
     state.lastPosition = position;
     showOwnPosition(position);
-    // نحدّث موقع الكابتن في Firestore أولًا، ثم نعرض طلبات نطاق 10 كم حتى يكون القبول متوافقًا مع قواعد الأمان.
     sharePosition(position).then(() => renderOrders()).catch(error => { console.error(error); renderOrders(); });
-  }, error => {
+  };
+  const onError = error => {
     console.error(error);
     setLocationStatus("تعذر الموقع", "rejected");
-    byId("locationHint").textContent = error.code === 1
-      ? "اسمح للموقع من إعدادات المتصفح ثم فعّل الاتصال مجددًا."
-      : "تعذر قراءة الموقع. تأكد من GPS والإنترنت.";
-    if (error.code === 1 && state.user) {
-      updateDoc(doc(db, "drivers", state.user.uid), { online: false, updatedAt: serverTimestamp() })
-        .catch(() => {});
+    handleDriverLocationError(error);
+    const code=String(error?.code||"");
+    byId("locationHint").textContent = (code==="PRECISE_PERMISSION_REQUIRED"||code==="PERMISSION_DENIED"||error?.code===1)
+      ? "فعّل الموقع الدقيق من إعدادات كروة ثم فعّل الاتصال مجددًا."
+      : (code==="GPS_DISABLED"?"GPS متوقف — شغّل الموقع في الهاتف.":"تعذر قراءة GPS بدقة كافية.");
+    if ((code==="PRECISE_PERMISSION_REQUIRED"||code==="PERMISSION_DENIED"||error?.code===1) && state.user) {
+      updateDoc(doc(db, "drivers", state.user.uid), { online: false, updatedAt: serverTimestamp() }).catch(() => {});
     }
-  }, { enableHighAccuracy: true, maximumAge: 3000, timeout: 15000 });
+  };
+  if (window.KarwaGeo?.watchPosition) {
+    state.locationWatchId = window.KarwaGeo.watchPosition(onPosition, onError, {
+      maxAccuracy:45,
+      onQuality:({accuracy,acceptable})=>{
+        if(!acceptable){setLocationStatus("تحسين GPS", "pending");byId("locationHint").textContent=`جاري تثبيت موقع أدق… ${Math.round(accuracy)} م`; }
+      }
+    });
+  } else if (navigator.geolocation) {
+    state.locationWatchId = navigator.geolocation.watchPosition(onPosition,onError,{enableHighAccuracy:true,maximumAge:0,timeout:15000});
+  } else {
+    onError(Object.assign(new Error("unsupported"),{code:"UNSUPPORTED"}));
+  }
 }
 
 function stopLocationSharing() {
-  if (state.locationWatchId !== null) navigator.geolocation.clearWatch(state.locationWatchId);
+  if (state.locationWatchId !== null) {
+    if(window.KarwaGeo?.clearWatch) window.KarwaGeo.clearWatch(state.locationWatchId);
+    else navigator.geolocation?.clearWatch?.(state.locationWatchId);
+  }
   state.locationWatchId = null;
   state.lastLocationWrite = 0;
   setLocationStatus("متوقف", "pending");
@@ -723,10 +761,11 @@ function updateVehicleApplicationFields() {
 }
 byId("vehicleType")?.addEventListener("change", updateVehicleApplicationFields);
 byId("serviceType")?.addEventListener("change", updateVehicleApplicationFields);
-byId("captainRestaurantGps")?.addEventListener("click",()=>{
-  if(!navigator.geolocation){toast("GPS غير مدعوم في هذا الجهاز");return;}
-  const btn=byId("captainRestaurantGps"); busy(btn,true,"جارٍ تحديد الموقع…");
-  navigator.geolocation.getCurrentPosition(pos=>{state.restaurantGps={latitude:pos.coords.latitude,longitude:pos.coords.longitude,accuracy:pos.coords.accuracy};byId("captainRestaurantGpsStatus").textContent=`تم تحديد الموقع ✓ (${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)})`;busy(btn,false);btn.textContent="📍 تحديث موقع المطعم";},()=>{busy(btn,false);toast("تعذر الوصول إلى GPS. اسمح للموقع باستخدام موقعك الجغرافي.");},{enableHighAccuracy:true,timeout:12000,maximumAge:30000});
+byId("captainRestaurantGps")?.addEventListener("click",async()=>{
+  const btn=byId("captainRestaurantGps"); busy(btn,true,"جارٍ تثبيت GPS…");
+  try{const pos=await getDriverPrecisePosition();state.restaurantGps={latitude:pos.coords.latitude,longitude:pos.coords.longitude,accuracy:pos.coords.accuracy};byId("captainRestaurantGpsStatus").textContent=`تم تحديد الموقع ✓ دقة ${Math.round(pos.coords.accuracy||0)} م`;btn.textContent="📍 تحديث موقع المطعم";}
+  catch(error){handleDriverLocationError(error);}
+  finally{busy(btn,false);}
 });
 byId("captainAddMeal")?.addEventListener("click",()=>{
   const name=byId("captainMealName").value.trim(), description=byId("captainMealDescription").value.trim(), price=Number(byId("captainMealPrice").value);
@@ -1275,7 +1314,10 @@ onAuthStateChanged(auth, user => {
 });
 
 window.addEventListener("beforeunload", () => {
-  if (state.locationWatchId !== null) navigator.geolocation.clearWatch(state.locationWatchId);
+  if (state.locationWatchId !== null) {
+    if(window.KarwaGeo?.clearWatch)window.KarwaGeo.clearWatch(state.locationWatchId);
+    else navigator.geolocation?.clearWatch?.(state.locationWatchId);
+  }
 });
 
 // Phase 11 — mutual reputation and safety
@@ -1446,12 +1488,13 @@ function setupDriverMapPlaceTool() {
   };
   button.addEventListener("click",run);input.addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();run();}});
   [category,scope].forEach(control=>control?.addEventListener("change",()=>{if(input.value.trim().length>=2)run();}));
-  locateButton?.addEventListener("click",()=>{
-    const usePosition=position=>{state.lastPosition=position;showOwnPosition(position);selectPlace({lat:position.coords.latitude,lon:position.coords.longitude,name:"موقعي الحالي",display_name:`دقة الموقع نحو ${Math.round(position.coords.accuracy||0)} متر`,namedetails:{"name:ar":"موقعي الحالي"}});locateButton.disabled=false;locateButton.textContent="⌖ تحديد موقعي على الخريطة";};
-    if(state.lastPosition)return usePosition(state.lastPosition);
-    if(!navigator.geolocation)return toast("تحديد الموقع غير مدعوم في هذا المتصفح");
-    locateButton.disabled=true;locateButton.textContent="جاري تحديد موقعك…";
-    navigator.geolocation.getCurrentPosition(usePosition,error=>{console.error(error);locateButton.disabled=false;locateButton.textContent="⌖ تحديد موقعي على الخريطة";toast(error.code===1?"اسمح للموقع من إعدادات المتصفح":"تعذر تحديد الموقع؛ تحقق من GPS");},{enableHighAccuracy:true,maximumAge:5000,timeout:12000});
+  locateButton?.addEventListener("click",async()=>{
+    const usePosition=position=>{state.lastPosition=position;showOwnPosition(position);selectPlace({lat:position.coords.latitude,lon:position.coords.longitude,name:"موقعي الحالي",display_name:`دقة الموقع نحو ${Math.round(position.coords.accuracy||0)} متر`,namedetails:{"name:ar":"موقعي الحالي"}});};
+    const lastAcc=Number(state.lastPosition?.coords?.accuracy||9999),lastAge=Date.now()-Number(state.lastPosition?.timestamp||0);
+    locateButton.disabled=true;locateButton.textContent="جاري تثبيت GPS…";
+    try{const pos=(state.lastPosition&&lastAcc<=35&&lastAge<10000)?state.lastPosition:await getDriverPrecisePosition();usePosition(pos);}
+    catch(error){handleDriverLocationError(error);}
+    finally{locateButton.disabled=false;locateButton.textContent="⌖ تحديد موقعي على الخريطة";}
   });
   byId("driverSaveMapLandmark")?.addEventListener("click",async()=>{
     if(!state.user)return toast("سجّل الدخول أولًا");const name=byId("driverMapLandmarkName")?.value.trim();if(!name||name.length<3)return toast("اكتب اسم المعلم بوضوح");initializeDriverMap();const center=state.map.getCenter(),point=state.mapSearchSelection||{latitude:center.lat,longitude:center.lng};

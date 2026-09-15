@@ -920,17 +920,52 @@ function locationErrorMessage(error) {
   return "تعذر تحديد موقعك الحالي";
 }
 
-function locateUser(targetInput) {
-  initializeCustomerMap();
-  if (!navigator.geolocation) {
-    showToast("هذا الجهاز أو المتصفح لا يدعم تحديد الموقع");
+async function getKarwaPrecisePosition(options = {}) {
+  if (window.KarwaGeo?.getPrecisePosition) {
+    return window.KarwaGeo.getPrecisePosition({
+      targetAccuracy: 20,
+      acceptableAccuracy: 35,
+      maxWait: 18000,
+      ...options
+    });
+  }
+  if (!navigator.geolocation) throw Object.assign(new Error("GPS غير مدعوم"), { code: "UNSUPPORTED" });
+  return new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 18000, maximumAge: 0 }));
+}
+
+function handlePreciseLocationFailure(error) {
+  console.warn("Karwa precise location", error);
+  const code = String(error?.code || "");
+  if (code === "PRECISE_PERMISSION_REQUIRED" || code === "PERMISSION_DENIED" || error?.code === 1) {
+    showToast("فعّل «الموقع الدقيق» لكروة ثم حاول مرة أخرى");
+    window.KarwaGeo?.promptPreciseSettings?.("اختر إذن الموقع ثم فعّل «استخدام الموقع الدقيق». الموقع التقريبي قد يعطي خطأ يصل إلى مئات الأمتار.");
     return;
   }
+  if (code === "GPS_DISABLED") {
+    showToast("شغّل GPS للحصول على موقع دقيق");
+    try { window.KarwaNative?.openLocationSettings?.(); } catch {}
+    return;
+  }
+  if (code === "ACCURACY_TOO_LOW") {
+    const acc = Number(error?.bestAccuracy || 0);
+    showToast(acc ? `دقة GPS الحالية ${Math.round(acc)} م؛ انتقل لمكان مفتوح وحاول مجددًا` : "لم تصل إشارة GPS للدقة المطلوبة. انتقل لمكان مفتوح وحاول مجددًا");
+    return;
+  }
+  showToast(locationErrorMessage(error));
+}
 
+async function locateUser(targetInput) {
+  initializeCustomerMap();
   const requestToken = ++state.locationRequestToken;
-  showToast("جارٍ جلب موقعك الحالي…");
-
-  navigator.geolocation.getCurrentPosition(position => {
+  showToast("جارٍ تثبيت GPS بدقة عالية…");
+  const info = byId("mapInfoText");
+  try {
+    const position = await getKarwaPrecisePosition({
+      onProgress: ({ bestAccuracy }) => {
+        if (requestToken !== state.locationRequestToken) return;
+        if (info && Number(bestAccuracy) > 35) info.textContent = `جاري تحسين دقة GPS… ${Math.round(bestAccuracy)} م`;
+      }
+    });
     if (requestToken !== state.locationRequestToken) return;
 
     const latitude = Number(position.coords.latitude);
@@ -938,18 +973,16 @@ function locateUser(targetInput) {
     const accuracy = Math.round(Number(position.coords.accuracy || 0));
     const point = [latitude, longitude];
 
-    // أولاً: انقل الخريطة إلى GPS فوراً، قبل أي reverse-geocoding أو حساب مسار شبكي.
     setCenterPick(false);
-    state.customerLocation = { latitude, longitude };
+    state.customerLocation = { latitude, longitude, accuracy };
     if (state.map) {
       state.map.stop();
-      state.map.setView(point, Math.max(16, state.map.getZoom() || 16), { animate: false });
+      state.map.setView(point, Math.max(17, state.map.getZoom() || 17), { animate: false });
     }
 
     if (targetInput) {
       targetInput.value = `موقعي الحالي (${latitude.toFixed(5)}, ${longitude.toFixed(5)})`;
       if (targetInput.id === "rideFrom") {
-        // المؤشر يظهر مباشرة، واسم المكان يُحدّث لاحقاً في الخلفية.
         setBookingPoint("pickup", latitude, longitude).catch(console.warn);
       } else {
         setCustomerLocation(latitude, longitude);
@@ -958,19 +991,16 @@ function locateUser(targetInput) {
       setCustomerLocation(latitude, longitude);
     }
 
+    if (state.customerLocation) state.customerLocation.accuracy = accuracy;
     const cityLabel = byId("cityLabel");
     if (cityLabel) cityLabel.textContent = "موقعك الحالي";
+    if (info) info.textContent = accuracy ? `الموقع مباشر • دقة ${accuracy} م` : "الموقع مباشر";
     renderCustomerSettingsInfo();
-    showToast(accuracy ? `تم جلب موقعك مباشرة • دقة ${accuracy} م` : "تم جلب موقعك مباشرة");
-  }, error => {
+    showToast(accuracy ? `تم تثبيت موقعك بدقة ${accuracy} م` : "تم تثبيت موقعك بدقة عالية");
+  } catch (error) {
     if (requestToken !== state.locationRequestToken) return;
-    // لا نضع موقعاً افتراضياً حتى لا يظهر للعميل مكان غير حقيقي.
-    showToast(locationErrorMessage(error));
-  }, {
-    enableHighAccuracy: true,
-    timeout: 10000,
-    maximumAge: 5000
-  });
+    handlePreciseLocationFailure(error);
+  }
 }
 
 byId("useRideLocation").addEventListener("click", () => locateUser(byId("rideFrom")));
@@ -1202,14 +1232,15 @@ function subscribeRestaurants() {
 
 byId("openRestaurantCreator")?.addEventListener("click", () => { if (!requireUser()) return; byId("restaurantCreator").hidden = false; byId("restaurantCreator").scrollIntoView({behavior:"smooth",block:"nearest"}); });
 byId("closeRestaurantCreator")?.addEventListener("click", () => byId("restaurantCreator").hidden = true);
-byId("captureRestaurantGps")?.addEventListener("click", () => {
-  if (!navigator.geolocation) { showToast("GPS غير مدعوم في هذا الجهاز"); return; }
-  const button=byId("captureRestaurantGps"); button.disabled=true; button.textContent="جارٍ تحديد الموقع…";
-  navigator.geolocation.getCurrentPosition(position => {
+byId("captureRestaurantGps")?.addEventListener("click", async () => {
+  const button=byId("captureRestaurantGps"); button.disabled=true; button.textContent="جارٍ تثبيت GPS بدقة عالية…";
+  try {
+    const position=await getKarwaPrecisePosition();
     state.restaurantGps={latitude:position.coords.latitude,longitude:position.coords.longitude,accuracy:position.coords.accuracy};
-    byId("restaurantGpsStatus").textContent=`تم تحديد الموقع ✓ (${position.coords.latitude.toFixed(5)}, ${position.coords.longitude.toFixed(5)})`;
-    button.disabled=false; button.textContent="📍 تحديث موقع GPS";
-  }, () => { button.disabled=false; button.textContent="📍 تحديد موقعي الحالي"; showToast("تعذر الوصول إلى GPS. اسمح للموقع باستخدام الموقع الجغرافي."); }, {enableHighAccuracy:true,timeout:12000,maximumAge:30000});
+    byId("restaurantGpsStatus").textContent=`تم تحديد الموقع ✓ دقة ${Math.round(position.coords.accuracy||0)} م (${position.coords.latitude.toFixed(5)}, ${position.coords.longitude.toFixed(5)})`;
+    button.textContent="📍 تحديث موقع GPS";
+  } catch(error) { handlePreciseLocationFailure(error); button.textContent="📍 تحديد موقعي الحالي"; }
+  finally { button.disabled=false; }
 });
 byId("addRestaurantMeal")?.addEventListener("click", () => {
   const name=byId("mealName").value.trim(), description=byId("mealDescription").value.trim(), price=Number(byId("mealPrice").value);
@@ -1606,21 +1637,19 @@ byId("myServiceRequests")?.addEventListener("click", async event => {
   if (!request || request.status !== "accepted" || request.deliveryStatus !== "awaitingCustomerChoice") return showToast("هذا الطلب لم يعد ينتظر اختيار طريقة الاستلام.");
 
   if (locateButton) {
-    if (!navigator.geolocation) return showToast("GPS غير مدعوم في هذا الجهاز");
-    setButtonBusy(locateButton, true, "جاري تحديد الموقع…");
-    navigator.geolocation.getCurrentPosition(position => {
+    setButtonBusy(locateButton, true, "جاري تثبيت GPS…");
+    try {
+      const position = await getKarwaPrecisePosition();
       const location = { latitude: position.coords.latitude, longitude: position.coords.longitude, accuracy: position.coords.accuracy };
       state.serviceDeliveryLocations[requestId] = location;
       setCustomerLocation(location.latitude, location.longitude);
+      if (state.customerLocation) state.customerLocation.accuracy = location.accuracy;
       const card = locateButton.closest("[data-service-request-card]");
       const status = card?.querySelector("[data-service-delivery-location-status]");
-      if (status) { status.textContent = `تم تحديد موقعك GPS ✓ (${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)})`; status.classList.add("ready"); }
-      setButtonBusy(locateButton, false);
-      showToast("تم تحديد موقع التوصيل");
-    }, () => {
-      setButtonBusy(locateButton, false);
-      showToast("تعذر تحديد موقعك. اسمح للمتصفح باستخدام GPS.");
-    }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 });
+      if (status) { status.textContent = `تم تحديد موقعك GPS ✓ دقة ${Math.round(location.accuracy||0)} م`; status.classList.add("ready"); }
+      showToast("تم تحديد موقع التوصيل بدقة عالية");
+    } catch(error) { handlePreciseLocationFailure(error); }
+    finally { setButtonBusy(locateButton, false); }
     return;
   }
 
@@ -1752,9 +1781,15 @@ function renderCart() {
 
 
 byId("foodDeliveryRequested")?.addEventListener("change", renderCart);
-byId("useFoodCustomerLocation")?.addEventListener("click",()=>{
-  if(!navigator.geolocation)return showToast("GPS غير مدعوم في هذا الجهاز"); const btn=byId("useFoodCustomerLocation"); setButtonBusy(btn,true,"جارٍ تحديد الموقع…");
-  navigator.geolocation.getCurrentPosition(pos=>{setCustomerLocation(pos.coords.latitude,pos.coords.longitude);byId("foodLocationStatus").textContent=`تم تحديد موقع العميل ✓ (${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)})`;setButtonBusy(btn,false);},()=>{setButtonBusy(btn,false);showToast("تعذر تحديد موقعك. اسمح للموقع باستخدام GPS.");},{enableHighAccuracy:true,timeout:12000,maximumAge:30000});
+byId("useFoodCustomerLocation")?.addEventListener("click",async()=>{
+  const btn=byId("useFoodCustomerLocation"); setButtonBusy(btn,true,"جارٍ تثبيت GPS…");
+  try {
+    const pos=await getKarwaPrecisePosition();
+    setCustomerLocation(pos.coords.latitude,pos.coords.longitude);
+    if(state.customerLocation)state.customerLocation.accuracy=pos.coords.accuracy;
+    byId("foodLocationStatus").textContent=`تم تحديد موقع العميل ✓ دقة ${Math.round(pos.coords.accuracy||0)} م`;
+  } catch(error) { handlePreciseLocationFailure(error); }
+  finally { setButtonBusy(btn,false); }
 });
 
 byId("orderFood").addEventListener("click", async event => {
@@ -2282,22 +2317,17 @@ function setupCustomerMapPlaceTool() {
   button.addEventListener("click", run);
   input.addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); run(); } });
   [category, scope].forEach(control => control?.addEventListener("change", () => { if (input.value.trim().length >= 2) run(); }));
-  locateButton?.addEventListener("click", () => {
-    if (!navigator.geolocation) return showToast("تحديد الموقع غير مدعوم في هذا المتصفح");
+  locateButton?.addEventListener("click", async () => {
     locateButton.disabled = true;
-    locateButton.textContent = "جاري تحديد موقعك…";
-    navigator.geolocation.getCurrentPosition(position => {
+    locateButton.textContent = "جاري تثبيت GPS…";
+    try {
+      const position=await getKarwaPrecisePosition();
       const latitude = position.coords.latitude, longitude = position.coords.longitude;
       setCustomerLocation(latitude, longitude);
+      if(state.customerLocation)state.customerLocation.accuracy=position.coords.accuracy;
       selectPlace({ lat: latitude, lon: longitude, name: "موقعي الحالي", display_name: `دقة الموقع نحو ${Math.round(position.coords.accuracy || 0)} متر`, namedetails: { "name:ar": "موقعي الحالي" } });
-      locateButton.disabled = false;
-      locateButton.textContent = "⌖ تحديد موقعي على الخريطة";
-    }, error => {
-      console.error(error);
-      locateButton.disabled = false;
-      locateButton.textContent = "⌖ تحديد موقعي على الخريطة";
-      showToast(error.code === 1 ? "اسمح للموقع من إعدادات المتصفح" : "تعذر تحديد الموقع؛ تحقق من GPS");
-    }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 12000 });
+    } catch(error) { handlePreciseLocationFailure(error); }
+    finally { locateButton.disabled = false; locateButton.textContent = "⌖ تحديد موقعي على الخريطة"; }
   });
   byId("customerSaveMapLandmark")?.addEventListener("click", async () => {
     const user = auth.currentUser;

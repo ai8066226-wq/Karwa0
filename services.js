@@ -162,27 +162,37 @@ function locationLabel(value) {
     : "غير محدد";
 }
 
-function captureLocation(buttonId, statusId, target) {
-  if (!navigator.geolocation) return toast("تحديد الموقع غير مدعوم في هذا الجهاز.");
+async function getServicePrecisePosition(options = {}) {
+  if (window.KarwaGeo?.getPrecisePosition) return window.KarwaGeo.getPrecisePosition({targetAccuracy:20,acceptableAccuracy:35,maxWait:18000,...options});
+  if (!navigator.geolocation) throw Object.assign(new Error("GPS غير مدعوم"),{code:"UNSUPPORTED"});
+  return new Promise((resolve,reject)=>navigator.geolocation.getCurrentPosition(resolve,reject,{enableHighAccuracy:true,timeout:18000,maximumAge:0}));
+}
+
+function handleServiceLocationError(error) {
+  console.warn("service precise location",error);
+  const code=String(error?.code||"");
+  if(code==="PRECISE_PERMISSION_REQUIRED"||code==="PERMISSION_DENIED"||error?.code===1){toast("فعّل «الموقع الدقيق» لكروة");window.KarwaGeo?.promptPreciseSettings?.("موقع النشاط يحتاج دقة عالية حتى يصل العميل والكابتن للمكان الصحيح.");return;}
+  if(code==="GPS_DISABLED"){toast("شغّل GPS ثم حاول مجددًا");try{window.KarwaNative?.openLocationSettings?.();}catch{}return;}
+  if(code==="ACCURACY_TOO_LOW"){const a=Number(error?.bestAccuracy||0);toast(a?`دقة GPS الحالية ${Math.round(a)} م؛ انتقل لمكان مفتوح وحاول مجددًا`:"لم تصل إشارة GPS للدقة المطلوبة");return;}
+  toast("تعذر تحديد الموقع بدقة. تحقق من GPS والصلاحيات.");
+}
+
+async function captureLocation(buttonId, statusId, target) {
   const button = byId(buttonId);
-  setBusy(button, true, "جاري تحديد الموقع…");
-  navigator.geolocation.getCurrentPosition(position => {
-    const value = {
-      latitude: position.coords.latitude,
-      longitude: position.coords.longitude,
-      accuracy: position.coords.accuracy
-    };
+  setBusy(button, true, "جاري تثبيت GPS…");
+  try {
+    const position = await getServicePrecisePosition();
+    const value = { latitude: position.coords.latitude, longitude: position.coords.longitude, accuracy: position.coords.accuracy };
     if (target === "register") registrationLocation = value;
     else if (target === "edit") editApplicationLocation = value;
     else providerLocation = value;
-    byId(statusId).textContent = `تم التحديد ✓ ${locationLabel(value)}`;
+    byId(statusId).textContent = `تم التحديد ✓ دقة ${Math.round(value.accuracy||0)} م • ${locationLabel(value)}`;
+    toast("تم حفظ موقع النشاط بدقة عالية");
+  } catch(error) {
+    handleServiceLocationError(error);
+  } finally {
     setBusy(button, false);
-    toast("تم حفظ موقع النشاط");
-  }, error => {
-    console.error(error);
-    setBusy(button, false);
-    toast("تعذر الوصول إلى الموقع. اسمح للمتصفح باستخدام GPS.");
-  }, { enableHighAccuracy: true, timeout: 12000 });
+  }
 }
 
 function authErrorMessage(error) {
@@ -777,24 +787,16 @@ async function openProvider() {
   );
 }
 
-byId("pGpsBtn").addEventListener("click", () => {
-  if (!navigator.geolocation) return toast("تحديد الموقع غير مدعوم في هذا الجهاز.");
+byId("pGpsBtn").addEventListener("click", async () => {
   const button = byId("pGpsBtn");
-  setBusy(button, true, "جاري تحديد الموقع…");
-  navigator.geolocation.getCurrentPosition(position => {
-    providerLocation = {
-      latitude: position.coords.latitude,
-      longitude: position.coords.longitude,
-      accuracy: position.coords.accuracy
-    };
-    byId("pGpsStatus").textContent = `تم التحديد ✓ ${providerLocation.latitude.toFixed(5)}, ${providerLocation.longitude.toFixed(5)}`;
-    setBusy(button, false);
-    toast("تم تحديث الموقع الجغرافي");
-  }, error => {
-    console.error(error);
-    setBusy(button, false);
-    toast("تعذر الوصول إلى الموقع. اسمح للمتصفح باستخدام GPS.");
-  }, { enableHighAccuracy: true, timeout: 12000 });
+  setBusy(button, true, "جاري تثبيت GPS…");
+  try {
+    const position=await getServicePrecisePosition();
+    providerLocation = { latitude: position.coords.latitude, longitude: position.coords.longitude, accuracy: position.coords.accuracy };
+    byId("pGpsStatus").textContent = `تم التحديد ✓ دقة ${Math.round(providerLocation.accuracy||0)} م • ${providerLocation.latitude.toFixed(5)}, ${providerLocation.longitude.toFixed(5)}`;
+    toast("تم تحديث الموقع الجغرافي بدقة عالية");
+  } catch(error) { handleServiceLocationError(error); }
+  finally { setBusy(button, false); }
 });
 
 ["pBusinessName", "pPhone", "pCity", "pAddress", "pDescription", "pActive"].forEach(id => {

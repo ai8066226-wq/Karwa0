@@ -93,7 +93,7 @@
     @media(max-width:430px){.account>span{display:none}.metrics{grid-template-columns:1fr 1fr}.metric{padding-right:49px}.metric small{font-size:9px}.metric strong{font-size:15px}.form-grid,.summary{grid-template-columns:1fr}.field.full{grid-column:auto}.auth-card h2{font-size:26px}.catalog>.card-head{padding:14px}.request-card-head{gap:7px}.request-meta span{width:100%;border-radius:10px}.unified-topup-grid{grid-template-columns:1fr}}
     @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.button,.service-quick-nav a{transition:none}}
   </style>
-  <link rel="stylesheet" href="./native-notifications.css?v=61">
+  <link rel="stylesheet" href="./native-notifications.css?v=63">
 </head>
 <body>
   <header class="topbar"><div class="topbar-inner"><a class="brand" href="./index.html" aria-label="كروة - الصفحة الرئيسية"><span class="brand-mark">ك</span><span>كروة<small>بوابة الخدمات الأخرى</small></span></a><div class="account"><span id="accountName"></span><button class="button danger hidden" id="logoutBtn" type="button">تسجيل الخروج</button></div></div></header>
@@ -182,8 +182,9 @@
 
   <section class="shell hidden" id="deniedView"><div class="card auth-card" style="max-width:520px;margin:8vh auto;text-align:center"><div style="font-size:44px">🔐</div><h1>هذه البوابة مخصصة لمزودي الخدمات</h1><p class="muted" id="deniedText">نوع الحساب الحالي لا يملك صلاحية فتح هذه الصفحة.</p><button class="button danger wide" id="deniedLogout" type="button">تسجيل الخروج</button></div></section>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="./native-notifications.js?v=61"></script>
-  <script type="module" src="./services.js?v=61"></script>
-  <script src="./pwa.js?v=61"></script>
+  <script src="./precise-location.js?v=63"></script>
+  <script src="./native-notifications.js?v=63"></script>
+  <script type="module" src="./services.js?v=63"></script>
+  <script src="./pwa.js?v=63"></script>
 </body>
 </html>

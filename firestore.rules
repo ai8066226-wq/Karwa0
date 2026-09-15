@@ -17,6 +17,7 @@ service cloud.firestore { match /databases/{database}/documents {
      && exists(/databases/$(database)/documents/drivers/$(request.auth.uid))
      && d.get('blocked',false)!=true
      && d.latitude is number && d.longitude is number
+     && d.get('locationAccuracy',9999) is number && d.get('locationAccuracy',9999)<=45
      && d.get('locationUpdatedAt',null) is timestamp
      && d.locationUpdatedAt>request.time-duration.value(2,'m')
      && reportData.latitude is number && reportData.longitude is number
