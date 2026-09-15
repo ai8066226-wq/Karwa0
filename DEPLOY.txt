@@ -1,8 +1,0 @@
-مشروع Firebase: karwa0
-
-نفذ من داخل هذا المجلد:
-
-firebase use karwa0
-firebase deploy --only firestore
-
-لا تنشر Functions.
