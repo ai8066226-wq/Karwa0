@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0b6f75">
   <meta name="description" content="لوحة إدارة تطبيق كروة">
   <title>كروة | لوحة الإدارة</title>
-  <link rel="stylesheet" href="./portal.css?v=35">
+  <link rel="stylesheet" href="./portal.css?v=53">
   <link rel="manifest" href="./manifest.webmanifest">
   <meta name="theme-color" content="#0b6f75">
   <link rel="icon" href="./karwa-icon.svg" type="image/svg+xml">
@@ -22,6 +22,11 @@
       <span><strong>كروة</strong><small>لوحة الإدارة</small></span>
     </a>
     <div class="top-actions">
+      <a class="admin-notifications-link hidden" id="adminNotificationsLink" href="#adminModules" aria-label="فتح مركز المتابعة">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>
+        <span>المتابعة</span>
+        <b id="globalNotificationsBadge" aria-live="polite">0</b>
+      </a>
       <span class="role-badge">إدارة فقط</span>
       <button class="danger hidden" id="logoutButton">خروج</button>
     </div>
@@ -62,9 +67,67 @@
         <p>نظرة واضحة على التشغيل، الكباتن، الطلبات والأداء المالي لحظة بلحظة.</p>
       </div>
       <div class="hero-side">
+        <span class="hero-action-count" id="heroActionCount" aria-live="polite">لا توجد إجراءات معلّقة</span>
         <span class="live-indicator"><i></i> تحديث مباشر</span>
         <span class="role-badge">مدير النظام</span>
       </div>
+    </section>
+
+    <section class="admin-command-center" id="adminModules" aria-labelledby="adminModulesTitle">
+      <div class="section-title">
+        <div><small>مركز المتابعة</small><h2 id="adminModulesTitle">بطاقات الإدارة</h2></div>
+        <span>الإشعارات والأقسام في مكان واحد</span>
+      </div>
+      <nav class="admin-module-grid" aria-label="أقسام لوحة الإدارة">
+        <a class="admin-module-card" data-tone="amber" href="#topupsPanel">
+          <span class="module-notification" id="navTopupsCount" aria-live="polite">0</span>
+          <span class="module-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h18v12H3zM3 10h18M16 15h2"/></svg></span>
+          <span class="module-copy"><strong>شحن الرصيد</strong><small>مراجعة التحويلات واعتمادها</small></span>
+          <span class="module-open">فتح القسم <b>←</b></span>
+        </a>
+        <a class="admin-module-card" data-tone="violet" href="#servicesPanel">
+          <span class="module-notification" id="navServicesCount" aria-live="polite">0</span>
+          <span class="module-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v10h16V10M3 10l2-6h14l2 6M9 20v-6h6v6M3 10c1 2 3 2 4 0 1 2 3 2 4 0 1 2 3 2 4 0 1 2 3 2 4 0"/></svg></span>
+          <span class="module-copy"><strong>مزودو الخدمات</strong><small>طلبات الأنشطة والمطاعم</small></span>
+          <span class="module-open">فتح القسم <b>←</b></span>
+        </a>
+        <a class="admin-module-card" data-tone="blue" href="#captainApplicationsPanel">
+          <span class="module-notification" id="navCaptainsCount" aria-live="polite">0</span>
+          <span class="module-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M8.5 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8M19 8v6M16 11h6"/></svg></span>
+          <span class="module-copy"><strong>طلبات الكباتن</strong><small>فحص الطلبات وتفعيل الحسابات</small></span>
+          <span class="module-open">فتح القسم <b>←</b></span>
+        </a>
+        <a class="admin-module-card" data-tone="teal" href="#driversPanel">
+          <span class="module-notification" id="navDriversCount" aria-live="polite">0</span>
+          <span class="module-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0M18 4l1-2M6 4 5 2"/></svg></span>
+          <span class="module-copy"><strong>إدارة الكباتن</strong><small>الحالة والتنبيهات والحظر</small></span>
+          <span class="module-open">فتح القسم <b>←</b></span>
+        </a>
+        <a class="admin-module-card" data-tone="red" href="#waitingOrdersPanel">
+          <span class="module-notification" id="navOrdersCount" aria-live="polite">0</span>
+          <span class="module-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="19" r="2"/><circle cx="19" cy="5" r="2"/><path d="M7 19h4a4 4 0 0 0 4-4V9a4 4 0 0 1 4-4"/></svg></span>
+          <span class="module-copy"><strong>الطلبات المنتظرة</strong><small>طلبات العملاء دون كابتن</small></span>
+          <span class="module-open">فتح القسم <b>←</b></span>
+        </a>
+        <a class="admin-module-card" data-tone="slate" href="#pricingPanel">
+          <span class="module-notification is-status" id="navPricingCount">جاهز</span>
+          <span class="module-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h3M11 12h9M4 18h8M16 18h4"/><circle cx="16" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="14" cy="18" r="2"/></svg></span>
+          <span class="module-copy"><strong>التسعير والرسوم</strong><small>إعداد الأجور والرصيد والدعوات</small></span>
+          <span class="module-open">فتح القسم <b>←</b></span>
+        </a>
+        <a class="admin-module-card" data-tone="green" href="#financePanel">
+          <span class="module-notification" id="navFinanceCount" aria-live="polite">0</span>
+          <span class="module-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span>
+          <span class="module-copy"><strong>التقرير المالي</strong><small>المبيعات والرسوم والأرباح</small></span>
+          <span class="module-open">فتح القسم <b>←</b></span>
+        </a>
+        <a class="admin-module-card" data-tone="gold" href="#ratingsPanel">
+          <span class="module-notification" id="navRatingsCount" aria-live="polite">0</span>
+          <span class="module-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 3 6 7 .9-5 4.8 1.3 7-6.3-3.4-6.3 3.4 1.3-7-5-4.8L9 8z"/></svg></span>
+          <span class="module-copy"><strong>التقييمات</strong><small>متابعة جودة تجربة العملاء</small></span>
+          <span class="module-open">فتح القسم <b>←</b></span>
+        </a>
+      </nav>
     </section>
 
     <div class="section-title"><div><small>نظرة عامة</small><h2>مؤشرات التشغيل</h2></div><span>بيانات مباشرة من النظام</span></div>
@@ -86,8 +149,9 @@
     <div class="layout admin-layout">
       <section class="admin-main-column">
         <div class="section-title compact"><div><small>الإدارة اليومية</small><h2>الخدمات والتشغيل والكباتن</h2></div></div>
-        <div class="card admin-panel">
-          <div class="card-heading"><h2>التسعير والرسوم والشحن</h2><span class="status-chip approved">تحكم مباشر</span></div>
+        <div class="card admin-panel" id="pricingPanel">
+          <div class="card-heading"><h2>التسعير والرسوم والشحن</h2><span class="status-chip approved">جاهز للتعديل</span></div>
+          <div class="admin-panel-body">
           <p class="muted">حدد تسعيرة الكيلومتر والرسوم الثابتة التي تُخصم من محافظ المشتركين. لا توجد عمولة نسبية على قيمة الطلب.</p>
           <form id="pricingSettingsForm" class="admin-settings-form">
             <h3>تسعيرة التكسي لكل كيلومتر</h3>
@@ -122,48 +186,49 @@
             <p class="muted">استخدم معرف تحويل أو رقم حساب مناسب للاستلام. لا تحفظ CVV أو PIN أو كلمة مرور بطاقة داخل النظام.</p>
             <button class="primary wide" id="savePricingSettings" type="submit">حفظ إعدادات التسعير</button>
           </form>
+          </div>
         </div>
 
-        <div class="card admin-panel">
+        <div class="card admin-panel" id="topupsPanel">
           <div class="card-heading"><h2>طلبات شحن الرصيد</h2><span class="status-chip pending" id="pendingTopupsBadge">0 بانتظار المراجعة</span></div>
-          <p class="muted">بعد التحقق من وصول التحويل، اضغط اعتماد. سيضاف نفس المبلغ إلى الرصيد المشحون مرة واحدة، ويظهر نوع الحساب: عميل أو كابتن أو خدمات أخرى.</p>
+          <p class="muted admin-panel-intro">بعد التحقق من وصول التحويل، اضغط اعتماد. سيضاف نفس المبلغ إلى الرصيد المشحون مرة واحدة، ويظهر نوع الحساب: عميل أو كابتن أو خدمات أخرى.</p>
           <div class="orders" id="topupRequestsAdmin"></div>
         </div>
-        <div class="card admin-panel">
-          <div class="card-heading"><h2>طلبات مزودي الخدمات</h2><span class="status-chip pending">اعتماد مستقل</span></div>
-          <p class="muted">راجع بيانات النشاط ثم اقبل الطلب لفتح لوحة الخدمات الخاصة بالحساب.</p>
+        <div class="card admin-panel" id="servicesPanel">
+          <div class="card-heading"><h2>طلبات مزودي الخدمات</h2><span class="status-chip pending" id="serviceApplicationsBadge">0 بانتظار المراجعة</span></div>
+          <p class="muted admin-panel-intro">راجع بيانات النشاط ثم اقبل الطلب لفتح لوحة الخدمات الخاصة بالحساب.</p>
           <div class="orders" id="serviceApplicationsList"></div>
         </div>
 
-        <div class="card admin-panel">
-          <div class="card-heading"><h2>طلبات انضمام الكباتن</h2><span class="status-chip pending">تحتاج مراجعة</span></div>
+        <div class="card admin-panel" id="captainApplicationsPanel">
+          <div class="card-heading"><h2>طلبات انضمام الكباتن</h2><span class="status-chip pending" id="captainApplicationsBadge">0 بانتظار المراجعة</span></div>
           <div class="orders" id="applicationsList"></div>
         </div>
 
-        <div class="card admin-panel">
-          <div class="card-heading"><h2>إدارة الكباتن</h2><span class="status-chip active">تنبيه وحظر</span></div>
+        <div class="card admin-panel" id="driversPanel">
+          <div class="card-heading"><h2>إدارة الكباتن</h2><span class="status-chip active" id="driversAttentionBadge">0 يحتاج متابعة</span></div>
           <div class="orders" id="driversList"></div>
         </div>
 
-        <div class="card admin-panel">
-          <div class="card-heading"><h2>طلبات العملاء في الانتظار</h2><span class="status-chip pending">بانتظار كابتن</span></div>
+        <div class="card admin-panel" id="waitingOrdersPanel">
+          <div class="card-heading"><h2>طلبات العملاء في الانتظار</h2><span class="status-chip pending" id="waitingOrdersBadge">0 بانتظار كابتن</span></div>
           <div class="orders" id="ordersList"></div>
         </div>
       </section>
 
       <aside class="admin-sidebar">
         <div class="section-title compact"><div><small>ملخص سريع</small><h2>التقارير والحالة</h2></div></div>
-        <div class="card finance-card"><div class="card-heading"><h3>التقرير المالي</h3><span class="status-chip approved">مباشر</span></div><div id="financialReport" class="orders"></div></div>
-        <div class="card">
-          <h3>حالة النظام</h3>
+        <div class="card finance-card" id="financePanel"><div class="card-heading"><h3>التقرير المالي</h3><span class="status-chip approved" id="financialReportBadge">0 رحلة مكتملة</span></div><div id="financialReport" class="orders"></div></div>
+        <div class="card system-status-card">
+          <div class="card-heading"><h3>حالة النظام</h3><span class="status-chip approved">متصل</span></div>
           <p class="notice success">Firebase متصل والتحديثات مباشرة.</p>
         </div>
-        <div class="card">
-          <div class="card-heading"><h3>أحدث التقييمات</h3><span class="status-chip pending">مباشر</span></div>
+        <div class="card" id="ratingsPanel">
+          <div class="card-heading"><h3>أحدث التقييمات</h3><span class="status-chip complete" id="ratingsBadge">0 تقييم</span></div>
           <div class="reviews-list" id="ratingsList"></div>
         </div>
-        <div class="card">
-          <h3>مبدأ الصلاحيات</h3>
+        <div class="card permissions-card">
+          <div class="card-heading"><h3>مبدأ الصلاحيات</h3><span class="status-chip approved">محمي</span></div>
           <p class="muted">العميل يرى طلباته، والكابتن يعمل من بوابته، ومزود الخدمة لا يدخل لوحته الخاصة إلا بعد اعتماد الإدارة.</p>
         </div>
       </aside>
@@ -171,7 +236,7 @@
   </main>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./admin.js?v=52"></script>
-  <script src="./pwa.js?v=52"></script>
+  <script type="module" src="./admin.js?v=53"></script>
+  <script src="./pwa.js?v=53"></script>
 </body>
 </html>

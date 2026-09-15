@@ -126,11 +126,93 @@ function showView(name) {
   byId("deniedView").classList.toggle("hidden", name !== "denied");
   byId("dashboardView").classList.toggle("hidden", name !== "dashboard");
   byId("logoutButton").classList.toggle("hidden", name === "auth");
+  byId("adminNotificationsLink").classList.toggle("hidden", name !== "dashboard");
 }
 
 function clearDashboardListeners() {
   state.dashboardUnsubscribes.forEach(unsubscribe => unsubscribe?.());
   state.dashboardUnsubscribes = [];
+}
+
+function adminNotificationCounts() {
+  const captainApplications = state.applications.filter(item =>
+    (item.status || "pending") === "pending" && normalizeCaptainServiceType(item) !== "other"
+  ).length;
+  const modernServiceIds = new Set(state.serviceApplications.map(item => item.firestoreId));
+  const legacyServiceApplications = state.applications.filter(item =>
+    normalizeCaptainServiceType(item) === "other" && !modernServiceIds.has(item.firestoreId)
+  );
+  const serviceApplications = [...state.serviceApplications, ...legacyServiceApplications]
+    .filter(item => (item.status || "pending") === "pending").length;
+  const topups = state.topupRequests.filter(item => (item.status || "pending") === "pending").length;
+  const waitingOrders = state.orders.filter(order =>
+    !order.cancelled && !order.driverId && Number(order.statusIndex || 0) === 0
+  ).length;
+  const driversAttention = state.drivers.filter(driver =>
+    driver.blocked === true || Number(driver.warningCount || 0) > 0
+  ).length;
+  const completedTrips = state.orders.filter(order =>
+    !order.cancelled && Number(order.statusIndex || 0) >= 4
+  ).length;
+
+  return {
+    captainApplications,
+    serviceApplications,
+    topups,
+    waitingOrders,
+    driversAttention,
+    completedTrips,
+    ratings: state.ratings.length
+  };
+}
+
+function setModuleNotification(id, count, alert = true) {
+  const badge = byId(id);
+  if (!badge) return;
+  badge.textContent = String(count);
+  badge.setAttribute("aria-label", `${count} إشعار`);
+  badge.classList.toggle("has-items", alert && count > 0);
+  badge.closest(".admin-module-card")?.classList.toggle("has-alerts", alert && count > 0);
+}
+
+function setPanelNotification(id, count, suffix) {
+  const badge = byId(id);
+  if (!badge) return;
+  badge.textContent = `${count} ${suffix}`;
+  badge.classList.toggle("no-items", count === 0);
+}
+
+function renderAdminNotifications() {
+  const counts = adminNotificationCounts();
+  setModuleNotification("navTopupsCount", counts.topups);
+  setModuleNotification("navServicesCount", counts.serviceApplications);
+  setModuleNotification("navCaptainsCount", counts.captainApplications);
+  setModuleNotification("navDriversCount", counts.driversAttention);
+  setModuleNotification("navOrdersCount", counts.waitingOrders);
+  setModuleNotification("navFinanceCount", counts.completedTrips, false);
+  setModuleNotification("navRatingsCount", counts.ratings, false);
+
+  setPanelNotification("pendingTopupsBadge", counts.topups, "بانتظار المراجعة");
+  setPanelNotification("serviceApplicationsBadge", counts.serviceApplications, "بانتظار المراجعة");
+  setPanelNotification("captainApplicationsBadge", counts.captainApplications, "بانتظار المراجعة");
+  setPanelNotification("driversAttentionBadge", counts.driversAttention, "يحتاج متابعة");
+  setPanelNotification("waitingOrdersBadge", counts.waitingOrders, "بانتظار كابتن");
+  setPanelNotification("financialReportBadge", counts.completedTrips, "رحلة مكتملة");
+  setPanelNotification("ratingsBadge", counts.ratings, "تقييم");
+
+  const actionable = counts.topups + counts.serviceApplications + counts.captainApplications + counts.driversAttention + counts.waitingOrders;
+  const globalBadge = byId("globalNotificationsBadge");
+  const notificationsLink = byId("adminNotificationsLink");
+  const heroCount = byId("heroActionCount");
+  if (globalBadge) {
+    globalBadge.textContent = String(actionable);
+    globalBadge.setAttribute("aria-label", `${actionable} إجراء يحتاج متابعة`);
+  }
+  notificationsLink?.classList.toggle("no-alerts", actionable === 0);
+  if (heroCount) {
+    heroCount.textContent = actionable ? `${actionable} إجراء يحتاج متابعة` : "لا توجد إجراءات معلّقة";
+    heroCount.classList.toggle("has-items", actionable > 0);
+  }
 }
 
 byId("loginForm").addEventListener("submit", async event => {
@@ -151,14 +233,12 @@ byId("logoutButton").addEventListener("click", () => signOut(auth));
 byId("deniedLogout").addEventListener("click", () => signOut(auth));
 
 function renderMetrics() {
+  const notifications = adminNotificationCounts();
   byId("usersCount").textContent = state.users.filter(user => !user.role || user.role === "customer").length;
   byId("driversCount").textContent = state.drivers.length;
   byId("serviceProvidersCount").textContent = state.users.filter(user => user.role === "serviceProvider").length;
   byId("blockedCount").textContent = state.drivers.filter(driver => driver.blocked === true).length;
-  byId("pendingCount").textContent =
-    state.applications.filter(item => item.status === "pending" && normalizeCaptainServiceType(item) !== "other").length +
-    state.serviceApplications.filter(item => item.status === "pending").length +
-    state.applications.filter(item => item.status === "pending" && normalizeCaptainServiceType(item) === "other").length;
+  byId("pendingCount").textContent = notifications.captainApplications + notifications.serviceApplications + notifications.topups;
   byId("ordersCount").textContent = state.orders.length;
   byId("liveTripsCount").textContent = state.orders.filter(o => !o.cancelled && Number(o.statusIndex||0) > 0 && Number(o.statusIndex||0) < 4).length;
   byId("cancelledTripsCount").textContent = state.orders.filter(o => o.cancelled).length;
@@ -173,6 +253,7 @@ function renderMetrics() {
   byId("grossRevenue").textContent=money(gross);byId("commissionRevenue").textContent=money(platformFees);byId("driversPayout").textContent=money(payout);
   const byDriver={};completed.forEach(o=>{const k=o.driverName||"غير معيّن";byDriver[k]=(byDriver[k]||0)+Number(o.driverEarnings||0)});
   byId("financialReport").innerHTML=completed.length?`<div class="order-meta"><span>رحلات مكتملة: ${completed.length}</span><span>متوسط الطلب: ${money(gross/completed.length)}</span></div>${Object.entries(byDriver).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([name,value])=>`<div class="order-meta"><strong>${escapeHtml(name)}</strong><span>${money(value)}</span></div>`).join("")}`:`<p class="muted">لا توجد رحلات مكتملة بعد.</p>`;
+  renderAdminNotifications();
 }
 
 function ratingSummary(driverId) {
@@ -291,6 +372,7 @@ function renderRatings() {
         ${rating.comment ? `<p>${escapeHtml(rating.comment)}</p>` : ""}
       </article>`).join("")
     : `<div class="empty"><span>★</span>لا توجد تقييمات بعد.</div>`;
+  renderAdminNotifications();
 }
 
 function applicationCard(application) {
@@ -431,8 +513,7 @@ function renderPricingSettings(){
 function renderTopupRequests(){
   const box=byId("topupRequestsAdmin"); if(!box)return;
   const rows=[...state.topupRequests].sort((a,b)=>Number(b.createdAt?.seconds||0)-Number(a.createdAt?.seconds||0));
-  const pending=rows.filter(x=>(x.status||"pending")==="pending").length;
-  if(byId("pendingTopupsBadge"))byId("pendingTopupsBadge").textContent=`${pending} بانتظار المراجعة`;
+  renderAdminNotifications();
   if(!rows.length){box.innerHTML='<p class="muted">لا توجد طلبات شحن بعد.</p>';return;}
   const labels={pending:"قيد المراجعة",approved:"معتمد",rejected:"مرفوض"};
   const accountLabels={customer:"عميل",captain:"كابتن",service:"خدمات أخرى",driver:"كابتن",other:"خدمات أخرى"};
