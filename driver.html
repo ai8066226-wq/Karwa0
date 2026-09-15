@@ -175,6 +175,109 @@ body.driver-map-mode #driverView{height:100dvh!important}
 .leaflet-marker-icon.karwa-landmark-div-icon:hover .karwa-landmark-label span{max-width:218px}
 @media(max-width:480px){.karwa-landmark-label{max-width:150px;font-size:10px}.karwa-landmark-label span{max-width:128px}}
 </style>
+
+<style id="phase56-premium-driver-ui">
+/* Phase 56: هوية احترافية متكاملة لبوابة الكابتن من دون تغيير أي وظيفة */
+:root{--captain-ink:#0d2438;--captain-navy:#102f46;--captain-teal:#087b75;--captain-cyan:#27a9a1;--captain-soft:#eef7f6;--captain-line:#d8e5e8;--captain-shadow:0 22px 65px rgba(13,36,56,.13)}
+body{background:radial-gradient(circle at 82% 2%,rgba(39,169,161,.11),transparent 29%),linear-gradient(180deg,#f6fafb 0,#eef4f6 100%);color:var(--captain-ink)}
+body:not(.driver-map-mode) .topbar{min-height:76px;padding-inline:clamp(16px,4vw,56px);border-bottom:1px solid rgba(216,229,232,.88);background:rgba(255,255,255,.88);box-shadow:0 8px 30px rgba(13,36,56,.06);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+body:not(.driver-map-mode) .brand{gap:11px}.brand .logo{border-radius:15px;background:linear-gradient(145deg,var(--captain-navy),var(--captain-teal));box-shadow:0 9px 24px rgba(8,123,117,.22)}
+body:not(.driver-map-mode) .brand strong{color:var(--captain-ink);font-size:18px}.brand small{color:#698091;font-weight:700}
+
+/* الدخول والحالات المقيدة */
+#authView,#deniedView,#blockedView{min-height:calc(100dvh - 76px);padding:clamp(20px,5vw,64px) 16px;background:linear-gradient(135deg,rgba(238,247,246,.72),rgba(255,255,255,.65))}
+#authView .auth-card,#deniedView .auth-card,#blockedView .auth-card{position:relative;width:min(510px,100%);padding:clamp(24px,4vw,38px);overflow:hidden;border:1px solid rgba(216,229,232,.95);border-radius:30px;background:rgba(255,255,255,.94);box-shadow:var(--captain-shadow)}
+#authView .auth-card:before,#deniedView .auth-card:before,#blockedView .auth-card:before{content:"";position:absolute;top:0;right:0;left:0;height:6px;background:linear-gradient(90deg,var(--captain-teal),#54c9bd,var(--captain-navy))}
+#authView .auth-card:after{content:"ك";position:absolute;top:-30px;left:-25px;width:125px;height:125px;display:grid;place-items:center;border:22px solid rgba(8,123,117,.055);border-radius:50%;color:rgba(8,123,117,.1);font-size:38px;font-weight:900;pointer-events:none}
+#authView .auth-card h1,#deniedView .auth-card h1,#blockedView .auth-card h1{position:relative;margin-bottom:8px;color:var(--captain-ink);font-size:clamp(25px,4vw,33px)}
+#authView .auth-card>p,#deniedView .auth-card>p,#blockedView .auth-card>p{position:relative;color:#607688;line-height:1.8}
+#authView form{position:relative;display:grid;gap:15px;margin-top:23px}
+#authView .field,#applicationView .field{gap:7px}#authView .field label,#applicationView .field label{color:#294357;font-size:12px;font-weight:900}
+#authView input,#applicationView input,#applicationView select{min-height:51px;padding:11px 14px;border:1.5px solid #ccdbdf;border-radius:14px;color:var(--captain-ink);background:#fbfdfe;transition:border-color .18s,box-shadow .18s,background .18s}
+#authView input:focus,#applicationView input:focus,#applicationView select:focus{border-color:var(--captain-teal);outline:0;background:#fff;box-shadow:0 0 0 4px rgba(8,123,117,.11)}
+#authView .primary,#applicationView .primary{min-height:52px;border:0;border-radius:15px;background:linear-gradient(135deg,var(--captain-navy),var(--captain-teal));box-shadow:0 12px 27px rgba(8,123,117,.2);font-size:14px;transition:transform .18s,box-shadow .18s}
+#authView .primary:hover,#applicationView .primary:hover{transform:translateY(-1px);box-shadow:0 15px 32px rgba(8,123,117,.27)}
+#authView .auth-card>p:last-child{margin:22px 0 0;padding-top:17px;border-top:1px solid var(--captain-line);text-align:center}#authView a{color:var(--captain-teal);font-weight:900}
+#blockedView .blocked-icon{box-shadow:0 0 0 8px #fff0f1}
+
+/* طلب الانضمام */
+#applicationView{width:min(1220px,calc(100% - 34px));margin-top:30px;margin-bottom:50px}
+#applicationView>.hero{position:relative;min-height:170px;padding:clamp(27px,5vw,47px);overflow:hidden;border:0;border-radius:32px;background:linear-gradient(125deg,#0d2a42 0%,#0d5962 58%,#0d8178 100%);box-shadow:0 24px 58px rgba(13,47,70,.2)}
+#applicationView>.hero:before{content:"";position:absolute;left:8%;bottom:-85px;width:240px;height:240px;border:42px solid rgba(255,255,255,.055);border-radius:50%}
+#applicationView>.hero h1{font-size:clamp(28px,4.5vw,44px)}#applicationView>.hero p{max-width:620px;margin-top:9px;color:#d7eeec;font-size:15px;line-height:1.75}
+#applicationView>.hero .role-badge{border:1px solid rgba(255,255,255,.23);color:#efffff;background:rgba(255,255,255,.13);backdrop-filter:blur(10px)}
+#applicationView>.layout{grid-template-columns:minmax(0,1fr) 290px;align-items:start;gap:20px;margin-top:20px}
+#applicationView>.layout>section.card{padding:clamp(20px,3vw,30px);border:1px solid var(--captain-line);border-radius:27px;background:rgba(255,255,255,.96);box-shadow:0 18px 50px rgba(13,36,56,.08)}
+#applicationView>.layout>section.card>.card-heading{margin-bottom:18px;padding-bottom:17px;border-bottom:1px solid var(--captain-line)}
+#applicationView>.layout>section.card>.card-heading h2{font-size:22px}
+#applicationView .form-grid{gap:16px 13px}
+#applicationView #driverAccountFields{padding:18px!important;border:1px solid #cce5e1!important;border-radius:19px!important;background:linear-gradient(145deg,#f1fbf9,#fbfdfd)!important}
+#applicationView #driverAccountFields>.card-heading{padding-bottom:10px;border-bottom:1px solid #d8ebe8}
+#applicationView .restaurant-application{padding:20px;border-color:#cce5e1;border-radius:21px;background:linear-gradient(145deg,#f0fbf8,#fff);box-shadow:none}
+#applicationView .restaurant-app-icon{background:linear-gradient(145deg,var(--captain-navy),var(--captain-teal));box-shadow:0 8px 20px rgba(8,123,117,.18)}
+#applicationView #submitApplication{margin-top:22px}
+#applicationView>.layout>aside.card{position:sticky;top:96px;padding:23px;border:1px solid #cce3e1;border-radius:25px;background:linear-gradient(150deg,#f5fcfb,#fff);box-shadow:0 15px 42px rgba(13,36,56,.07)}
+#applicationView>.layout>aside.card h2{margin:0 0 17px;font-size:19px}
+#applicationView>.layout>aside.card p{position:relative;margin:0;padding:0 42px 20px 0;line-height:1.65}
+#applicationView>.layout>aside.card p:before{position:absolute;right:0;top:-2px;width:29px;height:29px;display:grid;place-items:center;border-radius:10px;color:#fff;background:var(--captain-teal);font-size:12px;font-weight:900}
+#applicationView>.layout>aside.card p:nth-of-type(1):before{content:"1"}#applicationView>.layout>aside.card p:nth-of-type(2):before{content:"2"}#applicationView>.layout>aside.card p:nth-of-type(3):before{content:"3"}
+#applicationView>.layout>aside.card p:not(:last-child):after{content:"";position:absolute;right:14px;top:27px;width:1px;height:22px;background:#bcded9}
+
+/* قمرة القيادة والخريطة */
+body.driver-map-mode{--navy:var(--captain-ink);--navy-2:var(--captain-navy);--orange:#e25335;--mint:var(--captain-teal);--line:var(--captain-line);--muted:#607688;background:#dfe9eb}
+#driverView>.hero{top:18px;left:18px;width:min(315px,calc(100% - 36px));padding:13px 15px;border:1px solid rgba(255,255,255,.9);border-radius:20px;background:rgba(255,255,255,.94);box-shadow:0 16px 44px rgba(13,36,56,.17);backdrop-filter:blur(18px)}
+#driverView>.hero h1{color:var(--captain-ink);font-size:21px}#driverView>.hero p{color:#607688;font-size:11px}#driverView>.hero .role-badge{color:#07645f;border:1px solid #bde5e1;background:#e9f9f7}
+.driver-settings-toggle{top:max(16px,env(safe-area-inset-top));right:16px;width:56px;height:56px;border:2px solid #fff;border-radius:19px;background:linear-gradient(145deg,var(--captain-navy),var(--captain-teal));box-shadow:0 13px 36px rgba(13,47,70,.3)}
+.driver-options-toggle{right:18px;min-width:132px;min-height:55px;border:2px solid #fff;border-radius:19px;background:linear-gradient(135deg,var(--captain-navy),var(--captain-teal));box-shadow:0 15px 38px rgba(13,47,70,.3)}
+.driver-options-toggle span{color:var(--captain-navy);background:#a5ebe3}
+.driver-report-quick{left:18px;bottom:130px;width:60px;height:60px;border:3px solid #fff;background:linear-gradient(145deg,#f0704d,#ca351f);box-shadow:0 13px 32px rgba(177,51,29,.3)}
+#driverView .driver-nav-strip{bottom:18px;width:min(650px,calc(100% - 160px));min-height:71px;padding:7px;border:1px solid rgba(255,255,255,.94);border-radius:23px;background:rgba(255,255,255,.96);box-shadow:0 17px 42px rgba(13,36,56,.23);backdrop-filter:blur(18px)}
+#driverView .driver-nav-strip>div{padding:9px 8px;border-color:#dce7ea}#driverView .driver-nav-strip small{color:#718493;font-size:10px}#driverView .driver-nav-strip strong{color:var(--captain-ink);font-size:14px}
+#driverView .route-alert{top:16px;padding:11px 16px;border:1px solid #f5c69e;border-radius:15px;box-shadow:0 12px 28px rgba(124,45,18,.13)}
+#driverView #locationHint{left:18px;bottom:103px;border:1px solid rgba(255,255,255,.95);border-radius:12px;background:rgba(255,255,255,.93);box-shadow:0 8px 24px rgba(13,36,56,.1)}
+
+/* درج العمليات */
+.driver-options-scrim,.driver-settings-scrim{background:rgba(5,22,35,.48);backdrop-filter:blur(4px)}
+.driver-options-drawer{top:12px;right:12px;bottom:12px;width:min(478px,calc(100% - 24px));border:1px solid rgba(255,255,255,.9);border-radius:30px;background:rgba(245,249,250,.985);box-shadow:0 30px 90px rgba(5,22,35,.42)}
+.driver-options-header,.driver-settings-header{min-height:71px;padding:14px 18px;border-color:var(--captain-line);background:linear-gradient(135deg,#fff,#f2f9f8)}
+.driver-options-header small,.driver-settings-header small{color:var(--captain-teal);font-weight:900;letter-spacing:.02em}.driver-options-header strong,.driver-settings-header strong{color:var(--captain-ink);font-size:18px}
+.driver-options-close,.driver-settings-close{width:43px;height:43px;border:1px solid #cfdee1;border-radius:14px;color:var(--captain-ink);background:#fff;box-shadow:0 6px 16px rgba(13,36,56,.07)}
+.driver-options-body{padding:15px 15px 22px}
+.driver-options-body>.stats{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:9px!important}
+.driver-options-body>.stats .stat{position:relative;min-height:87px!important;padding:14px 14px 12px 49px!important;overflow:hidden;border:1px solid #d8e5e8!important;border-radius:18px!important;background:linear-gradient(145deg,#fff,#f9fcfc)!important;box-shadow:0 8px 22px rgba(13,36,56,.055)!important}
+.driver-options-body>.stats .stat:before{position:absolute;left:12px;top:13px;width:29px;height:29px;display:grid;place-items:center;border-radius:10px;color:#08736d;background:#dff5f2;font-size:15px}
+.driver-options-body>.stats .stat:nth-child(1):before{content:"◫"}.driver-options-body>.stats .stat:nth-child(2):before{content:"↗"}.driver-options-body>.stats .stat:nth-child(3):before{content:"✓"}.driver-options-body>.stats .stat:nth-child(4):before{content:"●"}.driver-options-body>.stats .stat:nth-child(5):before{content:"★";color:#9a6900;background:#fff4cc}.driver-options-body>.stats .stat:nth-child(6):before{content:"!";color:#b33a27;background:#ffebe6}.driver-options-body>.stats .stat:nth-child(7):before{content:"د.ع";font-size:9px}
+.driver-options-body>.stats .stat:nth-child(7){grid-column:1/-1;background:linear-gradient(135deg,#0f344a,#087b75)!important;border-color:transparent!important}.driver-options-body>.stats .stat:nth-child(7) small,.driver-options-body>.stats .stat:nth-child(7) strong{color:#fff}.driver-options-body>.stats .stat small{color:#708392;font-size:10px;font-weight:800}.driver-options-body>.stats .stat strong{margin-top:6px;color:var(--captain-ink);font-size:20px;line-height:1.1}
+.driver-options-body>section,.driver-options-tools{gap:11px}
+.driver-options-body>section>.card,.driver-options-tools>.card{padding:17px!important;border:1px solid #d8e5e8!important;border-radius:21px!important;background:#fff!important;box-shadow:0 9px 26px rgba(13,36,56,.055)!important}
+.driver-options-body .card-heading{margin-bottom:13px}.driver-options-body .card-heading h2,.driver-options-body .card-heading h3{color:var(--captain-ink);font-size:16px}.driver-options-body .card-heading>.muted{max-width:205px;font-size:9px;line-height:1.5;text-align:left}
+.driver-options-body .orders{gap:10px}.driver-options-body .order-card{position:relative;padding:14px;overflow:hidden;border:1px solid #dbe6e9;border-radius:17px;background:linear-gradient(145deg,#fff,#fafcfd);box-shadow:none}
+.driver-options-body .order-card:before{content:"";position:absolute;top:0;right:0;width:4px;height:100%;background:var(--captain-teal)}
+.driver-options-body .order-top{align-items:flex-start}.driver-options-body .order-card h3{color:var(--captain-ink);font-size:14px}.driver-options-body .order-route{padding:9px 10px;border-radius:11px;color:#385064;background:#f1f6f7;font-size:11px;line-height:1.7}.driver-options-body .order-meta{gap:5px}.driver-options-body .order-meta span{padding:4px 7px;border-radius:999px;color:#566d7e;background:#edf3f4;font-size:9px}.driver-options-body .order-price{color:var(--captain-teal);font-size:16px}.driver-options-body .order-actions{padding-top:11px;border-top:1px solid #e3eaec}
+.driver-options-body .online-row{min-height:54px}.driver-options-body .online-row h3{margin:0 0 3px;font-size:15px}.driver-options-body .switch{width:55px;height:31px;border-color:#b9c8ce;background:#d3dde0}.driver-options-body .switch.on{border-color:var(--captain-teal);background:var(--captain-teal)}
+.driver-options-body .reputation-card{background:linear-gradient(145deg,#fffaf0,#fff)!important}.driver-options-body .reputation-score span{color:#efad18}
+.driver-options-body .report-grid{gap:7px}.driver-options-body .report-grid button{min-height:49px;border:1px solid #d5e2e5;border-radius:13px;background:#fbfdfd}.driver-options-body .report-grid button:hover{border-color:#efa88f;background:#fff5f2}
+
+/* درج الحساب والإعدادات */
+.driver-settings-panel{top:max(10px,env(safe-area-inset-top));right:10px;bottom:max(10px,env(safe-area-inset-bottom));width:min(420px,calc(100% - 20px));border:1px solid rgba(255,255,255,.92);border-radius:30px;background:rgba(245,249,250,.988);box-shadow:0 30px 90px rgba(5,22,35,.44)}
+.driver-settings-body{padding:15px;gap:11px}
+.driver-profile-card{padding:16px;border:1px solid #cce3e1;border-radius:21px;background:linear-gradient(140deg,#fff,#edf9f7);box-shadow:0 8px 24px rgba(13,36,56,.055)}
+.driver-settings-avatar{border-radius:18px;background:linear-gradient(145deg,var(--captain-navy),var(--captain-teal));box-shadow:0 9px 22px rgba(8,123,117,.22)}
+.driver-verified{color:#07645f;background:#dff5f2}
+.driver-info-grid{gap:8px}.driver-info-grid>div{padding:12px;border:1px solid #d8e5e8;border-radius:16px;background:#fff}.driver-info-grid dt{color:#718493}.driver-info-grid dd{color:var(--captain-ink)}
+.driver-settings-group{padding:14px;border:1px solid #d8e5e8;border-radius:19px;background:#fff;box-shadow:0 7px 20px rgba(13,36,56,.04)}
+.driver-settings-segment{background:#eaf1f2}.driver-settings-segment button.active{background:linear-gradient(135deg,var(--captain-navy),var(--captain-teal));box-shadow:0 6px 16px rgba(8,123,117,.18)}
+.driver-pref-switch.on{border-color:var(--captain-teal);background:var(--captain-teal)}
+.driver-settings-action{border-color:#cfdee1;border-radius:14px}.driver-settings-action.primary{border-color:transparent;background:linear-gradient(135deg,var(--captain-navy),var(--captain-teal));box-shadow:0 10px 23px rgba(8,123,117,.18)}
+.unified-wallet-balance{background:linear-gradient(140deg,#102f46,#087b75);box-shadow:0 13px 30px rgba(8,123,117,.18)}
+.unified-topup-destination{border-color:#cce5e1;background:#f0faf8}
+.map-place-search-row>button,.map-landmark-editor>button{background:linear-gradient(135deg,var(--captain-navy),var(--captain-teal))}
+
+@media(max-width:980px){#applicationView>.layout{grid-template-columns:1fr}#applicationView>.layout>aside.card{position:static;display:grid;grid-template-columns:repeat(3,1fr);gap:10px}#applicationView>.layout>aside.card h2{grid-column:1/-1}#applicationView>.layout>aside.card p{padding-bottom:0}#applicationView>.layout>aside.card p:after{display:none}}
+@media(max-width:760px){body:not(.driver-map-mode) .topbar{min-height:66px}#authView,#deniedView,#blockedView{min-height:calc(100dvh - 66px);padding:18px 12px}#authView .auth-card,#deniedView .auth-card,#blockedView .auth-card{padding:24px 19px;border-radius:24px}#applicationView{width:calc(100% - 20px);margin-top:14px}#applicationView>.hero{min-height:auto;padding:24px 20px;border-radius:24px}#applicationView>.hero .role-badge{margin-top:15px}#applicationView>.layout{gap:12px;margin-top:12px}#applicationView>.layout>section.card{padding:18px 15px;border-radius:22px}#applicationView>.layout>aside.card{grid-template-columns:1fr;padding:19px;border-radius:22px}#applicationView .restaurant-application{padding:15px}#driverView .driver-nav-strip{right:8px;bottom:max(9px,env(safe-area-inset-bottom));width:calc(100% - 16px);min-height:73px;border-radius:20px;transform:none}.driver-settings-toggle{top:max(10px,env(safe-area-inset-top));right:10px;width:51px;height:51px;border-radius:17px}.driver-options-toggle{right:10px;min-width:112px;min-height:51px;border-radius:17px}.driver-report-quick{left:11px;bottom:119px;width:54px;height:54px}.driver-options-drawer,.driver-settings-panel{top:max(6px,env(safe-area-inset-top));right:6px;bottom:max(6px,env(safe-area-inset-bottom));width:calc(100% - 12px);border-radius:25px}.driver-options-header,.driver-settings-header{min-height:66px;padding:12px 14px}.driver-options-body,.driver-settings-body{padding:11px}.driver-options-body>section>.card,.driver-options-tools>.card{padding:15px!important}}
+@media(max-width:430px){#applicationView>.hero h1{font-size:27px}#applicationView .form-grid{grid-template-columns:1fr}.driver-options-body>.stats .stat{min-height:82px!important;padding:12px 11px 11px 44px!important}.driver-options-body>.stats .stat:before{left:10px;top:11px}.driver-options-body .card-heading>.muted{display:none}.driver-settings-body{gap:9px}.driver-info-grid>div{padding:10px}.driver-info-grid dd{font-size:12px}}
+@media(prefers-reduced-motion:reduce){#authView .primary,#applicationView .primary{transition:none}}
+</style>
 </head>
 <body>
   <header class="topbar">
@@ -485,8 +588,8 @@ body.driver-map-mode #driverView{height:100dvh!important}
   <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
   <script>try{if(window.maplibregl&&maplibregl.setRTLTextPlugin&&(!maplibregl.getRTLTextPluginStatus||maplibregl.getRTLTextPluginStatus()==="unavailable")){maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",true).catch(()=>{});}}catch(e){}</script>
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
-  <script type="module" src="./driver.js?v=53"></script>
-  <script src="./pwa.js?v=53"></script>
+  <script type="module" src="./driver.js?v=56"></script>
+  <script src="./pwa.js?v=56"></script>
 <script id="phase20-driver-map-first-js">
 window.addEventListener("DOMContentLoaded",()=>{
   const view=document.getElementById("driverView");
