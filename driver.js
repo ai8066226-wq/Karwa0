@@ -155,6 +155,10 @@ const state = {
   orders: [],
   topupRequests: [],
   topupUnsubscribe: null,
+  topupSnapshotReady: false,
+  notifications: [],
+  notificationsLoadedFor: null,
+  deviceNotificationsEnabled: false,
   userUnsubscribe: null,
   viewUnsubscribes: [],
   locationWatchId: null,
@@ -203,7 +207,20 @@ function renderDriverTopupRequests(){
 }
 function subscribeDriverTopups(user){
   state.topupUnsubscribe?.();
-  state.topupUnsubscribe=onSnapshot(query(collection(db,"topupRequests"),where("userId","==",user.uid)),snapshot=>{state.topupRequests=snapshot.docs.map(d=>({...d.data(),firestoreId:d.id})).sort((a,b)=>Number(b.createdAt?.seconds||0)-Number(a.createdAt?.seconds||0));renderDriverTopupRequests();},error=>console.warn("تعذر تحميل طلبات شحن الكابتن",error));
+  state.topupSnapshotReady=false;
+  state.topupUnsubscribe=onSnapshot(query(collection(db,"topupRequests"),where("userId","==",user.uid)),snapshot=>{
+    const previous=new Map(state.topupRequests.map(item=>[item.firestoreId,item]));
+    const incoming=snapshot.docs.map(d=>({...d.data(),firestoreId:d.id})).sort((a,b)=>Number(b.createdAt?.seconds||0)-Number(a.createdAt?.seconds||0));
+    if(state.topupSnapshotReady)incoming.forEach(item=>{
+      const old=previous.get(item.firestoreId);
+      if(!old||old.status===item.status||!["approved","rejected"].includes(item.status))return;
+      const approved=item.status==="approved";
+      addDriverNotification({id:`topup:${item.firestoreId}:${item.status}`,type:"wallet",title:approved?"تم اعتماد شحن الرصيد":"تم رفض طلب الشحن",message:approved?`أضيف ${money(item.amount)} إلى رصيدك.`:`طلب شحن بقيمة ${money(item.amount)} يحتاج إلى مراجعة التفاصيل.`,target:"wallet"});
+    });
+    state.topupRequests=incoming;
+    state.topupSnapshotReady=true;
+    renderDriverTopupRequests();
+  },error=>console.warn("تعذر تحميل طلبات شحن الكابتن",error));
 }
 onSnapshot(doc(db,"appSettings","pricing"),snapshot=>{driverPricingSettings=snapshot.exists()?snapshot.data():{};renderDriverWallet();},error=>console.warn("تعذر تحميل إعدادات الرسوم",error));
 
@@ -218,6 +235,79 @@ function toast(message) {
   element.classList.add("show");
   clearTimeout(window.driverToast);
   window.driverToast = setTimeout(() => element.classList.remove("show"), 2800);
+}
+
+const DRIVER_NOTIFICATION_TYPES = new Set(["order", "trip", "warning", "wallet", "system"]);
+function driverNotificationStorageKey(){return `karwa.driver.notifications.${state.user?.uid||"guest"}`;}
+function loadDriverNotifications(){
+  const uid=state.user?.uid;if(!uid||state.notificationsLoadedFor===uid)return;
+  state.notificationsLoadedFor=uid;
+  try{
+    const saved=JSON.parse(localStorage.getItem(driverNotificationStorageKey())||"[]");
+    state.notifications=Array.isArray(saved)?saved.filter(item=>item&&item.id&&item.title).slice(0,50).map(item=>({id:String(item.id),type:DRIVER_NOTIFICATION_TYPES.has(item.type)?item.type:"system",title:String(item.title).slice(0,120),message:String(item.message||"").slice(0,320),target:String(item.target||""),createdAt:Number.isFinite(Number(item.createdAt))?Number(item.createdAt):Date.now(),read:item.read===true})):[];
+  }catch(_){state.notifications=[];}
+  renderDriverNotifications();
+}
+function saveDriverNotifications(){
+  if(!state.user)return;
+  try{localStorage.setItem(driverNotificationStorageKey(),JSON.stringify(state.notifications.slice(0,50)));}catch(_){}
+}
+function driverNotificationTime(value){
+  const date=new Date(Number(value)||Date.now());
+  return new Intl.DateTimeFormat("ar-IQ",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}).format(date);
+}
+function renderDriverNotifications(){
+  const list=byId("driverNotificationsList");if(!list)return;
+  const unread=state.notifications.filter(item=>!item.read).length;
+  const badge=byId("driverNotificationsBadge");
+  const toggle=byId("driverNotificationsToggle");
+  const summary=byId("driverNotificationsSummary");
+  const markAll=byId("driverNotificationsMarkAll");
+  if(badge){badge.textContent=unread>99?"99+":String(unread);badge.hidden=unread===0;}
+  toggle?.classList.toggle("has-unread",unread>0);
+  if(toggle)toggle.setAttribute("aria-label",unread?`إشعارات الكابتن، ${unread} غير مقروء`:"إشعارات الكابتن");
+  if(summary)summary.textContent=unread?`${unread} إشعار غير مقروء`:state.notifications.length?`${state.notifications.length} إشعار محفوظ`:"لا توجد إشعارات جديدة";
+  if(markAll)markAll.disabled=unread===0;
+  if(!state.notifications.length){
+    list.innerHTML='<div class="driver-notification-empty"><span aria-hidden="true">🔔</span><strong>لا توجد إشعارات</strong><small>ستظهر الطلبات الجديدة وتحديثات الرحلات وتنبيهات الإدارة هنا.</small></div>';
+    return;
+  }
+  const icons={order:"🚕",trip:"↗",warning:"!",wallet:"💳",system:"✓"};
+  list.innerHTML=state.notifications.map(item=>`<button type="button" class="driver-notification-item ${escapeHtml(item.type)} ${item.read?"":"unread"}" data-driver-notification-id="${escapeHtml(item.id)}"><span class="driver-notification-icon" aria-hidden="true">${icons[item.type]||icons.system}</span><span class="driver-notification-copy"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.message)}</span><time datetime="${new Date(item.createdAt).toISOString()}">${escapeHtml(driverNotificationTime(item.createdAt))}</time></span><i class="driver-notification-dot" aria-hidden="true"></i></button>`).join("");
+}
+function showDriverDeviceNotification(title,message){
+  if(!state.deviceNotificationsEnabled||!("Notification" in window)||Notification.permission!=="granted")return;
+  try{const notification=new Notification(title,{body:message,icon:"./karwa-icon.svg",badge:"./karwa-icon.svg",tag:`karwa-driver-${Date.now()}`});notification.onclick=()=>{window.focus();notification.close();};}catch(_){}
+  try{navigator.vibrate?.([170,80,170]);}catch(_){}
+}
+function addDriverNotification({id,type="system",title,message="",target="",device=true}){
+  if(!state.user||!id||state.notifications.some(item=>item.id===String(id)))return false;
+  state.notifications.unshift({id:String(id),type:DRIVER_NOTIFICATION_TYPES.has(type)?type:"system",title:String(title||"إشعار كروة").slice(0,120),message:String(message||"").slice(0,320),target:String(target||""),createdAt:Date.now(),read:false});
+  state.notifications=state.notifications.slice(0,50);
+  saveDriverNotifications();renderDriverNotifications();
+  if(device)showDriverDeviceNotification(String(title||"كروة"),String(message||"لديك تحديث جديد"));
+  return true;
+}
+function markDriverNotificationRead(id){
+  const item=state.notifications.find(notification=>notification.id===id);if(!item||item.read)return item;
+  item.read=true;saveDriverNotifications();renderDriverNotifications();return item;
+}
+function updateDriverNotificationSetting(){
+  const control=byId("driverNotificationSetting");
+  const message=byId("driverNotificationPermission");
+  if(control){control.classList.toggle("on",state.deviceNotificationsEnabled);control.setAttribute("aria-checked",String(state.deviceNotificationsEnabled));}
+  if(!message)return;
+  message.className="driver-notification-permission";
+  if(!("Notification" in window)){message.textContent="إشعارات الجهاز غير مدعومة هنا، لكن مركز إشعارات اللوحة سيبقى فعالًا.";message.classList.add("denied");return;}
+  if(Notification.permission==="denied"){message.textContent="حظر المتصفح إشعارات الجهاز. يمكنك السماح بها من إعدادات الموقع، وسيبقى مركز اللوحة فعالًا.";message.classList.add("denied");return;}
+  if(Notification.permission==="granted"&&state.deviceNotificationsEnabled){message.textContent="إشعارات الجهاز مفعلة أثناء فتح بوابة الكابتن.";message.classList.add("allowed");return;}
+  message.textContent=Notification.permission==="granted"?"إشعارات الجهاز متوقفة. مركز إشعارات اللوحة ما زال يعمل.":"فعّل الخيار ليطلب المتصفح إذن الإشعارات لأول مرة.";
+}
+function setDriverNotificationsOpen(open,restoreFocus=true){
+  const view=byId("driverView"),panel=byId("driverNotificationsPanel"),toggle=byId("driverNotificationsToggle");if(!view||!panel||!toggle)return;
+  if(open){setDriverSettingsOpen(false,false);view.querySelector(".driver-options-close")?.click();renderDriverNotifications();}
+  view.classList.toggle("driver-notifications-open",open);toggle.setAttribute("aria-expanded",String(open));panel.setAttribute("aria-hidden",String(!open));panel.inert=!open;
+  if(open)window.setTimeout(()=>byId("driverNotificationsClose")?.focus({preventScroll:true}),80);else if(restoreFocus)toggle.focus({preventScroll:true});
 }
 
 function mapIcon(type) {
@@ -467,7 +557,7 @@ function configureDirectRegistrationUI() {
 
 function showView(name) {
   document.body.classList.toggle("driver-map-mode", name === "driver");
-  if (name !== "driver") byId("driverView")?.classList.remove("driver-options-open", "driver-settings-open");
+  if (name !== "driver") byId("driverView")?.classList.remove("driver-options-open", "driver-settings-open", "driver-notifications-open");
   byId("authView").classList.toggle("hidden", name !== "auth");
   byId("deniedView").classList.toggle("hidden", name !== "denied");
   byId("blockedView").classList.toggle("hidden", name !== "blocked");
@@ -502,12 +592,13 @@ byId("logoutButton").addEventListener("click", async () => {
   toast("تم تسجيل الخروج");
 });
 
-function setDriverSettingsOpen(open) {
+function setDriverSettingsOpen(open, restoreFocus = true) {
   const view = byId("driverView");
   const panel = byId("driverSettingsPanel");
   const toggle = byId("driverSettingsToggle");
   if (!view || !panel || !toggle) return;
   if (open) {
+    setDriverNotificationsOpen(false, false);
     view.querySelector(".driver-options-close")?.click();
     updateDriverSettingsInfo();
     applyDriverMapPreferences();
@@ -517,7 +608,7 @@ function setDriverSettingsOpen(open) {
   panel.setAttribute("aria-hidden", String(!open));
   panel.inert = !open;
   if (open) window.setTimeout(() => byId("driverSettingsClose")?.focus({ preventScroll: true }), 80);
-  else toggle.focus({ preventScroll: true });
+  else if (restoreFocus) toggle.focus({ preventScroll: true });
 }
 
 byId("driverSettingsPanel").inert = true;
@@ -542,9 +633,50 @@ byId("driverSettingsOperations").addEventListener("click", () => {
   window.setTimeout(() => byId("driverOptionsToggle")?.click(), 120);
 });
 byId("driverSettingsLogout").addEventListener("click", () => byId("logoutButton").click());
+byId("driverNotificationsPanel").inert = true;
+byId("driverNotificationsToggle").addEventListener("click", () => setDriverNotificationsOpen(true));
+byId("driverNotificationsClose").addEventListener("click", () => setDriverNotificationsOpen(false));
+byId("driverNotificationsScrim").addEventListener("click", () => setDriverNotificationsOpen(false));
+byId("driverNotificationsMarkAll").addEventListener("click", () => {
+  state.notifications.forEach(item => { item.read = true; });
+  saveDriverNotifications();renderDriverNotifications();toast("تم تحديد جميع الإشعارات كمقروءة");
+});
+byId("driverNotificationsList").addEventListener("click", event => {
+  const button=event.target.closest("[data-driver-notification-id]");if(!button)return;
+  const item=markDriverNotificationRead(button.dataset.driverNotificationId);if(!item)return;
+  setDriverNotificationsOpen(false,false);
+  if(item.target==="wallet"){
+    setDriverSettingsOpen(true,false);
+    window.setTimeout(()=>byId("driverSettingsWallet")?.scrollIntoView({behavior:"smooth",block:"start"}),260);
+    return;
+  }
+  if(["available","active","warning"].includes(item.target)){
+    window.setTimeout(()=>{
+      byId("driverOptionsToggle")?.click();
+      window.setTimeout(()=>byId(item.target==="available"?"availableOrders":item.target==="active"?"myOrders":"driverWarningNotice")?.scrollIntoView({behavior:"smooth",block:"start"}),280);
+    },100);
+  }
+});
+byId("driverNotificationSetting").addEventListener("click",async()=>{
+  let next=!state.deviceNotificationsEnabled;
+  let activationFailed=false;
+  if(next){
+    if(!("Notification" in window)){toast("إشعارات الجهاز غير مدعومة في هذا المتصفح");next=false;activationFailed=true;}
+    else if(Notification.permission!=="granted"){
+      try{next=(await Notification.requestPermission())==="granted";}catch(_){next=false;}
+      if(!next){activationFailed=true;toast("لم يتم السماح بإشعارات الجهاز، وسيبقى مركز إشعارات اللوحة فعالًا");}
+    }
+  }
+  state.deviceNotificationsEnabled=next;updateDriverNotificationSetting();
+  if(state.user){try{await setDoc(doc(db,"users",state.user.uid),{notifications:next,updatedAt:serverTimestamp()},{merge:true});if(!activationFailed)toast(next?"تم تفعيل إشعارات الجهاز":"تم إيقاف إشعارات الجهاز");}catch(error){console.error(error);toast("تعذر حفظ إعداد الإشعارات");}}
+});
+document.addEventListener("click",event=>{if(event.target.closest(".driver-options-toggle"))setDriverNotificationsOpen(false,false);},true);
 document.addEventListener("keydown", event => {
   if (event.key === "Escape" && byId("driverView")?.classList.contains("driver-settings-open")) {
     setDriverSettingsOpen(false);
+  }
+  if (event.key === "Escape" && byId("driverView")?.classList.contains("driver-notifications-open")) {
+    setDriverNotificationsOpen(false);
   }
 });
 
@@ -836,6 +968,7 @@ function renderReputation() {
   if (warnings > 0 && state.driverData?.warningMessage) {
     notice.className = "notice danger driver-alert";
     notice.innerHTML = `<strong>تنبيه من الإدارة</strong><span>${escapeHtml(state.driverData.warningMessage)}</span>`;
+    addDriverNotification({id:`admin-warning:${warnings}:${state.driverData.warningMessage}`,type:"warning",title:"تنبيه جديد من الإدارة",message:state.driverData.warningMessage,target:"warning"});
   } else {
     notice.className = "notice hidden";
     notice.textContent = "";
@@ -846,6 +979,8 @@ function renderReputation() {
 function openDriverDashboard() {
   clearViewListeners();
   showView("driver");
+  loadDriverNotifications();
+  updateDriverNotificationSetting();
   initializeDriverMap();
   startDriverCommunityLayers();
   window.setTimeout(() => state.map?.invalidateSize(), 120);
@@ -898,12 +1033,19 @@ function openDriverDashboard() {
       : query(collection(db, "orders"), where("type", "in", ["parcel", "food", "serviceDelivery"]));
     ordersUnsubscribe = onSnapshot(ordersQuery, snapshot => {
       const incoming = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
+      const previousOrders = new Map(state.orders.map(order => [order.firestoreId, order]));
       if (ordersSnapshotReady && state.driverData?.online) {
-        const fresh = incoming.find(o => !knownOrderIds.has(o.firestoreId) && orderMeetsDriverDispatchConditions(o));
-        if (fresh) {
-          toast(fresh.type === "ride" ? "طلب تكسي جديد متاح" : "طلب توصيل جديد متاح");
-          if ("Notification" in window && Notification.permission === "granted") new Notification("كروة — طلب جديد", { body: fresh.title || "لديك طلب متاح", icon: "./karwa-icon.svg" });
-        }
+        const freshOrders = incoming.filter(o => !knownOrderIds.has(o.firestoreId) && orderMeetsDriverDispatchConditions(o));
+        freshOrders.forEach(fresh => addDriverNotification({id:`new-order:${fresh.firestoreId}`,type:"order",title:fresh.type==="ride"?"طلب تكسي جديد":"طلب توصيل جديد",message:`${fresh.title||"لديك طلب متاح"}${fresh.route?` • ${fresh.route}`:""}`,target:"available"}));
+        if(freshOrders.length)toast(freshOrders.length===1?(freshOrders[0].type==="ride"?"طلب تكسي جديد متاح":"طلب توصيل جديد متاح"):`لديك ${freshOrders.length} طلبات جديدة متاحة`);
+      }
+      if(ordersSnapshotReady){
+        incoming.forEach(order=>{
+          const previous=previousOrders.get(order.firestoreId);
+          const nextStatus=Number(order.statusIndex||0);
+          if(!previous||order.driverId!==state.user?.uid||Number(previous.statusIndex||0)===nextStatus)return;
+          addDriverNotification({id:`trip-status:${order.firestoreId}:${nextStatus}`,type:"trip",title:"تحديث حالة الرحلة",message:`${order.title||"رحلتك الحالية"} • ${driverStatusLabel(order,nextStatus)}`,target:nextStatus>=4?"":"active"});
+        });
       }
       knownOrderIds = new Set(incoming.map(o=>o.firestoreId));
       ordersSnapshotReady = true;
@@ -1072,6 +1214,12 @@ onAuthStateChanged(auth, user => {
   if (!user) {
     state.userData = null;
     state.driverData = null;
+    state.notifications = [];
+    state.notificationsLoadedFor = null;
+    state.deviceNotificationsEnabled = false;
+    state.topupSnapshotReady = false;
+    renderDriverNotifications();
+    updateDriverNotificationSetting();
     if (state.directRegistration) {
       fillApplication();
       showView("application");
@@ -1092,6 +1240,8 @@ onAuthStateChanged(auth, user => {
       return;
     }
     state.userData = snapshot.data();
+    state.deviceNotificationsEnabled = state.userData.notifications !== false && "Notification" in window && Notification.permission === "granted";
+    updateDriverNotificationSetting();
     renderDriverWallet();
     if (!state.topupUnsubscribe) subscribeDriverTopups(user);
     if (state.userData.role === "driver") {

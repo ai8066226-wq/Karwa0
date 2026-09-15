@@ -577,6 +577,13 @@ const requestStatusLabels = {
 function renderProviderRequests(requests) {
   const pending = requests.filter(request => request.status === "pending").length;
   byId("requestsMetric").textContent = requests.length;
+  const metricCard = byId("requestsMetricCard");
+  const alertCount = byId("requestAlertCount");
+  if (metricCard) metricCard.classList.toggle("has-alert", pending > 0);
+  if (alertCount) {
+    alertCount.textContent = pending > 99 ? "99+" : String(pending);
+    alertCount.hidden = pending === 0;
+  }
   byId("requestsStatus").textContent = pending ? `${pending} جديد` : "مباشر";
   byId("requestsStatus").className = pending ? "status" : "status ok";
   byId("providerRequestsList").innerHTML = requests.length
@@ -597,7 +604,8 @@ function renderProviderRequests(requests) {
         else if (deliveryStatus === "awaitingCaptain") deliveryText = `🚚 تم إرسال التوصيل إلى كباتن التوصيل المطابقين ضمن 10 كم • ${money(request.deliveryFee)}`;
         else if (deliveryStatus === "notRequested") deliveryText = "🏪 اختار العميل الاستلام من النشاط";
         else if (deliveryStatus === "notAvailable") deliveryText = "🏪 التوصيل غير متاح لهذه الخدمة";
-        return `<article class="request-card">
+        const requestVisualStatus = ["accepted", "completed", "rejected", "cancelled"].includes(status) ? status : "pending";
+        return `<article class="request-card request-${requestVisualStatus}">
           <div class="request-card-head"><div><small>${escapeHtml(request.providerName || "نشاطك")}</small><h3>${escapeHtml(request.itemName || "طلب خدمة")}</h3></div><span class="status ${status === "completed" || status === "accepted" ? "ok" : status === "rejected" || status === "cancelled" ? "bad" : ""}">${escapeHtml(requestStatusLabels[status] || status)}</span></div>
           <p>${escapeHtml(request.requestText || "بدون تفاصيل إضافية")}</p>
           <div class="request-meta"><span>العميل: ${escapeHtml(request.customerName || "عميل كروة")}</span><span>الكمية: ${Number(request.quantity || 1).toLocaleString("ar-IQ")} ${escapeHtml(itemUnitLabels[request.itemUnit] || itemUnitLabels.item)}</span><span>سعر الوحدة: ${money(request.unitPrice || request.itemPrice)}</span><span>قيمة الحاجة: ${money(request.subtotal || request.itemPrice)}</span></div>

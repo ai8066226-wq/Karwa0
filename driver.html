@@ -278,6 +278,25 @@ body.driver-map-mode{--navy:var(--captain-ink);--navy-2:var(--captain-navy);--or
 @media(max-width:430px){#applicationView>.hero h1{font-size:27px}#applicationView .form-grid{grid-template-columns:1fr}.driver-options-body>.stats .stat{min-height:82px!important;padding:12px 11px 11px 44px!important}.driver-options-body>.stats .stat:before{left:10px;top:11px}.driver-options-body .card-heading>.muted{display:none}.driver-settings-body{gap:9px}.driver-info-grid>div{padding:10px}.driver-info-grid dd{font-size:12px}}
 @media(prefers-reduced-motion:reduce){#authView .primary,#applicationView .primary{transition:none}}
 </style>
+<style id="phase58-driver-notification-center">
+/* مركز إشعارات الكابتن */
+.driver-notification-toggle{position:absolute;z-index:920;top:max(16px,env(safe-area-inset-top));right:84px;width:56px;height:56px;display:grid;place-items:center;border:2px solid #fff;border-radius:19px;color:#fff;background:linear-gradient(145deg,#123a52,#087b75);box-shadow:0 13px 36px rgba(13,47,70,.3);font-size:22px;line-height:1;cursor:pointer;transition:transform .2s ease,opacity .2s ease}
+.driver-notification-toggle:hover{transform:translateY(-2px)}.driver-notification-toggle:focus-visible{outline:3px solid #8fe4da;outline-offset:3px}.driver-notification-toggle .bell{display:block;transform-origin:50% 10%}.driver-notification-toggle.has-unread .bell{animation:driverBellRing 1.8s ease-in-out infinite}
+.driver-notification-badge{position:absolute;top:-7px;left:-7px;min-width:25px;height:25px;padding:0 6px;display:grid;place-items:center;border:3px solid #fff;border-radius:999px;color:#fff;background:#e14d31;box-shadow:0 6px 16px rgba(184,55,31,.3);font-size:9px;font-weight:900}
+@keyframes driverBellRing{0%,72%,100%{transform:rotate(0)}78%{transform:rotate(12deg)}84%{transform:rotate(-11deg)}90%{transform:rotate(7deg)}96%{transform:rotate(-4deg)}}
+#driverView.driver-settings-open .driver-notification-toggle,#driverView.driver-options-open .driver-notification-toggle,#driverView.driver-notifications-open .driver-notification-toggle,#driverView.driver-notifications-open .driver-settings-toggle,#driverView.driver-notifications-open .driver-options-toggle,#driverView.driver-notifications-open .driver-report-quick{opacity:0;pointer-events:none}
+.driver-notifications-scrim{position:absolute;z-index:965;inset:0;background:rgba(5,22,35,.48);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);opacity:0;pointer-events:none;transition:opacity .25s ease}
+#driverView.driver-notifications-open .driver-notifications-scrim{opacity:1;pointer-events:auto}
+.driver-notifications-panel{position:absolute;z-index:990;top:max(10px,env(safe-area-inset-top));right:10px;bottom:max(10px,env(safe-area-inset-bottom));width:min(430px,calc(100% - 20px));display:flex;flex-direction:column;color:#10283b;border:1px solid rgba(255,255,255,.92);border-radius:30px;background:rgba(245,249,250,.988);box-shadow:0 30px 90px rgba(5,22,35,.44);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);opacity:0;pointer-events:none;transform:translateX(calc(100% + 34px));transition:transform .3s cubic-bezier(.22,.8,.25,1),opacity .22s ease;overflow:hidden}
+#driverView.driver-notifications-open .driver-notifications-panel{opacity:1;pointer-events:auto;transform:translateX(0)}
+.driver-notifications-header{min-height:73px;padding:14px 17px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid #d8e5e8;background:linear-gradient(135deg,#fff,#f2f9f8)}.driver-notifications-header>div{display:grid;gap:2px}.driver-notifications-header small{color:#087b75;font-size:10px;font-weight:900}.driver-notifications-header strong{font-size:18px}.driver-notifications-close{width:43px;height:43px;display:grid;place-items:center;flex:0 0 auto;border:1px solid #cfdee1;border-radius:14px;color:#10283b;background:#fff;box-shadow:0 6px 16px rgba(13,36,56,.07);font-size:26px;line-height:1;cursor:pointer}
+.driver-notifications-toolbar{padding:10px 15px;display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid #dfe8ea;background:#fff}.driver-notifications-toolbar span{color:#687e8d;font-size:11px;font-weight:800}.driver-notifications-mark{padding:7px 10px;border:1px solid #c9e2df;border-radius:10px;color:#08736d;background:#eaf8f6;font-size:10px;font-weight:900;cursor:pointer}.driver-notifications-mark:disabled{opacity:.5;cursor:default}
+.driver-notifications-list{padding:13px;display:grid;align-content:start;gap:9px;overflow:auto;overscroll-behavior:contain}.driver-notification-empty{padding:44px 22px;display:grid;place-items:center;gap:9px;color:#697e8d;text-align:center}.driver-notification-empty span{width:58px;height:58px;display:grid;place-items:center;border-radius:20px;color:#08736d;background:#e0f5f2;font-size:27px}.driver-notification-empty strong{color:#29485b;font-size:15px}.driver-notification-empty small{font-size:11px;line-height:1.7}
+.driver-notification-item{position:relative;width:100%;padding:13px;display:grid;grid-template-columns:43px minmax(0,1fr) 10px;gap:11px;align-items:start;overflow:hidden;border:1px solid #d8e5e8;border-radius:17px;color:#10283b;background:#fff;text-align:right;cursor:pointer;transition:transform .18s,border-color .18s,box-shadow .18s}.driver-notification-item:hover{transform:translateY(-1px);border-color:#abd8d3;box-shadow:0 9px 23px rgba(13,36,56,.07)}.driver-notification-item.unread{border-color:#b8ded9;background:linear-gradient(145deg,#f0fbf9,#fff)}.driver-notification-item.unread:before{content:"";position:absolute;right:0;top:0;width:4px;height:100%;background:#087b75}.driver-notification-icon{width:43px;height:43px;display:grid;place-items:center;border-radius:14px;color:#076a65;background:#dff5f2;font-size:20px}.driver-notification-item.order .driver-notification-icon{color:#8c6000;background:#fff1c8}.driver-notification-item.warning .driver-notification-icon{color:#ad3d29;background:#ffebe6}.driver-notification-item.wallet .driver-notification-icon{color:#285f91;background:#e7f2fc}.driver-notification-copy{min-width:0;display:grid;gap:4px}.driver-notification-copy strong{overflow:hidden;font-size:13px;text-overflow:ellipsis;white-space:nowrap}.driver-notification-copy span{display:-webkit-box;overflow:hidden;color:#587080;font-size:10px;line-height:1.65;-webkit-box-orient:vertical;-webkit-line-clamp:2}.driver-notification-copy time{color:#80919e;font-size:9px}.driver-notification-dot{width:8px;height:8px;margin-top:7px;border-radius:50%;background:transparent}.driver-notification-item.unread .driver-notification-dot{background:#e14d31;box-shadow:0 0 0 4px rgba(225,77,49,.1)}
+.driver-notification-setting{display:grid;gap:10px}.driver-notification-permission{margin:0;color:#6c8090;font-size:10px;line-height:1.65}.driver-notification-permission.allowed{color:#08735f}.driver-notification-permission.denied{color:#a73445}.driver-notification-setting .driver-setting-row{border:0}
+@media(max-width:760px){.driver-notification-toggle{top:max(10px,env(safe-area-inset-top));right:70px;width:51px;height:51px;border-radius:17px;font-size:20px}.driver-notifications-panel{top:max(6px,env(safe-area-inset-top));right:6px;bottom:max(6px,env(safe-area-inset-bottom));width:calc(100% - 12px);border-radius:25px}.driver-notifications-header{min-height:66px;padding:12px 14px}.driver-notifications-list{padding:10px}.driver-notification-item{padding:12px;grid-template-columns:40px minmax(0,1fr) 8px}.driver-notification-icon{width:40px;height:40px;border-radius:13px}}
+@media(prefers-reduced-motion:reduce){.driver-notification-toggle .bell{animation:none!important}.driver-notifications-scrim,.driver-notifications-panel,.driver-notification-item{transition:none}}
+</style>
 </head>
 <body>
   <header class="topbar">
@@ -505,6 +524,14 @@ body.driver-map-mode{--navy:var(--captain-ink);--navy-2:var(--captain-navy);--or
       </aside>
     </div>
 
+    <button type="button" class="driver-notification-toggle" id="driverNotificationsToggle" aria-controls="driverNotificationsPanel" aria-expanded="false" aria-label="إشعارات الكابتن" title="الإشعارات"><span class="bell" aria-hidden="true">🔔</span><b class="driver-notification-badge" id="driverNotificationsBadge" hidden>0</b></button>
+    <div class="driver-notifications-scrim" id="driverNotificationsScrim" aria-hidden="true"></div>
+    <aside class="driver-notifications-panel" id="driverNotificationsPanel" role="dialog" aria-modal="true" aria-label="مركز إشعارات الكابتن" aria-hidden="true">
+      <div class="driver-notifications-header"><div><small>كروة للكباتن</small><strong>مركز الإشعارات</strong></div><button type="button" class="driver-notifications-close" id="driverNotificationsClose" aria-label="إغلاق الإشعارات">×</button></div>
+      <div class="driver-notifications-toolbar"><span id="driverNotificationsSummary">لا توجد إشعارات جديدة</span><button type="button" class="driver-notifications-mark" id="driverNotificationsMarkAll">تحديد الكل كمقروء</button></div>
+      <div class="driver-notifications-list" id="driverNotificationsList" aria-live="polite"><div class="driver-notification-empty"><span aria-hidden="true">🔔</span><strong>لا توجد إشعارات</strong><small>ستظهر الطلبات الجديدة وتحديثات الرحلات وتنبيهات الإدارة هنا.</small></div></div>
+    </aside>
+
     <button type="button" class="driver-settings-toggle" id="driverSettingsToggle" aria-controls="driverSettingsPanel" aria-expanded="false" aria-label="إعدادات الكابتن" title="إعدادات الكابتن"><span aria-hidden="true">⚙</span></button>
     <div class="driver-settings-scrim" id="driverSettingsScrim" aria-hidden="true"></div>
     <aside class="driver-settings-panel" id="driverSettingsPanel" role="dialog" aria-modal="true" aria-label="إعدادات ومعلومات الكابتن" aria-hidden="true">
@@ -574,6 +601,11 @@ body.driver-map-mode{--navy:var(--captain-ink);--navy-2:var(--captain-navy);--or
         <section class="driver-settings-group" aria-label="تفضيلات القيادة">
           <div class="driver-setting-row"><div><strong>متابعة موقعي تلقائيًا</strong><small>تبقى الخريطة مركزة على موقع المركبة</small></div><button type="button" class="driver-pref-switch on" id="driverAutoFollowSetting" role="switch" aria-checked="true" aria-label="متابعة الموقع تلقائيًا"><span></span></button></div>
         </section>
+        <section class="driver-settings-group driver-notification-setting" aria-labelledby="driverNotificationSettingTitle">
+          <h3 id="driverNotificationSettingTitle">الإشعارات</h3>
+          <div class="driver-setting-row"><div><strong>إشعارات الجهاز</strong><small>تنبيه مرئي واهتزاز عند وصول طلب جديد أثناء فتح البوابة</small></div><button type="button" class="driver-pref-switch on" id="driverNotificationSetting" role="switch" aria-checked="true" aria-label="تفعيل إشعارات الجهاز"><span></span></button></div>
+          <p class="driver-notification-permission" id="driverNotificationPermission">سيطلب المتصفح الإذن عند التفعيل لأول مرة.</p>
+        </section>
         <div class="driver-settings-actions">
           <button type="button" class="driver-settings-action primary" id="driverSettingsOperations">الطلبات وأدوات العمل</button>
           
@@ -588,8 +620,8 @@ body.driver-map-mode{--navy:var(--captain-ink);--navy-2:var(--captain-navy);--or
   <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
   <script>try{if(window.maplibregl&&maplibregl.setRTLTextPlugin&&(!maplibregl.getRTLTextPluginStatus||maplibregl.getRTLTextPluginStatus()==="unavailable")){maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",true).catch(()=>{});}}catch(e){}</script>
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
-  <script type="module" src="./driver.js?v=56"></script>
-  <script src="./pwa.js?v=56"></script>
+  <script type="module" src="./driver.js?v=58"></script>
+  <script src="./pwa.js?v=58"></script>
 <script id="phase20-driver-map-first-js">
 window.addEventListener("DOMContentLoaded",()=>{
   const view=document.getElementById("driverView");
