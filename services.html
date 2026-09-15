@@ -86,7 +86,19 @@
 
   <main class="shell hidden" id="providerView">
     <section class="hero"><div><span class="eyebrow">مساحة مزود الخدمة</span><h1>أهلًا، <span id="providerHeroName">شريك كروة</span></h1><p>حدّث ملف نشاطك والخدمات التي يراها العملاء من مكان واحد.</p></div><span class="badge">✓ حساب معتمد</span></section>
-    <section class="metrics"><div class="metric"><small>حالة الظهور</small><strong id="activeMetric">نشط</strong></div><div class="metric"><small>تصنيف النشاط</small><strong id="categoryMetric">—</strong></div><div class="metric"><small>الخدمات والمنتجات</small><strong id="itemsMetric">0</strong></div><div class="metric"><small>طلبات العملاء</small><strong id="requestsMetric">0</strong></div><div class="metric"><small>حالة الاعتماد</small><strong style="color:var(--ok)">معتمد ✓</strong></div></section>
+    <section class="metrics"><div class="metric"><small>حالة الظهور</small><strong id="activeMetric">نشط</strong></div><div class="metric"><small>تصنيف النشاط</small><strong id="categoryMetric">—</strong></div><div class="metric"><small>الخدمات والمنتجات</small><strong id="itemsMetric">0</strong></div><div class="metric"><small>طلبات العملاء</small><strong id="requestsMetric">0</strong></div><div class="metric"><small>الرصيد المتاح</small><strong id="serviceWalletBalance">0 د.ع</strong></div><div class="metric"><small>حالة الاعتماد</small><strong style="color:var(--ok)">معتمد ✓</strong></div></section>
+    <section class="card card-body" style="margin-bottom:18px">
+      <div class="card-head"><div><h2>محفظة مزود الخدمة</h2><p class="muted">يُخصم رسم النشر مرة واحدة عند نشر النشاط لأول مرة، ثم الرسم الثابت عند قبول كل طلب.</p></div><span class="status ok" id="serviceBonusStatus">الرصيد المشحون</span></div>
+      <div class="form-grid">
+        <div class="field"><label>وجهة التحويل</label><div><b id="serviceTopupTransferId">أضف معرف التحويل من الإدارة</b><small style="display:block" id="serviceTopupCardHolder">إدارة كروة</small></div></div>
+        <div class="field"><label>الرسوم الحالية</label><div><b id="serviceFeeSummary">نشر 1,000 د.ع • طلب 250 د.ع</b><small style="display:block">يجب توفر الرصيد قبل تنفيذ العملية.</small></div></div>
+      </div>
+      <form id="serviceTopupForm" class="form-grid" style="margin-top:12px">
+        <div class="field"><label for="serviceTopupAmount">مبلغ الشحن (د.ع)</label><input id="serviceTopupAmount" type="number" min="1000" max="1000000" step="250" placeholder="10000" required></div>
+        <div class="field"><label for="serviceTopupReference">مرجع التحويل</label><input id="serviceTopupReference" maxlength="80" placeholder="رقم العملية" required></div>
+        <div class="field full"><button class="button primary" id="serviceTopupSubmit" type="submit">إرسال طلب الشحن إلى الإدارة</button></div>
+      </form>
+    </section>
     <div class="content-grid">
       <section class="card card-body"><div class="card-head"><div><h2>إدارة ملف الخدمة</h2><p class="muted">احرص على إبقاء بيانات التواصل والخدمات محدثة.</p></div><span class="status ok">محمي ومعتمد</span></div>
         <form id="providerForm"><div class="form-grid"><div class="field"><label for="pBusinessName">اسم النشاط</label><input id="pBusinessName" maxlength="80" required></div><div class="field"><label for="pCategory">تصنيف الخدمة</label><input id="pCategory" disabled></div><div class="field"><label for="pPhone">رقم الهاتف</label><input id="pPhone" inputmode="tel" maxlength="20" required></div><div class="field"><label for="pCity">المدينة</label><input id="pCity" maxlength="50" required></div><div class="field full"><label for="pAddress">العنوان</label><input id="pAddress" maxlength="160" required></div><div class="field full"><label for="pDescription">وصف النشاط</label><textarea id="pDescription" maxlength="500"></textarea></div><div class="field full"><label>الموقع الجغرافي</label><button class="button secondary" id="pGpsBtn" type="button">📍 تحديث موقعي الحالي</button><small id="pGpsStatus">لم يتم تحديد الموقع</small></div><div class="field full"><div class="toggle-row"><div><b>إظهار النشاط للعملاء</b><small style="display:block;margin-top:4px">يمكنك إيقاف الظهور مؤقتًا دون فقدان بياناتك.</small></div><label class="toggle"><input id="pActive" type="checkbox" checked><span></span></label></div></div></div>
@@ -112,7 +124,7 @@
 
   <section class="shell hidden" id="deniedView"><div class="card auth-card" style="max-width:520px;margin:8vh auto;text-align:center"><div style="font-size:44px">🔐</div><h1>هذه البوابة مخصصة لمزودي الخدمات</h1><p class="muted" id="deniedText">نوع الحساب الحالي لا يملك صلاحية فتح هذه الصفحة.</p><button class="button danger wide" id="deniedLogout" type="button">تسجيل الخروج</button></div></section>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./services.js?v=49"></script>
-  <script src="./pwa.js?v=49"></script>
+  <script type="module" src="./services.js?v=51"></script>
+  <script src="./pwa.js?v=51"></script>
 </body>
 </html>

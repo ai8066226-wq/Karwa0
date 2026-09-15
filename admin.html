@@ -79,7 +79,7 @@
       <div class="stat"><small>رحلات ملغاة</small><strong id="cancelledTripsCount">0</strong></div>
       <div class="stat"><small>كباتن متصلون</small><strong id="onlineDriversCount">0</strong></div>
       <div class="stat"><small>إجمالي المبيعات</small><strong id="grossRevenue">0 د.ع</strong></div>
-      <div class="stat"><small>عمولة كروة</small><strong id="commissionRevenue">0 د.ع</strong></div>
+      <div class="stat"><small>رسوم كروة الثابتة</small><strong id="commissionRevenue">0 د.ع</strong></div>
       <div class="stat"><small>أرباح الكباتن</small><strong id="driversPayout">0 د.ع</strong></div>
     </section>
 
@@ -87,26 +87,30 @@
       <section class="admin-main-column">
         <div class="section-title compact"><div><small>الإدارة اليومية</small><h2>الخدمات والتشغيل والكباتن</h2></div></div>
         <div class="card admin-panel">
-          <div class="card-heading"><h2>التسعير والعمولات والشحن</h2><span class="status-chip approved">تحكم مباشر</span></div>
-          <p class="muted">حدد عمولة المنصة لكل نوع خدمة ولكل فئة نشاط، واضبط بيانات التحويل المحلي وكود الدعوات.</p>
+          <div class="card-heading"><h2>التسعير والرسوم والشحن</h2><span class="status-chip approved">تحكم مباشر</span></div>
+          <p class="muted">حدد تسعيرة الكيلومتر والرسوم الثابتة التي تُخصم من محافظ المشتركين. لا توجد عمولة نسبية على قيمة الطلب.</p>
           <form id="pricingSettingsForm" class="admin-settings-form">
-            <h3>عمولات أنواع الطلبات</h3>
+            <h3>تسعيرة التكسي لكل كيلومتر</h3>
             <div class="admin-settings-grid">
-              <label>تكسي %<input id="commissionRide" type="number" min="0" max="50" step="0.5" value="15"></label>
-              <label>توصيل أغراض %<input id="commissionParcel" type="number" min="0" max="50" step="0.5" value="15"></label>
-              <label>طعام %<input id="commissionFood" type="number" min="0" max="50" step="0.5" value="15"></label>
-              <label>توصيل خدمات %<input id="commissionServiceDelivery" type="number" min="0" max="50" step="0.5" value="15"></label>
+              <label>اقتصادي / كم (د.ع)<input id="ridePerKmEconomy" type="number" min="0" max="10000" step="50" value="650"></label>
+              <label>تكسي / كم (د.ع)<input id="ridePerKmTaxi" type="number" min="0" max="10000" step="50" value="800"></label>
+              <label>عائلي / كم (د.ع)<input id="ridePerKmFamily" type="number" min="0" max="10000" step="50" value="980"></label>
             </div>
-            <h3>عمولات فئات الخدمات</h3>
+            <h3>رسوم كروة الثابتة</h3>
             <div class="admin-settings-grid">
-              <label>مطاعم %<input id="commissionRestaurant" type="number" min="0" max="50" step="0.5" value="15"></label>
-              <label>بقالة %<input id="commissionGrocery" type="number" min="0" max="50" step="0.5" value="15"></label>
-              <label>تسوق %<input id="commissionRetail" type="number" min="0" max="50" step="0.5" value="15"></label>
-              <label>صيانة %<input id="commissionMaintenance" type="number" min="0" max="50" step="0.5" value="15"></label>
-              <label>منزل %<input id="commissionHome" type="number" min="0" max="50" step="0.5" value="15"></label>
-              <label>صحة %<input id="commissionHealth" type="number" min="0" max="50" step="0.5" value="15"></label>
-              <label>أخرى %<input id="commissionOther" type="number" min="0" max="50" step="0.5" value="15"></label>
+              <label>رسم نشر النشاط (د.ع)<input id="publishFee" type="number" min="0" max="100000" step="250" value="1000"></label>
+              <label>على العميل لكل طلب (د.ع)<input id="customerOrderFee" type="number" min="0" max="100000" step="250" value="250"></label>
+              <label>على صاحب الخدمة لكل طلب (د.ع)<input id="providerOrderFee" type="number" min="0" max="100000" step="250" value="250"></label>
+              <label>على الكابتن عند قبول الطلب (د.ع)<input id="captainOrderFee" type="number" min="0" max="100000" step="250" value="250"></label>
             </div>
+            <p class="muted">مثال: إذا كانت الرسوم 250 د.ع، يُخصم 250 من العميل عند إنشاء الطلب، و250 من صاحب المطعم/الخدمة عند قبول الطلب، و250 من الكابتن عند قبول التوصيل أو الرحلة.</p>
+            <h3>الرصيد المجاني لأول تسجيل</h3>
+            <div class="admin-settings-grid">
+              <label class="toggle-setting"><span>تفعيل الرصيد المجاني</span><input id="signupBonusEnabled" type="checkbox" checked></label>
+              <label>قيمة الرصيد المجاني (د.ع)<input id="signupBonusAmount" type="number" min="0" max="100000" step="250" value="1000"></label>
+              <label>مدة الصلاحية بالساعات<input id="signupBonusHours" type="number" min="1" max="168" step="1" value="24"></label>
+            </div>
+            <p class="muted">يُمنح مرة واحدة للحساب الجديد فقط. بعد انتهاء المدة لا يدخل الرصيد المجاني في الرصيد المتاح، بينما يبقى الرصيد المشحون محفوظًا.</p>
             <h3>Mastercard محلي والدعوات</h3>
             <div class="admin-settings-grid wide-fields">
               <label>اسم طريقة التحويل<input id="topupTransferLabel" maxlength="60" value="Mastercard محلي"></label>
@@ -122,7 +126,7 @@
 
         <div class="card admin-panel">
           <div class="card-heading"><h2>طلبات شحن الرصيد</h2><span class="status-chip pending" id="pendingTopupsBadge">0 بانتظار المراجعة</span></div>
-          <p class="muted">بعد التحقق من وصول التحويل، اضغط اعتماد. سيضاف نفس المبلغ إلى رصيد العميل مرة واحدة.</p>
+          <p class="muted">بعد التحقق من وصول التحويل، اضغط اعتماد. سيضاف نفس المبلغ إلى الرصيد المشحون مرة واحدة، ويظهر نوع الحساب: عميل أو كابتن أو خدمات أخرى.</p>
           <div class="orders" id="topupRequestsAdmin"></div>
         </div>
         <div class="card admin-panel">
@@ -167,7 +171,7 @@
   </main>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./admin.js?v=49"></script>
-  <script src="./pwa.js?v=49"></script>
+  <script type="module" src="./admin.js?v=51"></script>
+  <script src="./pwa.js?v=51"></script>
 </body>
 </html>

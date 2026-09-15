@@ -110,6 +110,8 @@ const state = {
   orders: [],
   activeOrder: null,
   balance: 0,
+  bonusBalance: 0,
+  bonusExpiresAt: null,
   name: "ضيف",
   notifications: true,
   unsubscribeOrders: null,
@@ -164,20 +166,22 @@ const state = {
 };
 
 const formatMoney = value => Number(value || 0).toLocaleString("ar-IQ") + " د.ع";
-const DEFAULT_COMMISSION_RATE = 0.15;
+const DEFAULT_PLATFORM_FEES = { customerOrderFee: 250, providerOrderFee: 250, captainOrderFee: 250, publishFee: 1000 };
 const vehiclePricing = {
-  "اقتصادي": { base: 1800, perKm: 650, perMin: 55, minimum: 3000, speedFactor: 1.08 },
-  "تكسي": { base: 2300, perKm: 800, perMin: 65, minimum: 4000, speedFactor: 1.00 },
-  "عائلي": { base: 3000, perKm: 980, perMin: 75, minimum: 5000, speedFactor: 1.05 }
+  "اقتصادي": { base: 1800, perKm: 650, perMin: 55, minimum: 3000, speedFactor: 1.08, perKmSetting: "ridePerKmEconomy" },
+  "تكسي": { base: 2300, perKm: 800, perMin: 65, minimum: 4000, speedFactor: 1.00, perKmSetting: "ridePerKmTaxi" },
+  "عائلي": { base: 3000, perKm: 980, perMin: 75, minimum: 5000, speedFactor: 1.05, perKmSetting: "ridePerKmFamily" }
 };
+function numericSetting(key,fallback,min=0,max=100000){const n=Number(state.appSettings?.[key]);return Math.max(min,Math.min(max,Number.isFinite(n)?n:fallback));}
+function fixedPlatformFee(key){return Math.round(numericSetting(key,DEFAULT_PLATFORM_FEES[key]??0,0,100000));}
+function vehiclePricingFor(vehicle){const base=vehiclePricing[vehicle]||vehiclePricing["اقتصادي"];return {...base,perKm:numericSetting(base.perKmSetting,base.perKm,0,10000)};}
+function timestampMillis(value){if(!value)return 0;if(typeof value.toMillis==="function")return value.toMillis();if(Number.isFinite(Number(value?.seconds)))return Number(value.seconds)*1000;const t=new Date(value).getTime();return Number.isFinite(t)?t:0;}
+function activeBonusAmount(data={}){const amount=Math.max(0,Number(data.bonusBalance||0));return amount>0&&timestampMillis(data.bonusExpiresAt)>Date.now()?amount:0;}
+function walletAvailable(data={balance:state.balance,bonusBalance:state.bonusBalance,bonusExpiresAt:state.bonusExpiresAt}){return Math.max(0,Number(data.balance||0))+activeBonusAmount(data);}
+function walletDebitPatch(data,amount){const fee=Math.max(0,Math.round(Number(amount||0)));const paid=Math.max(0,Number(data.balance||0));const bonus=activeBonusAmount(data);if(paid+bonus<fee)return null;const useBonus=Math.min(bonus,fee);const paidDebit=fee-useBonus;return {balance:paid-paidDebit,bonusBalance:Math.max(0,Number(data.bonusBalance||0)-useBonus),updatedAt:serverTimestamp()};}
+function applyWalletPatchToState(patch){if(!patch)return;state.balance=Number(patch.balance??state.balance);state.bonusBalance=Number(patch.bonusBalance??state.bonusBalance);renderBalance();}
+function signupBonusFields(settings=state.appSettings||{}){const enabled=settings.signupBonusEnabled!==false;const amount=enabled?Math.max(0,Math.round(Number(settings.signupBonusAmount??1000))):0;const hours=Math.max(1,Math.min(168,Math.round(Number(settings.signupBonusHours??24))));return {bonusBalance:amount,bonusExpiresAt:amount?new Date(Date.now()+hours*3600000):null,welcomeBonusGranted:amount>0,welcomeBonusEvaluated:true};}
 function haversineKm(a,b){const R=6371,toRad=v=>v*Math.PI/180;const dLat=toRad(b.latitude-a.latitude),dLon=toRad(b.longitude-a.longitude);const x=Math.sin(dLat/2)**2+Math.cos(toRad(a.latitude))*Math.cos(toRad(b.latitude))*Math.sin(dLon/2)**2;return 2*R*Math.asin(Math.sqrt(x));}
-function commissionRateFor(type, category="") {
-  const cfg=state.appSettings||{};
-  const categoryKey={restaurant:"commissionRestaurant",grocery:"commissionGrocery",retail:"commissionRetail",maintenance:"commissionMaintenance",home:"commissionHome",health:"commissionHealth",other:"commissionOther"}[category];
-  const typeKey={ride:"commissionRide",parcel:"commissionParcel",food:"commissionFood",serviceDelivery:"commissionServiceDelivery"}[type];
-  const raw=categoryKey && Number.isFinite(Number(cfg[categoryKey])) ? Number(cfg[categoryKey]) : Number(cfg[typeKey]);
-  return Math.min(.5,Math.max(0,Number.isFinite(raw)?raw:DEFAULT_COMMISSION_RATE));
-}
 function trafficProfile(km, mins) {
   if(!km || !mins) return {multiplier:1,label:"طبيعي",ratio:1};
   const freeFlow=Math.max(1,(km/42)*60);
@@ -188,7 +192,7 @@ function trafficProfile(km, mins) {
   return {multiplier:1.22,label:"ازدحام شديد",ratio};
 }
 function fareForVehicle(vehicle) {
-  const cfg=vehiclePricing[vehicle]||vehiclePricing["اقتصادي"];
+  const cfg=vehiclePricingFor(vehicle);
   const traffic=trafficProfile(state.routeDistanceKm,state.routeDurationMin);
   const adjustedMinutes=state.routeDurationMin*Number(cfg.speedFactor||1);
   const raw=(cfg.base+state.routeDistanceKm*cfg.perKm+adjustedMinutes*cfg.perMin)*traffic.multiplier;
@@ -208,7 +212,7 @@ function updateVehicleFareCards(){
     const fare=state.routeDistanceKm?fareForVehicle(button.dataset.vehicle):Number(button.dataset.price||0);
     const small=button.querySelector("small");
     if(small){
-      const eta=state.routeDurationMin?Math.max(1,Math.round(state.routeDurationMin*Number((vehiclePricing[button.dataset.vehicle]||{}).speedFactor||1))):0;
+      const eta=state.routeDurationMin?Math.max(1,Math.round(state.routeDurationMin*Number(vehiclePricingFor(button.dataset.vehicle).speedFactor||1))):0;
       small.innerHTML=state.routeDistanceKm?`<b>${formatMoney(fare)}</b><span>${eta} د • ${traffic.label}</span>`:`<b>من ${formatMoney(fare)}</b><span>حدد المسار للسعر الدقيق</span>`;
     }
   });
@@ -583,6 +587,7 @@ function renderReferralCard(){
 }
 function renderTopupDestination(){
   const cfg=state.appSettings||{};
+  if(byId("customerOrderFeeLabel"))byId("customerOrderFeeLabel").textContent=formatMoney(fixedPlatformFee("customerOrderFee"));
   if(byId("topupTransferLabel"))byId("topupTransferLabel").textContent=cfg.topupTransferLabel||"Mastercard محلي";
   if(byId("topupTransferId"))byId("topupTransferId").textContent=cfg.topupTransferId||"أضف معرف التحويل من لوحة الإدارة";
   if(byId("topupCardHolder"))byId("topupCardHolder").textContent=cfg.topupCardHolder||"إدارة كروة";
@@ -623,6 +628,8 @@ async function loadUserProfile(user) {
     state.role = typeof data.role === "string" && data.role ? data.role : "customer";
     state.name = storedName || user.displayName || user.email?.split("@")[0] || "مستخدم كروة";
     state.balance = Number.isFinite(storedBalance) ? storedBalance : 0;
+    state.bonusBalance = Math.max(0,Number(data.bonusBalance||0));
+    state.bonusExpiresAt = data.bonusExpiresAt || null;
     state.notifications = data.notifications !== false;
     state.referralCode = typeof data.referralCode === "string" ? data.referralCode : "";
     if(data.invitedByCode && byId("couponCode") && !byId("couponCode").value){byId("couponCode").value=String(data.invitedByCode).toUpperCase();if(byId("couponStatus"))byId("couponStatus").textContent="كود الدعوة محفوظ — حدّد المسار ثم اضغط تطبيق";}
@@ -654,12 +661,18 @@ async function loadUserProfile(user) {
     state.role = "customer";
     state.name = user.displayName || user.email?.split("@")[0] || "مستخدم كروة";
     state.balance = 0;
+    const settingsSnapshot = await getDoc(doc(db, "appSettings", "pricing"));
+    state.appSettings = settingsSnapshot.exists() ? settingsSnapshot.data() : {};
+    const welcomeBonus=signupBonusFields();
+    state.bonusBalance=Number(welcomeBonus.bonusBalance||0);
+    state.bonusExpiresAt=welcomeBonus.bonusExpiresAt;
     state.notifications = true;
     await setDoc(userRef, {
       name: state.name,
       email: user.email || "",
       role: "customer",
       balance: state.balance,
+      ...welcomeBonus,
       notifications: true,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
@@ -775,14 +788,17 @@ byId("authForm").addEventListener("submit", async event => {
   setButtonBusy(submit, true);
   try {
     if (state.authMode === "register") {
+      const settingsSnapshot = await getDoc(doc(db, "appSettings", "pricing"));
+      state.appSettings = settingsSnapshot.exists() ? settingsSnapshot.data() : {};
       const credential = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(credential.user, { displayName: name });
       const ownReferral=makeReferralCode(credential.user.uid);
       let invitedByUserId="";
       if(selectedRole==="customer"&&inviteCode){try{const rs=await getDoc(doc(db,"referralCodes",inviteCode));if(rs.exists()&&rs.data().ownerId!==credential.user.uid)invitedByUserId=rs.data().ownerId;}catch(_){}}
       const registerBatch=writeBatch(db);
+      const welcomeBonus=signupBonusFields();
       registerBatch.set(doc(db, "users", credential.user.uid), {
-        name,email,role:selectedRole,balance:0,notifications:true,referralCode:ownReferral,
+        name,email,role:selectedRole,balance:0,...welcomeBonus,notifications:true,referralCode:ownReferral,
         ...(inviteCode&&invitedByUserId?{invitedByCode:inviteCode,invitedByUserId}:{}),createdAt:serverTimestamp(),updatedAt:serverTimestamp()
       });
       registerBatch.set(doc(db,"referralCodes",ownReferral),{code:ownReferral,ownerId:credential.user.uid,ownerName:name,active:true,createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
@@ -790,6 +806,8 @@ byId("authForm").addEventListener("submit", async event => {
       state.name = name;
       state.role = selectedRole;
       state.balance = 0;
+      state.bonusBalance = Number(welcomeBonus.bonusBalance||0);
+      state.bonusExpiresAt = welcomeBonus.bonusExpiresAt;
       state.notifications = true;
       state.referralCode = ownReferral;
       if(inviteCode&&invitedByUserId&&byId("couponCode")){byId("couponCode").value=inviteCode;if(byId("couponStatus"))byId("couponStatus").textContent="كود الدعوة محفوظ — حدّد المسار ثم اضغط تطبيق";}
@@ -966,9 +984,13 @@ async function createOrder(type, title, route, price, options = {}) {
     fareSubtotal: Number(options.fareSubtotal || price),
     discountAmount: Number(options.discountAmount || 0),
     couponCode: options.couponCode || "",
-    commissionRate: commissionRateFor(type, options.providerCategory || ""),
-    commissionAmount: Math.round(Number(price) * commissionRateFor(type, options.providerCategory || "")),
-    driverEarnings: Number(price) - Math.round(Number(price) * commissionRateFor(type, options.providerCategory || "")),
+    commissionRate: 0,
+    commissionAmount: 0,
+    driverEarnings: Number(price),
+    customerPlatformFee: fixedPlatformFee("customerOrderFee"),
+    customerFeeCharged: true,
+    captainPlatformFee: 0,
+    captainFeeCharged: false,
     tripOtp: String(Math.floor(1000 + Math.random() * 9000)),
     paymentStatus: options.payment === "المحفظة" ? "paid" : "pending",
     acceptedAt: null, arrivedAt: null, startedAt: null, completedAt: null,
@@ -980,8 +1002,12 @@ async function createOrder(type, title, route, price, options = {}) {
     ...(options.foodDetails ? { foodDetails: options.foodDetails } : {})
   };
 
+  const customerFee=fixedPlatformFee("customerOrderFee");
+  const walletPatch=walletDebitPatch({balance:state.balance,bonusBalance:state.bonusBalance,bonusExpiresAt:state.bonusExpiresAt},customerFee);
+  if(customerFee>0&&!walletPatch) throw new Error(`الرصيد غير كافٍ. يلزم ${formatMoney(customerFee)} رسم كروة لإنشاء الطلب. اشحن المحفظة ثم أعد المحاولة.`);
   const batch = writeBatch(db);
   batch.set(orderRef, order);
+  if(walletPatch) batch.set(doc(db,"users",state.user.uid),walletPatch,{merge:true});
   if(options.referralRedemption){
     batch.set(doc(db,"referralRedemptions",state.user.uid),{
       userId:state.user.uid,
@@ -991,15 +1017,8 @@ async function createOrder(type, title, route, price, options = {}) {
       createdAt:serverTimestamp()
     });
   }
-  if (options.walletCharge) {
-    const newBalance = state.balance - Number(options.walletCharge);
-    batch.set(doc(db, "users", state.user.uid), {
-      balance: newBalance,
-      updatedAt: serverTimestamp()
-    }, { merge: true });
-    state.balance = newBalance;
-  }
   await batch.commit();
+  applyWalletPatchToState(walletPatch);
 
   state.activeOrder = { ...order, firestoreId: orderRef.id, createdAt: null };
   state.orders.unshift(state.activeOrder);
@@ -1089,7 +1108,7 @@ byId("bookParcel").addEventListener("click", async event => {
     await createOrder("parcel", `توصيل غرض إلى ${recipientName}`, `${from} ← ${to}`, price, { payment: "نقدًا", pickupLocation: { ...state.customerLocation } });
   } catch (error) {
     console.error(error);
-    showToast("تعذر حفظ طلب التوصيل.");
+    showToast(String(error?.message||"").includes("الرصيد غير كافٍ") ? error.message : "تعذر حفظ طلب التوصيل.");
   } finally {
     setButtonBusy(button, false);
   }
@@ -1457,6 +1476,19 @@ byId("closeSelectedService")?.addEventListener("click", () => {
   byId("selectedServiceBox").hidden = true;
 });
 byId("locateSelectedService")?.addEventListener("click", () => focusServiceLocation(state.selectedServiceProfile));
+async function createServiceRequestWithCustomerFee(payload){
+  const fee=fixedPlatformFee("customerOrderFee");
+  const walletPatch=walletDebitPatch({balance:state.balance,bonusBalance:state.bonusBalance,bonusExpiresAt:state.bonusExpiresAt},fee);
+  if(fee>0&&!walletPatch)throw new Error(`الرصيد غير كافٍ. يلزم ${formatMoney(fee)} رسم كروة لإرسال الطلب. اشحن المحفظة ثم أعد المحاولة.`);
+  const requestRef=doc(collection(db,"serviceRequests"));
+  const batch=writeBatch(db);
+  batch.set(requestRef,{...payload,customerPlatformFee:fee,customerFeeCharged:true,providerPlatformFee:0,providerFeeCharged:false});
+  if(walletPatch)batch.set(doc(db,"users",state.user.uid),walletPatch,{merge:true});
+  await batch.commit();
+  applyWalletPatchToState(walletPatch);
+  return requestRef;
+}
+
 byId("bookOtherService")?.addEventListener("click", async event => {
   if (!requireUser()) return;
   const profile = state.selectedServiceProfile;
@@ -1474,7 +1506,7 @@ byId("bookOtherService")?.addEventListener("click", async event => {
   const button = event.currentTarget;
   setButtonBusy(button, true, "جاري إرسال الحاجة…");
   try {
-    await addDoc(collection(db, "serviceRequests"), {
+    await createServiceRequestWithCustomerFee({
       customerId: state.user.uid,
       customerName: state.name,
       providerId: profile.firestoreId,
@@ -1508,7 +1540,7 @@ byId("bookOtherService")?.addEventListener("click", async event => {
     showToast(`تم إرسال حاجتك إلى ${profile.businessName} بقيمة ${formatMoney(subtotal)}. بعد الموافقة تختار التوصيل إن كان متاحًا.`);
   } catch (error) {
     console.error(error);
-    showToast("تعذر إرسال الطلب. تأكد من نشر قواعد Firestore الجديدة.");
+    showToast(String(error?.message||"").includes("الرصيد غير كافٍ") ? error.message : "تعذر إرسال الطلب. تأكد من نشر قواعد Firestore الجديدة.");
   } finally {
     setButtonBusy(button, false);
   }
@@ -1624,9 +1656,13 @@ byId("myServiceRequests")?.addEventListener("click", async event => {
         distanceKm: 0,
         durationMin: 0,
         routeSource: "serviceDelivery",
-        commissionRate: commissionRateFor("serviceDelivery", request.providerCategory || ""),
-        commissionAmount: Math.round(deliveryFee * commissionRateFor("serviceDelivery", request.providerCategory || "")),
-        driverEarnings: deliveryFee - Math.round(deliveryFee * commissionRateFor("serviceDelivery", request.providerCategory || "")),
+        commissionRate: 0,
+        commissionAmount: 0,
+        driverEarnings: deliveryFee,
+        customerPlatformFee: 0,
+        customerFeeCharged: true,
+        captainPlatformFee: 0,
+        captainFeeCharged: false,
         tripOtp: String(Math.floor(1000 + Math.random() * 9000)),
         paymentStatus: "pending",
         acceptedAt: null,
@@ -1700,9 +1736,9 @@ byId("orderFood").addEventListener("click", async event => {
   const normalized=normalizedClientItem(profile.items?.[item.mealIndex]); if(deliveryRequested && !normalized.deliveryAvailable)return showToast("التوصيل غير متاح لهذه الأكلة؛ اختر الاستلام من المطعم");
   const button=event.currentTarget; setButtonBusy(button,true,"جاري الإرسال للمطعم…");
   try {
-    await addDoc(collection(db,"serviceRequests"),{customerId:state.user.uid,customerName:state.name,providerId:item.restaurantId,providerName:profile.businessName,providerCategory:"restaurant",providerCity:profile.city||"",providerAddress:profile.address,providerLocation:{...profile.location},itemIndex:item.mealIndex,itemName:normalized.name,itemUnit:normalized.unit,quantity:1,unitPrice:normalized.price,itemPrice:normalized.price,subtotal:normalized.price,deliveryRequested,deliveryFee:deliveryRequested ? normalized.deliveryFee : 0,totalPrice:normalized.price+(deliveryRequested ? normalized.deliveryFee : 0),deliveryStatus:deliveryRequested ? "pendingProvider" : "notRequested",deliveryOrderId:"",requestText:`طلب طعام: ${normalized.name}`,customerAddress:address,customerLocation:deliveryRequested ? {...state.customerLocation} : null,status:"pending",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
+    await createServiceRequestWithCustomerFee({customerId:state.user.uid,customerName:state.name,providerId:item.restaurantId,providerName:profile.businessName,providerCategory:"restaurant",providerCity:profile.city||"",providerAddress:profile.address,providerLocation:{...profile.location},itemIndex:item.mealIndex,itemName:normalized.name,itemUnit:normalized.unit,quantity:1,unitPrice:normalized.price,itemPrice:normalized.price,subtotal:normalized.price,deliveryRequested,deliveryFee:deliveryRequested ? normalized.deliveryFee : 0,totalPrice:normalized.price+(deliveryRequested ? normalized.deliveryFee : 0),deliveryStatus:deliveryRequested ? "pendingProvider" : "notRequested",deliveryOrderId:"",requestText:`طلب طعام: ${normalized.name}`,customerAddress:address,customerLocation:deliveryRequested ? {...state.customerLocation} : null,status:"pending",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
     state.cart=[]; renderCart(); byId("foodCustomerAddress").value=""; byId("foodLocationStatus").textContent="يجب تحديد موقعك قبل إرسال الطلب للمطعم."; showToast(deliveryRequested ? "تم إرسال الطلب للمطعم. بعد موافقته سيصل إلى كابتن التوصيل." : "تم إرسال الطلب للمطعم للاستلام من المطعم دون توصيل.");
-  } catch(error){console.error(error);showToast("تعذر إرسال الطلب. تأكد أن بيانات المطعم منشورة من بوابة الخدمات ومعتمدة.");} finally {setButtonBusy(button,false);}
+  } catch(error){console.error(error);showToast(String(error?.message||"").includes("الرصيد غير كافٍ") ? error.message : "تعذر إرسال الطلب. تأكد أن بيانات المطعم منشورة من بوابة الخدمات ومعتمدة.");} finally {setButtonBusy(button,false);}
 });
 
 byId("foodFilter")?.addEventListener("click", () => showToast("المطاعم مرتبة حسب وقت التوصيل"));
@@ -1922,7 +1958,11 @@ byId("ratingForm").addEventListener("submit", async event => {
 });
 
 function renderBalance() {
-  byId("walletBalance").textContent = Number(state.balance || 0).toLocaleString("ar-IQ");
+  const available=walletAvailable();
+  byId("walletBalance").textContent = Number(available).toLocaleString("ar-IQ");
+  const bonus=activeBonusAmount({bonusBalance:state.bonusBalance,bonusExpiresAt:state.bonusExpiresAt});
+  const bonusStatus=byId("walletBonusStatus");
+  if(bonusStatus){const expiry=timestampMillis(state.bonusExpiresAt);bonusStatus.textContent=bonus>0?`يتضمن ${formatMoney(bonus)} رصيدًا مجانيًا صالحًا حتى ${new Date(expiry).toLocaleString("ar-IQ")}`:(Number(state.bonusBalance||0)>0?"انتهت صلاحية الرصيد المجاني — الرصيد المشحون محفوظ":"الرصيد المتاح من الشحن");}
   renderCustomerSettingsInfo();
 }
 
@@ -1933,7 +1973,7 @@ byId("topupForm")?.addEventListener("submit",async event=>{
   if(!Number.isFinite(amount)||amount<1000||amount>1000000)return showToast("أدخل مبلغًا بين 1,000 و1,000,000 د.ع");
   if(transferReference.length<3)return showToast("اكتب رقم/مرجع التحويل أو آخر أرقام العملية");
   const button=event.submitter||byId("submitTopup"); setButtonBusy(button,true,"جارٍ إرسال الطلب…");
-  try{await addDoc(collection(db,"topupRequests"),{userId:state.user.uid,customerName:state.name,email:state.user.email||"",amount,transferReference:transferReference.slice(0,80),method:"mastercard_local",status:"pending",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});event.currentTarget.reset();showToast("تم إرسال طلب الشحن. سيضاف نفس المبلغ بعد موافقة الإدارة.");}
+  try{await addDoc(collection(db,"topupRequests"),{userId:state.user.uid,customerName:state.name,email:state.user.email||"",amount,transferReference:transferReference.slice(0,80),method:"mastercard_local",accountType:"customer",accountRole:state.role||"customer",status:"pending",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});event.currentTarget.reset();showToast("تم إرسال طلب الشحن. سيضاف نفس المبلغ بعد موافقة الإدارة.");}
   catch(error){console.error(error);showToast("تعذر إرسال طلب الشحن");}finally{setButtonBusy(button,false);}
 });
 byId("shareReferral")?.addEventListener("click",async()=>{
@@ -2440,3 +2480,5 @@ function startCustomerCommunityLayers(){if(customerCommunity.started||!state.map
  onSnapshot(collection(db,"roadReports"),snap=>{const live=new Set();snap.forEach(d=>{const x=d.data();if(!customerReportLive(x))return;live.add(d.id);const ll=[Number(x.latitude),Number(x.longitude)];if(!Number.isFinite(ll[0])||!Number.isFinite(ll[1]))return;const c=Number(x.confirmations||0);let m=customerCommunity.reports.get(d.id);if(!m){m=window.L.marker(ll,{icon:customerCommunityIcon(x.type,"report",c)}).addTo(state.map);customerCommunity.reports.set(d.id,m)}else{m.setLatLng(ll);m.setIcon(customerCommunityIcon(x.type,"report",c));}const label=customerReportMeta[x.type]?.[1]||"بلاغ طريق";m.bindPopup(`<div dir="rtl"><b>${label}</b>${x.note?`<br>${x.note}`:""}<br><small>${c?`مؤكد من ${c} كابتن`:'بلاغ حديث من مجتمع كروة'}</small></div>`)});for(const [id,m] of customerCommunity.reports)if(!live.has(id)){state.map.removeLayer(m);customerCommunity.reports.delete(id)}});
  onSnapshot(collection(db,"landmarks"),snap=>{const live=new Set(),data=[];snap.forEach(d=>{const x=d.data();if(x.status==="hidden")return;data.push({...x,id:d.id});live.add(d.id);const ll=[Number(x.latitude),Number(x.longitude)];if(!Number.isFinite(ll[0])||!Number.isFinite(ll[1]))return;let m=customerCommunity.landmarks.get(d.id);if(!m){m=window.L.marker(ll,{icon:customerCommunityIcon(null,"landmark")}).addTo(state.map);customerCommunity.landmarks.set(d.id,m)}else m.setLatLng(ll);m.bindPopup(`<div dir="rtl"><b>${x.name||"معلم كروة"}</b><br><small>${x.category||"معلم محلي"} · أضيف بواسطة ${x.createdByRole==='driver'?'كابتن':'عميل'}</small></div>`)});customerCommunity.landmarkData=data;placeSearchCache.clear();for(const [id,m] of customerCommunity.landmarks)if(!live.has(id)){state.map.removeLayer(m);customerCommunity.landmarks.delete(id)}});
 }
+
+const karwaBonusExpiryRefresh=setInterval(()=>{if(state.user)renderBalance();},60000);

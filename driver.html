@@ -384,6 +384,17 @@ body.driver-map-mode #driverView{height:100dvh!important}
           <h3>بيانات المركبة</h3>
           <p class="muted" id="vehicleSummary">جاري التحميل…</p>
         </div>
+        <div class="card">
+          <div class="card-heading"><h3>محفظة الكابتن</h3><span class="status-chip approved" id="driverBonusStatus">الرصيد المشحون</span></div>
+          <p><strong id="driverWalletBalance">0 د.ع</strong></p>
+          <p class="muted">يُخصم <b id="driverOrderFeeLabel">250 د.ع</b> عند قبول كل طلب. يجب توفر الرصيد قبل القبول.</p>
+          <div class="muted" style="margin-bottom:8px">التحويل إلى: <b id="driverTopupTransferId">أضف معرف التحويل من الإدارة</b> • <span id="driverTopupCardHolder">إدارة كروة</span></div>
+          <form id="driverTopupForm">
+            <div class="field"><label for="driverTopupAmount">مبلغ الشحن</label><input id="driverTopupAmount" type="number" min="1000" max="1000000" step="250" placeholder="10000" required></div>
+            <div class="field"><label for="driverTopupReference">مرجع التحويل</label><input id="driverTopupReference" maxlength="80" placeholder="رقم العملية" required></div>
+            <button class="primary wide" id="driverTopupSubmit" type="submit">إرسال طلب الشحن</button>
+          </form>
+        </div>
         <div class="card reputation-card">
           <div class="reputation-score"><span>★</span><strong id="driverRatingCount">لا توجد تقييمات بعد</strong></div>
           <p class="muted">حافظ على جودة الخدمة والالتزام بتعليمات السلامة.</p>
@@ -462,8 +473,8 @@ body.driver-map-mode #driverView{height:100dvh!important}
   <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
   <script>try{if(window.maplibregl&&maplibregl.setRTLTextPlugin&&(!maplibregl.getRTLTextPluginStatus||maplibregl.getRTLTextPluginStatus()==="unavailable")){maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",true).catch(()=>{});}}catch(e){}</script>
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
-  <script type="module" src="./driver.js?v=48"></script>
-  <script src="./pwa.js?v=49"></script>
+  <script type="module" src="./driver.js?v=51"></script>
+  <script src="./pwa.js?v=51"></script>
 <script id="phase20-driver-map-first-js">
 window.addEventListener("DOMContentLoaded",()=>{
   const view=document.getElementById("driverView");

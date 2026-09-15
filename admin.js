@@ -53,6 +53,7 @@ const state = {
   drivers: [],
   ratings: [],
   orders: [],
+  serviceRequests: [],
   topupRequests: [],
   pricingSettings: {},
   roleUnsubscribe: null,
@@ -163,8 +164,13 @@ function renderMetrics() {
   byId("cancelledTripsCount").textContent = state.orders.filter(o => o.cancelled).length;
   byId("onlineDriversCount").textContent = state.drivers.filter(d => d.online === true && d.blocked !== true).length;
   const completed=state.orders.filter(o=>!o.cancelled&&Number(o.statusIndex||0)>=4);
-  const gross=completed.reduce((n,o)=>n+Number(o.price||0),0), commission=completed.reduce((n,o)=>n+Number(o.commissionAmount||0),0), payout=completed.reduce((n,o)=>n+Number(o.driverEarnings||0),0);
-  byId("grossRevenue").textContent=money(gross);byId("commissionRevenue").textContent=money(commission);byId("driversPayout").textContent=money(payout);
+  const gross=completed.reduce((n,o)=>n+Number(o.price||0),0);
+  const orderFees=state.orders.reduce((n,o)=>n+Number(o.customerPlatformFee||0)+Number(o.captainPlatformFee||0),0);
+  const serviceFees=state.serviceRequests.reduce((n,r)=>n+Number(r.customerPlatformFee||0)+Number(r.providerPlatformFee||0),0);
+  const publishFees=state.serviceProfiles.reduce((n,p)=>n+(p.publishFeePaid===true?Number(p.publishFeeAmount||0):0),0);
+  const platformFees=orderFees+serviceFees+publishFees;
+  const payout=completed.reduce((n,o)=>n+Number(o.driverEarnings||0),0);
+  byId("grossRevenue").textContent=money(gross);byId("commissionRevenue").textContent=money(platformFees);byId("driversPayout").textContent=money(payout);
   const byDriver={};completed.forEach(o=>{const k=o.driverName||"غير معيّن";byDriver[k]=(byDriver[k]||0)+Number(o.driverEarnings||0)});
   byId("financialReport").innerHTML=completed.length?`<div class="order-meta"><span>رحلات مكتملة: ${completed.length}</span><span>متوسط الطلب: ${money(gross/completed.length)}</span></div>${Object.entries(byDriver).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([name,value])=>`<div class="order-meta"><strong>${escapeHtml(name)}</strong><span>${money(value)}</span></div>`).join("")}`:`<p class="muted">لا توجد رحلات مكتملة بعد.</p>`;
 }
@@ -205,7 +211,7 @@ function driverTripDetail(order) {
       </div>
       <p class="order-route">${escapeHtml(order.route || "-")}</p>
       <div class="order-meta"><span>رمز الرحلة: <b>${escapeHtml(code)}</b></span><span>قيمة الرحلة: ${money(order.price)}</span></div>
-      ${completed ? `<div class="order-meta trip-money"><span>عمولة كروة: ${money(order.commissionAmount)}</span><span>صافي الكابتن: <b>${money(order.driverEarnings)}</b></span></div>` : ""}
+      ${completed ? `<div class="order-meta trip-money"><span>رسوم كروة: ${money(Number(order.customerPlatformFee||0)+Number(order.captainPlatformFee||0))}</span><span>أجرة الكابتن: <b>${money(order.driverEarnings)}</b></span></div>` : ""}
       ${order.cancelled && order.cancellationReason ? `<p class="admin-note danger-note">سبب الإلغاء: ${escapeHtml(order.cancellationReason)}</p>` : ""}
       <div class="order-meta trip-dates">${order.acceptedAt?.seconds ? `<span>القبول: ${new Date(order.acceptedAt.seconds*1000).toLocaleString("ar-IQ")}</span>` : ""}${order.completedAt?.seconds ? `<span>الإكمال: ${new Date(order.completedAt.seconds*1000).toLocaleString("ar-IQ")}</span>` : ""}</div>
     </div>`;
@@ -380,7 +386,7 @@ function orderCard(order) {
         ${Number(order.surgeMultiplier||1)>1?`<div class="order-meta"><span>طلب مرتفع ×${Number(order.surgeMultiplier).toFixed(2)}</span></div>`:""}
         ${Number(order.discountAmount||0)>0?`<div class="order-meta"><span>خصم ${money(order.discountAmount)}</span><span>${escapeHtml(order.couponCode||"")}</span></div>`:""}
         ${Array.isArray(order.dispatchCandidateIds)?`<div class="order-meta"><span>مرشحو التوزيع: ${order.dispatchCandidateIds.length}</span><span>الجولة ${Number(order.dispatchRound||1)}</span></div>`:""}
-        ${Number(order.statusIndex||0)>=4&&!order.cancelled?`<div class="order-meta"><span>عمولة كروة: ${money(order.commissionAmount)}</span><span>صافي الكابتن: ${money(order.driverEarnings)}</span></div>`:""}
+        ${Number(order.statusIndex||0)>=4&&!order.cancelled?`<div class="order-meta"><span>رسوم كروة: ${money(Number(order.customerPlatformFee||0)+Number(order.captainPlatformFee||0))}</span><span>أجرة الكابتن: ${money(order.driverEarnings)}</span></div>`:""}
       </div>
       ${order.cancelled && order.cancellationReason ? `<p class="admin-note danger-note">سبب الإلغاء: ${escapeHtml(order.cancellationReason)}</p>` : ""}
       ${order.acceptedAt ? `<div class="order-meta"><span>قبول: ${new Date(order.acceptedAt.seconds*1000).toLocaleString("ar-IQ")}</span>${order.completedAt ? `<span>إكمال: ${new Date(order.completedAt.seconds*1000).toLocaleString("ar-IQ")}</span>` : ""}</div>` : ""}
@@ -409,15 +415,18 @@ function repairLegacyCaptainService(collectionName, record) {
   }).catch(error => console.warn("تعذر تصحيح نوع خدمة الكابتن القديم", record.firestoreId, error));
 }
 
-function percentToRate(value){const n=Number(value);return Math.max(0,Math.min(.5,Number.isFinite(n)?n/100:.15));}
-function rateToPercent(value){const n=Number(value);return Number.isFinite(n)?Math.round(n*1000)/10:15;}
+function settingNumber(value,fallback,min=0,max=100000){const n=Number(value);return Math.max(min,Math.min(max,Number.isFinite(n)?n:fallback));}
 function renderPricingSettings(){
   const c=state.pricingSettings||{};
-  const rateIds=["commissionRide","commissionParcel","commissionFood","commissionServiceDelivery","commissionRestaurant","commissionGrocery","commissionRetail","commissionMaintenance","commissionHome","commissionHealth","commissionOther"];
-  rateIds.forEach(id=>{const el=byId(id);if(el&&document.activeElement!==el)el.value=String(rateToPercent(c[id]));});
+  const values={
+    ridePerKmEconomy:c.ridePerKmEconomy??650,ridePerKmTaxi:c.ridePerKmTaxi??800,ridePerKmFamily:c.ridePerKmFamily??980,
+    publishFee:c.publishFee??1000,customerOrderFee:c.customerOrderFee??250,providerOrderFee:c.providerOrderFee??250,captainOrderFee:c.captainOrderFee??250,
+    signupBonusAmount:c.signupBonusAmount??1000,signupBonusHours:c.signupBonusHours??24,
+    referralDiscountPercent:c.referralDiscountPercent??10,referralMaxDiscount:c.referralMaxDiscount??3000
+  };
+  Object.entries(values).forEach(([id,value])=>{const el=byId(id);if(el&&document.activeElement!==el)el.value=String(Number(value));});
+  const bonusToggle=byId("signupBonusEnabled");if(bonusToggle&&document.activeElement!==bonusToggle)bonusToggle.checked=c.signupBonusEnabled!==false;
   ["topupTransferLabel","topupTransferId","topupCardHolder"].forEach(id=>{const el=byId(id);if(el&&document.activeElement!==el)el.value=String(c[id]||"");});
-  if(byId("referralDiscountPercent")&&document.activeElement!==byId("referralDiscountPercent"))byId("referralDiscountPercent").value=String(Number(c.referralDiscountPercent??10));
-  if(byId("referralMaxDiscount")&&document.activeElement!==byId("referralMaxDiscount"))byId("referralMaxDiscount").value=String(Number(c.referralMaxDiscount??3000));
 }
 function renderTopupRequests(){
   const box=byId("topupRequestsAdmin"); if(!box)return;
@@ -426,7 +435,8 @@ function renderTopupRequests(){
   if(byId("pendingTopupsBadge"))byId("pendingTopupsBadge").textContent=`${pending} بانتظار المراجعة`;
   if(!rows.length){box.innerHTML='<p class="muted">لا توجد طلبات شحن بعد.</p>';return;}
   const labels={pending:"قيد المراجعة",approved:"معتمد",rejected:"مرفوض"};
-  box.innerHTML=rows.map(x=>{const status=x.status||"pending";const date=x.createdAt?.seconds?new Date(x.createdAt.seconds*1000).toLocaleString("ar-IQ"):"—";return `<article class="topup-admin-row ${escapeHtml(status)}"><div class="topup-admin-head"><div><strong>${escapeHtml(x.customerName||"عميل")}</strong><small> • ${escapeHtml(x.email||"")}</small></div><span class="status-chip ${status==='approved'?'approved':status==='rejected'?'cancelled':'pending'}">${labels[status]||escapeHtml(status)}</span></div><div class="order-meta"><span>المبلغ: <b>${money(x.amount)}</b></span><span>المرجع: <b>${escapeHtml(x.transferReference||"—")}</b></span><span>${date}</span></div>${status==='pending'?`<div class="topup-admin-actions"><button class="primary" data-action="approve-topup" data-id="${x.firestoreId}">اعتماد وإضافة الرصيد</button><button class="danger" data-action="reject-topup" data-id="${x.firestoreId}">رفض</button></div>`:`${x.reviewNote?`<p class="admin-note">${escapeHtml(x.reviewNote)}</p>`:""}`}</article>`;}).join("");
+  const accountLabels={customer:"عميل",captain:"كابتن",service:"خدمات أخرى",driver:"كابتن",other:"خدمات أخرى"};
+  box.innerHTML=rows.map(x=>{const status=x.status||"pending";const date=x.createdAt?.seconds?new Date(x.createdAt.seconds*1000).toLocaleString("ar-IQ"):"—";const accountType=accountLabels[x.accountType]||accountLabels[x.accountRole]||"عميل";return `<article class="topup-admin-row ${escapeHtml(status)}"><div class="topup-admin-head"><div><strong>${escapeHtml(x.customerName||"مشترك")}</strong><small> • ${escapeHtml(x.email||"")} • <b>${escapeHtml(accountType)}</b></small></div><span class="status-chip ${status==='approved'?'approved':status==='rejected'?'cancelled':'pending'}">${labels[status]||escapeHtml(status)}</span></div><div class="order-meta"><span>نوع التسجيل: <b>${escapeHtml(accountType)}</b></span><span>المبلغ: <b>${money(x.amount)}</b></span><span>المرجع: <b>${escapeHtml(x.transferReference||"—")}</b></span><span>${date}</span></div>${status==='pending'?`<div class="topup-admin-actions"><button class="primary" data-action="approve-topup" data-id="${x.firestoreId}">اعتماد وإضافة الرصيد</button><button class="danger" data-action="reject-topup" data-id="${x.firestoreId}">رفض</button></div>`:`${x.reviewNote?`<p class="admin-note">${escapeHtml(x.reviewNote)}</p>`:""}`}</article>`;}).join("");
 }
 
 byId("pricingSettingsForm")?.addEventListener("submit",async event=>{
@@ -434,13 +444,22 @@ byId("pricingSettingsForm")?.addEventListener("submit",async event=>{
   const button=byId("savePricingSettings"); busy(button,true,"جارٍ الحفظ…");
   try{
     const payload={updatedAt:serverTimestamp(),updatedBy:state.user.uid};
-    ["commissionRide","commissionParcel","commissionFood","commissionServiceDelivery","commissionRestaurant","commissionGrocery","commissionRetail","commissionMaintenance","commissionHome","commissionHealth","commissionOther"].forEach(id=>payload[id]=percentToRate(byId(id)?.value));
+    payload.ridePerKmEconomy=settingNumber(byId("ridePerKmEconomy")?.value,650,0,10000);
+    payload.ridePerKmTaxi=settingNumber(byId("ridePerKmTaxi")?.value,800,0,10000);
+    payload.ridePerKmFamily=settingNumber(byId("ridePerKmFamily")?.value,980,0,10000);
+    payload.publishFee=Math.round(settingNumber(byId("publishFee")?.value,1000));
+    payload.customerOrderFee=Math.round(settingNumber(byId("customerOrderFee")?.value,250));
+    payload.providerOrderFee=Math.round(settingNumber(byId("providerOrderFee")?.value,250));
+    payload.captainOrderFee=Math.round(settingNumber(byId("captainOrderFee")?.value,250));
+    payload.signupBonusEnabled=byId("signupBonusEnabled")?.checked!==false;
+    payload.signupBonusAmount=Math.round(settingNumber(byId("signupBonusAmount")?.value,1000,0,100000));
+    payload.signupBonusHours=Math.round(settingNumber(byId("signupBonusHours")?.value,24,1,168));
     payload.topupTransferLabel=(byId("topupTransferLabel")?.value||"Mastercard محلي").trim().slice(0,60);
     payload.topupTransferId=(byId("topupTransferId")?.value||"").trim().slice(0,80);
     payload.topupCardHolder=(byId("topupCardHolder")?.value||"").trim().slice(0,80);
     payload.referralDiscountPercent=Math.max(0,Math.min(100,Number(byId("referralDiscountPercent")?.value||10)));
     payload.referralMaxDiscount=Math.max(0,Math.min(100000,Math.round(Number(byId("referralMaxDiscount")?.value||3000))));
-    await setDoc(doc(db,"appSettings","pricing"),payload,{merge:true}); toast("تم حفظ العمولات وإعدادات الشحن والدعوات");
+    await setDoc(doc(db,"appSettings","pricing"),payload,{merge:true}); toast("تم حفظ التسعيرة والرسوم الثابتة وإعدادات الرصيد");
   }catch(error){console.error(error);toast("تعذر حفظ الإعدادات");}finally{busy(button,false);}
 });
 
@@ -478,6 +497,10 @@ function openDashboard() {
     renderDrivers();
     renderMetrics();
   });
+  const serviceRequestsUnsubscribe = onSnapshot(collection(db, "serviceRequests"), snapshot => {
+    state.serviceRequests = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
+    renderMetrics();
+  });
   const driversUnsubscribe = onSnapshot(collection(db, "drivers"), snapshot => {
     state.drivers = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
     state.drivers.forEach(item => repairLegacyCaptainService("drivers", item));
@@ -504,6 +527,7 @@ function openDashboard() {
     serviceProfilesUnsubscribe,
     restaurantsUnsubscribe,
     ordersUnsubscribe,
+    serviceRequestsUnsubscribe,
     driversUnsubscribe,
     ratingsUnsubscribe,
     topupsUnsubscribe,
@@ -533,7 +557,7 @@ document.addEventListener("click", async event => {
         transaction.update(userRef,{balance:currentBalance+amount,updatedAt:serverTimestamp()});
         transaction.update(requestRef,{status:"approved",creditedAmount:amount,reviewedBy:state.user.uid,reviewedAt:serverTimestamp(),updatedAt:serverTimestamp()});
       });
-      toast("تم اعتماد الشحن وإضافة نفس المبلغ إلى رصيد العميل");
+      toast("تم اعتماد الشحن وإضافة نفس المبلغ إلى الرصيد المشحون");
     } else if (button.dataset.action === "reject-topup") {
       const note=prompt("سبب الرفض:","تعذر مطابقة التحويل")?.trim(); if(!note)return;
       await updateDoc(doc(db,"topupRequests",id),{status:"rejected",reviewNote:note.slice(0,200),reviewedBy:state.user.uid,reviewedAt:serverTimestamp(),updatedAt:serverTimestamp()});
@@ -577,7 +601,8 @@ document.addEventListener("click", async event => {
         description: application.description || existingProfile?.description || "",
         location,
         items,
-        active: true,
+        active: false,
+        publishFeePaid: Boolean(existingProfile?.publishFeePaid),
         approvalStatus: "approved",
         approvedBy: state.user.uid,
         approvedAt: serverTimestamp(),
@@ -591,7 +616,7 @@ document.addEventListener("click", async event => {
           phone,
           address,
           meals: items,
-          active: true,
+          active: false,
           approvalStatus: "approved",
           approvedBy: state.user.uid,
           approvedAt: serverTimestamp(),

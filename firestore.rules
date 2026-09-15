@@ -12,14 +12,28 @@ service cloud.firestore { match /databases/{database}/documents {
  function serviceProvider(){return signed()&&role()=='serviceProvider';}
  function validServiceCategory(value){return value in ['restaurant','grocery','retail','maintenance','home','health','other'];}
  function validDriverApplication(data){return data.serviceType in ['taxi','delivery','other']&&((data.serviceType=='taxi'&&data.vehicleType!='دراجة')||data.serviceType=='delivery'||data.serviceType=='other');}
+ function pricingExists(){return exists(/databases/$(database)/documents/appSettings/pricing);}
+ function pricing(){return get(/databases/$(database)/documents/appSettings/pricing).data;}
+ function customerOrderFee(){return pricingExists()?pricing().get('customerOrderFee',250):250;}
+ function providerOrderFee(){return pricingExists()?pricing().get('providerOrderFee',250):250;}
+ function captainOrderFee(){return pricingExists()?pricing().get('captainOrderFee',250):250;}
+ function publishFee(){return pricingExists()?pricing().get('publishFee',1000):1000;}
+ function signupBonusEnabled(){return !pricingExists()||pricing().get('signupBonusEnabled',true)==true;}
+ function signupBonusAmount(){return pricingExists()?pricing().get('signupBonusAmount',1000):1000;}
+ function signupBonusHours(){return pricingExists()?pricing().get('signupBonusHours',24):24;}
+ function walletValue(data){return data.get('balance',0)+(data.get('bonusBalance',0)>0&&data.get('bonusExpiresAt',request.time)>request.time?data.get('bonusBalance',0):0);}
+ function walletCharged(uid,amount){let before=get(/databases/$(database)/documents/users/$(uid)).data;let after=getAfter(/databases/$(database)/documents/users/$(uid)).data;return amount==0||(walletValue(before)>=amount&&walletValue(after)==walletValue(before)-amount&&after.get('balance',0)>=0&&after.get('bonusBalance',0)>=0);}
+ function validSignupWallet(data){let b=data.get('bonusBalance',0);return data.balance==0&&data.get('welcomeBonusEvaluated',false)==true&&(signupBonusEnabled()?(b==signupBonusAmount()&&b>=0&&((b==0&&data.get('bonusExpiresAt',null)==null)||(b>0&&data.bonusExpiresAt is timestamp&&data.bonusExpiresAt>request.time&&data.bonusExpiresAt<=request.time+duration.value(signupBonusHours(),'h')))&&data.get('welcomeBonusGranted',false)==(b>0)):(b==0&&data.get('welcomeBonusGranted',false)==false));}
+ function walletDecreaseOnly(){return request.resource.data.get('balance',0) is number&&request.resource.data.get('bonusBalance',0) is number&&request.resource.data.get('balance',0)>=0&&request.resource.data.get('bonusBalance',0)>=0&&request.resource.data.get('balance',0)<=resource.data.get('balance',0)&&request.resource.data.get('bonusBalance',0)<=resource.data.get('bonusBalance',0)&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['balance','bonusBalance','updatedAt']);}
  match /users/{uid}{
    allow create:if own(uid)
      && (request.resource.data.role=='customer'||request.resource.data.role=='driverApplicant'||request.resource.data.role=='serviceApplicant')
      && request.resource.data.balance is number
-     && request.resource.data.balance==0;
+     && validSignupWallet(request.resource.data);
    allow read:if own(uid)||admin();
    allow update:if admin()||(own(uid)&&(
      (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','email','notifications','savedAddresses','updatedAt']))
+     || walletDecreaseOnly()
      || (!resource.data.keys().hasAny(['referralCode'])
        && request.resource.data.referralCode is string
        && request.resource.data.referralCode.size()>=6 && request.resource.data.referralCode.size()<=24
@@ -84,35 +98,7 @@ service cloud.firestore { match /databases/{database}/documents {
  }
  match /orders/{id}{
    function linkedServiceRequest(){return getAfter(/databases/$(database)/documents/serviceRequests/$(request.resource.data.serviceRequestId)).data;}
-   function pricingExists(){return exists(/databases/$(database)/documents/appSettings/pricing);}
-   function pricing(){return get(/databases/$(database)/documents/appSettings/pricing).data;}
-   function typeCommissionRate(data){
-     return !pricingExists()?0.15:
-       data.type=='ride'?pricing().get('commissionRide',0.15):
-       data.type=='parcel'?pricing().get('commissionParcel',0.15):
-       data.type=='food'?pricing().get('commissionFood',0.15):
-       pricing().get('commissionServiceDelivery',0.15);
-   }
-   function serviceCommissionRate(){
-     let fallback=!pricingExists()?0.15:pricing().get('commissionServiceDelivery',0.15);
-     let category=linkedServiceRequest().get('providerCategory','other');
-     return !pricingExists()?fallback:
-       category=='restaurant'?pricing().get('commissionRestaurant',fallback):
-       category=='grocery'?pricing().get('commissionGrocery',fallback):
-       category=='retail'?pricing().get('commissionRetail',fallback):
-       category=='maintenance'?pricing().get('commissionMaintenance',fallback):
-       category=='home'?pricing().get('commissionHome',fallback):
-       category=='health'?pricing().get('commissionHealth',fallback):
-       pricing().get('commissionOther',fallback);
-   }
-   function validCommission(data, rate){
-     return data.commissionRate==rate
-       && data.commissionAmount is number && data.commissionAmount>=0
-       && data.driverEarnings is number && data.driverEarnings>=0
-       && data.commissionAmount+data.driverEarnings==data.price
-       && data.commissionAmount>=data.price*rate-1
-       && data.commissionAmount<=data.price*rate+1;
-   }
+   function validOrderMoney(data){return data.commissionRate==0&&data.commissionAmount==0&&data.driverEarnings==data.price&&data.customerPlatformFee is number&&data.customerPlatformFee>=0&&data.captainPlatformFee is number&&data.captainPlatformFee>=0&&data.captainFeeCharged==false;}
    function currentDriver(){return get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data;}
    function pickupOtpMatches(){
      return resource.data.type=='serviceDelivery'
@@ -147,7 +133,10 @@ service cloud.firestore { match /databases/{database}/documents {
        && request.resource.data.driverId==null
        && request.resource.data.statusIndex==0
        && request.resource.data.cancelled==false
-       && validCommission(request.resource.data,typeCommissionRate(request.resource.data)))
+       && validOrderMoney(request.resource.data)
+       && request.resource.data.customerPlatformFee==customerOrderFee()
+       && request.resource.data.customerFeeCharged==true
+       && walletCharged(request.auth.uid,customerOrderFee()))
      || (customer()
        && request.resource.data.type=='serviceDelivery'
        && request.resource.data.userId==request.auth.uid
@@ -159,7 +148,9 @@ service cloud.firestore { match /databases/{database}/documents {
        && request.resource.data.cancelled==false
        && request.resource.data.requiredDriverService=='delivery'
        && request.resource.data.payment=='نقدًا'
-       && validCommission(request.resource.data,serviceCommissionRate())
+       && validOrderMoney(request.resource.data)
+       && request.resource.data.customerPlatformFee==0
+       && request.resource.data.customerFeeCharged==true
        && linkedServiceRequest().customerId==request.auth.uid
        && linkedServiceRequest().providerId==request.resource.data.providerId
        && linkedServiceRequest().status=='accepted'
@@ -181,7 +172,9 @@ service cloud.firestore { match /databases/{database}/documents {
        && request.resource.data.cancelled==false
        && request.resource.data.requiredDriverService=='delivery'
        && request.resource.data.payment=='نقدًا'
-       && validCommission(request.resource.data,serviceCommissionRate())
+       && validOrderMoney(request.resource.data)
+       && request.resource.data.customerPlatformFee==0
+       && request.resource.data.customerFeeCharged==true
        && linkedServiceRequest().providerCategory=='restaurant'
        && linkedServiceRequest().providerId==request.auth.uid
        && linkedServiceRequest().customerId==request.resource.data.userId
@@ -197,7 +190,9 @@ service cloud.firestore { match /databases/{database}/documents {
    allow update:if admin()
      || (customer()&&resource.data.userId==request.auth.uid&&resource.data.cancelled==false&&request.resource.data.cancelled==true&&request.resource.data.cancelledBy=='customer'&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cancelled','cancellationReason','cancelledBy','cancelledAt','updatedAt']))
      || (driver() && (
-       (resource.data.driverId==null && resource.data.cancelled==false && resource.data.statusIndex==0 && request.resource.data.driverId==request.auth.uid && request.resource.data.statusIndex==resource.data.statusIndex && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['driverId','driverName','driverPhone','assignmentStatus','acceptedAt','updatedAt'])
+       (resource.data.driverId==null && resource.data.cancelled==false && resource.data.statusIndex==0 && request.resource.data.driverId==request.auth.uid && request.resource.data.statusIndex==resource.data.statusIndex
+         && resource.data.get('captainFeeCharged',false)==false && request.resource.data.captainFeeCharged==true && request.resource.data.captainPlatformFee==captainOrderFee() && walletCharged(request.auth.uid,captainOrderFee())
+         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['driverId','driverName','driverPhone','assignmentStatus','captainPlatformFee','captainFeeCharged','acceptedAt','updatedAt'])
          && ((resource.data.type=='ride' && currentDriver().get('serviceType','')=='taxi' && currentDriver().get('vehicleType','')!='دراجة')
            || (resource.data.type in ['parcel','food','serviceDelivery'] && currentDriver().get('serviceType','')=='delivery' && currentDriver().get('vehicleType','') in ['اقتصادي','تكسي','عائلي','دراجة'] && (resource.data.type!='serviceDelivery' || currentDriver().get('city','')==resource.data.get('serviceCity',''))))
          && driverNearPickup10Km()
@@ -221,13 +216,16 @@ service cloud.firestore { match /databases/{database}/documents {
  }
  match /appSettings/{id}{allow read:if true;allow create,update,delete:if admin();}
  match /topupRequests/{id}{
-   allow create:if customer()
-     && request.resource.data.keys().hasOnly(['userId','customerName','email','amount','transferReference','method','status','createdAt','updatedAt'])
+   function validAccountType(){return (role()=='customer'&&request.resource.data.accountType=='customer')||((role()=='driver'||role()=='driverApplicant')&&request.resource.data.accountType=='captain')||((role()=='serviceProvider'||role()=='serviceApplicant')&&request.resource.data.accountType=='service');}
+   allow create:if signed()
+     && validAccountType()
+     && request.resource.data.keys().hasOnly(['userId','customerName','email','amount','transferReference','method','accountType','accountRole','status','createdAt','updatedAt'])
      && request.resource.data.userId==request.auth.uid
      && request.resource.data.customerName is string && request.resource.data.customerName.size()<=80
      && request.resource.data.email is string && request.resource.data.email.size()<=160
      && request.resource.data.amount is number && request.resource.data.amount>=1000 && request.resource.data.amount<=1000000
      && request.resource.data.transferReference is string && request.resource.data.transferReference.size()>=3 && request.resource.data.transferReference.size()<=80
+     && request.resource.data.accountRole==role()
      && request.resource.data.method=='mastercard_local'
      && request.resource.data.status=='pending';
    allow read:if admin()||(signed()&&resource.data.userId==request.auth.uid);
@@ -312,14 +310,16 @@ service cloud.firestore { match /databases/{database}/documents {
      && data.active is bool
      && data.approvalStatus=='approved';}
    allow read:if admin()||own(uid)||(signed()&&resource.data.active==true&&resource.data.approvalStatus=='approved');
-   allow create:if admin()||(own(uid)&&serviceProvider()&&validProfile(request.resource.data));
+   function validPublishPayment(){let was=resource.data.get('publishFeePaid',false);let now=request.resource.data.get('publishFeePaid',false);return was?(now==true&&request.resource.data.get('publishFeeAmount',0)==resource.data.get('publishFeeAmount',0)):(!request.resource.data.active?(now==false&&request.resource.data.get('publishFeeAmount',0)==0):(now==true&&request.resource.data.publishFeeAmount==publishFee()&&request.resource.data.publishFeePaidAt is timestamp&&walletCharged(uid,publishFee())));}
+   allow create:if admin()||(own(uid)&&serviceProvider()&&validProfile(request.resource.data)&&request.resource.data.get('publishFeePaid',false)==true&&request.resource.data.get('publishFeeAmount',0)==publishFee()&&walletCharged(uid,publishFee()));
    allow update:if admin()||(own(uid)
      && serviceProvider()
      && validProfile(request.resource.data)
      && request.resource.data.ownerId==resource.data.ownerId
      && request.resource.data.category==resource.data.category
      && request.resource.data.approvalStatus==resource.data.approvalStatus
-     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['businessName','phone','city','address','description','location','items','active','updatedAt']));
+     && validPublishPayment()
+     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['businessName','phone','city','address','description','location','items','active','publishFeePaid','publishFeeAmount','publishFeePaidAt','updatedAt']));
    allow delete:if admin();
  }
 
@@ -356,7 +356,8 @@ service cloud.firestore { match /databases/{database}/documents {
      && request.resource.data.totalPrice==request.resource.data.subtotal+request.resource.data.deliveryFee
      && request.resource.data.requestText is string && request.resource.data.requestText.size()>=3 && request.resource.data.requestText.size()<=500
      && request.resource.data.customerAddress is string && request.resource.data.customerAddress.size()>=3 && request.resource.data.customerAddress.size()<=180
-     && request.resource.data.keys().hasOnly(['customerId','customerName','providerId','providerName','providerCategory','providerCity','providerAddress','providerLocation','itemIndex','itemName','itemUnit','quantity','unitPrice','itemPrice','subtotal','deliveryRequested','deliveryFee','totalPrice','deliveryStatus','deliveryOrderId','requestText','customerAddress','customerLocation','status','createdAt','updatedAt']);
+     && request.resource.data.customerPlatformFee==customerOrderFee() && request.resource.data.customerFeeCharged==true && request.resource.data.providerPlatformFee==0 && request.resource.data.providerFeeCharged==false && walletCharged(request.auth.uid,customerOrderFee())
+     && request.resource.data.keys().hasOnly(['customerId','customerName','providerId','providerName','providerCategory','providerCity','providerAddress','providerLocation','itemIndex','itemName','itemUnit','quantity','unitPrice','itemPrice','subtotal','deliveryRequested','deliveryFee','totalPrice','deliveryStatus','deliveryOrderId','requestText','customerAddress','customerLocation','customerPlatformFee','customerFeeCharged','providerPlatformFee','providerFeeCharged','status','createdAt','updatedAt']);
 
    // الخدمات الأخرى: يختار العميل حاجته وسعرها أولًا، ثم يحدد التوصيل بعد موافقة مقدم الخدمة.
    allow create:if customer()
@@ -391,7 +392,8 @@ service cloud.firestore { match /databases/{database}/documents {
      && request.resource.data.requestText is string && request.resource.data.requestText.size()>=3 && request.resource.data.requestText.size()<=500
      && request.resource.data.customerAddress==''
      && request.resource.data.customerLocation==null
-     && request.resource.data.keys().hasOnly(['customerId','customerName','providerId','providerName','providerCategory','providerCity','providerAddress','providerLocation','itemIndex','itemName','itemUnit','quantity','unitPrice','itemPrice','subtotal','itemDeliveryAvailable','itemDeliveryFee','deliveryRequested','deliveryFee','totalPrice','deliveryStatus','deliveryOrderId','requestText','customerAddress','customerLocation','status','createdAt','updatedAt']);
+     && request.resource.data.customerPlatformFee==customerOrderFee() && request.resource.data.customerFeeCharged==true && request.resource.data.providerPlatformFee==0 && request.resource.data.providerFeeCharged==false && walletCharged(request.auth.uid,customerOrderFee())
+     && request.resource.data.keys().hasOnly(['customerId','customerName','providerId','providerName','providerCategory','providerCity','providerAddress','providerLocation','itemIndex','itemName','itemUnit','quantity','unitPrice','itemPrice','subtotal','itemDeliveryAvailable','itemDeliveryFee','deliveryRequested','deliveryFee','totalPrice','deliveryStatus','deliveryOrderId','requestText','customerAddress','customerLocation','customerPlatformFee','customerFeeCharged','providerPlatformFee','providerFeeCharged','status','createdAt','updatedAt']);
 
    allow read:if admin()||(customer()&&resource.data.customerId==request.auth.uid)||(serviceProvider()&&resource.data.providerId==request.auth.uid);
    allow update:if admin()
@@ -456,11 +458,13 @@ service cloud.firestore { match /databases/{database}/documents {
          || (resource.data.providerCategory!='restaurant'
            && resource.data.status=='pending'&&request.resource.data.status=='accepted'
            && request.resource.data.deliveryOrderId==''
-           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','providerNote','deliveryStatus','deliveryOrderId','statusUpdatedAt','updatedAt'])
+           && resource.data.get('providerFeeCharged',false)==false && request.resource.data.providerFeeCharged==true && request.resource.data.providerPlatformFee==providerOrderFee() && walletCharged(request.auth.uid,providerOrderFee())
+           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','providerNote','providerPlatformFee','providerFeeCharged','deliveryStatus','deliveryOrderId','statusUpdatedAt','updatedAt'])
            && ((resource.data.get('itemDeliveryAvailable',false)==true&&request.resource.data.deliveryStatus=='awaitingCustomerChoice')||(resource.data.get('itemDeliveryAvailable',false)==false&&request.resource.data.deliveryStatus=='notRequested')))
          || (resource.data.providerCategory=='restaurant'
            && resource.data.status=='pending'&&request.resource.data.status=='accepted'
-           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','providerNote','deliveryStatus','deliveryOrderId','pickupOtp','statusUpdatedAt','updatedAt'])
+           && resource.data.get('providerFeeCharged',false)==false && request.resource.data.providerFeeCharged==true && request.resource.data.providerPlatformFee==providerOrderFee() && walletCharged(request.auth.uid,providerOrderFee())
+           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','providerNote','providerPlatformFee','providerFeeCharged','deliveryStatus','deliveryOrderId','pickupOtp','statusUpdatedAt','updatedAt'])
            && ((!resource.data.get('deliveryRequested',false)&&request.resource.data.deliveryStatus=='notRequested'&&request.resource.data.deliveryOrderId==''&&request.resource.data.get('pickupOtp','')=='')||(resource.data.get('deliveryRequested',false)&&request.resource.data.pickupOtp is string&&request.resource.data.pickupOtp.matches('^[0-9]{4}$')&&request.resource.data.deliveryStatus=='awaitingCaptain'&&request.resource.data.deliveryOrderId is string&&request.resource.data.deliveryOrderId.size()>0&&existsAfter(/databases/$(database)/documents/orders/$(request.resource.data.deliveryOrderId))&&getAfter(/databases/$(database)/documents/orders/$(request.resource.data.deliveryOrderId)).data.serviceRequestId==id&&getAfter(/databases/$(database)/documents/orders/$(request.resource.data.deliveryOrderId)).data.providerId==request.auth.uid))
        )));
    allow delete:if admin();

@@ -14,6 +14,7 @@ import {
   addDoc,
   collection,
   doc,
+  getDoc,
   getFirestore,
   onSnapshot,
   query,
@@ -174,6 +175,22 @@ const state = {
   restaurantMeals: [],
   directRegistration: new URLSearchParams(window.location.search).get("mode") === "register"
 };
+
+let driverPricingSettings = {};
+function driverFixedFee(key,fallback){const n=Number(driverPricingSettings?.[key]);return Math.max(0,Math.min(100000,Math.round(Number.isFinite(n)?n:fallback)));}
+function driverTimestampMillis(value){if(!value)return 0;if(typeof value.toMillis==="function")return value.toMillis();if(Number.isFinite(Number(value?.seconds)))return Number(value.seconds)*1000;const t=new Date(value).getTime();return Number.isFinite(t)?t:0;}
+function driverActiveBonus(data={}){const amount=Math.max(0,Number(data.bonusBalance||0));return amount>0&&driverTimestampMillis(data.bonusExpiresAt)>Date.now()?amount:0;}
+function driverWalletAvailable(data=state.userData||{}){return Math.max(0,Number(data?.balance||0))+driverActiveBonus(data||{});}
+function driverWalletDebitPatch(data,amount){const fee=Math.max(0,Math.round(Number(amount||0)));const paid=Math.max(0,Number(data?.balance||0));const bonus=driverActiveBonus(data||{});if(paid+bonus<fee)return null;const useBonus=Math.min(bonus,fee);return {balance:paid-(fee-useBonus),bonusBalance:Math.max(0,Number(data?.bonusBalance||0)-useBonus),updatedAt:serverTimestamp()};}
+function driverSignupBonusFields(settings=driverPricingSettings||{}){const enabled=settings.signupBonusEnabled!==false;const amount=enabled?Math.max(0,Math.round(Number(settings.signupBonusAmount??1000))):0;const hours=Math.max(1,Math.min(168,Math.round(Number(settings.signupBonusHours??24))));return {bonusBalance:amount,bonusExpiresAt:amount?new Date(Date.now()+hours*3600000):null,welcomeBonusGranted:amount>0,welcomeBonusEvaluated:true};}
+function renderDriverWallet(){
+  if(byId("driverWalletBalance"))byId("driverWalletBalance").textContent=`${driverWalletAvailable().toLocaleString("ar-IQ")} د.ع`;
+  const bonus=driverActiveBonus(state.userData||{});if(byId("driverBonusStatus"))byId("driverBonusStatus").textContent=bonus>0?`مجاني ${bonus.toLocaleString("ar-IQ")} د.ع حتى ${new Date(driverTimestampMillis(state.userData?.bonusExpiresAt)).toLocaleString("ar-IQ")}`:"الرصيد المشحون";
+  if(byId("driverOrderFeeLabel"))byId("driverOrderFeeLabel").textContent=`${driverFixedFee("captainOrderFee",250).toLocaleString("ar-IQ")} د.ع`;
+  if(byId("driverTopupTransferId"))byId("driverTopupTransferId").textContent=driverPricingSettings.topupTransferId||"أضف معرف التحويل من الإدارة";
+  if(byId("driverTopupCardHolder"))byId("driverTopupCardHolder").textContent=driverPricingSettings.topupCardHolder||"إدارة كروة";
+}
+onSnapshot(doc(db,"appSettings","pricing"),snapshot=>{driverPricingSettings=snapshot.exists()?snapshot.data():{};renderDriverWallet();},error=>console.warn("تعذر تحميل إعدادات الرسوم",error));
 
 const money = value => Number(value || 0).toLocaleString("ar-IQ") + " د.ع";
 const escapeHtml = value => String(value ?? "").replace(/[&<>'"]/g, char => ({
@@ -673,11 +690,14 @@ byId("applicationForm").addEventListener("submit", async event => {
   try {
     let accountUser = state.user;
     if (directSignup) {
+      const settingsSnapshot = await getDoc(doc(db, "appSettings", "pricing"));
+      driverPricingSettings = settingsSnapshot.exists() ? settingsSnapshot.data() : {};
       const credential = await createUserWithEmailAndPassword(auth, registerEmail, registerPassword);
       accountUser = credential.user;
       await updateProfile(accountUser, { displayName: name });
+      const welcomeBonus=driverSignupBonusFields();
       await setDoc(doc(db, "users", accountUser.uid), {
-        name, email: registerEmail, role: "driverApplicant", balance: 0, notifications: true,
+        name, email: registerEmail, role: "driverApplicant", balance: 0, ...welcomeBonus, notifications: true,
         createdAt: serverTimestamp(), updatedAt: serverTimestamp()
       });
     }
@@ -923,16 +943,22 @@ document.addEventListener("click", async event => {
       if (!state.driverData?.online) throw new Error("OFFLINE");
       await runTransaction(db, async transaction => {
         const driverRef = doc(db, "drivers", state.user.uid);
-        // Firestore rules require accepting the order and marking the captain busy
-        // in the SAME atomic transaction.
-        const [snap, driverSnap] = await Promise.all([
+        const userRef = doc(db, "users", state.user.uid);
+        // قبول الطلب وحجز الكابتن وخصم رسم كروة يتم في نفس المعاملة.
+        const [snap, driverSnap, userSnap] = await Promise.all([
           transaction.get(orderRef),
-          transaction.get(driverRef)
+          transaction.get(driverRef),
+          transaction.get(userRef)
         ]);
         if (!snap.exists()) throw new Error("ORDER_NOT_FOUND");
         if (!driverSnap.exists()) throw new Error("DRIVER_PROFILE_MISSING");
+        if (!userSnap.exists()) throw new Error("USER_PROFILE_MISSING");
         const order = snap.data();
         const driver = driverSnap.data();
+        const userData = userSnap.data();
+        const captainFee=driverFixedFee("captainOrderFee",250);
+        const walletPatch=driverWalletDebitPatch(userData,captainFee);
+        if(captainFee>0&&!walletPatch)throw new Error("INSUFFICIENT_WALLET");
         if (driver.blocked === true) throw new Error("DRIVER_BLOCKED");
         if (driver.online !== true) throw new Error("OFFLINE");
         if (driver.activeOrderId) throw new Error("DRIVER_BUSY");
@@ -949,6 +975,8 @@ document.addEventListener("click", async event => {
           driverName: driver.name || state.userData?.name || state.user.email || "كابتن كروة",
           driverPhone: driver.phone || "",
           assignmentStatus: "accepted",
+          captainPlatformFee: captainFee,
+          captainFeeCharged: true,
           acceptedAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
@@ -958,6 +986,7 @@ document.addEventListener("click", async event => {
           busySince: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
+        if(walletPatch)transaction.update(userRef,walletPatch);
       });
       if (state.lastPosition) await sharePosition(state.lastPosition, true);
       setTimeout(()=>drawPickupRoute(true),400); toast("تم قبول الطلب بنجاح");
@@ -1004,10 +1033,20 @@ document.addEventListener("click", async event => {
     }
   } catch (error) {
     console.error(error);
-    toast(error.message === "OFFLINE" ? "فعّل حالة الاتصال أولًا" : error.message === "PICKUP_OTP_REQUIRED" ? "يجب إدخال رمز الاستلام من المطعم أو صاحب الخدمة" : error.message === "PICKUP_OTP_INVALID" ? "رمز الاستلام غير صحيح" : error.message === "OTP_REQUIRED" ? "يجب إدخال الرمز" : error.message === "OTP_INVALID" ? "الرمز غير صحيح" : error.message === "ORDER_TAKEN" ? "سبق أن قبل كابتن آخر هذا الطلب" : error.message === "ORDER_NOT_FOUND" ? "الطلب غير موجود" : error.message === "ORDER_NOT_AVAILABLE" ? "الطلب لم يعد متاحًا" : error.message === "DRIVER_BUSY" ? "لديك رحلة نشطة بالفعل، أكملها أولًا" : error.message === "DRIVER_PROFILE_MISSING" ? "ملف الكابتن غير موجود. أعد تفعيل الحساب من الإدارة" : error.message === "DRIVER_BLOCKED" ? "الحساب موقوف من الإدارة" : error.message === "DELIVERY_DRIVER_ONLY" ? "هذا الطلب مخصص لكابتن مسجل في خدمة التوصيل" : error.message === "TAXI_DRIVER_ONLY" ? "هذا الطلب مخصص لكابتن تكسي مسجل لخدمة الركوب" : error.message === "OUTSIDE_DRIVER_AREA" ? "هذا الطلب خارج نطاق المدينة المسجلة لحسابك" : error.message === "LOCATION_REQUIRED" ? "يجب تفعيل GPS وتحديد موقعك الحالي قبل قبول أي طلب" : error.message === "OUTSIDE_REQUEST_RADIUS" ? `هذا الطلب أصبح خارج نطاق ${DRIVER_REQUEST_RADIUS_KM} كم من موقعك الحالي` : driverCallableMessage(error, button.dataset.action === "accept" ? "قبول الطلب" : "تحديث حالة الرحلة"));
+    toast(error.message === "OFFLINE" ? "فعّل حالة الاتصال أولًا" : error.message === "PICKUP_OTP_REQUIRED" ? "يجب إدخال رمز الاستلام من المطعم أو صاحب الخدمة" : error.message === "PICKUP_OTP_INVALID" ? "رمز الاستلام غير صحيح" : error.message === "OTP_REQUIRED" ? "يجب إدخال الرمز" : error.message === "OTP_INVALID" ? "الرمز غير صحيح" : error.message === "ORDER_TAKEN" ? "سبق أن قبل كابتن آخر هذا الطلب" : error.message === "ORDER_NOT_FOUND" ? "الطلب غير موجود" : error.message === "ORDER_NOT_AVAILABLE" ? "الطلب لم يعد متاحًا" : error.message === "DRIVER_BUSY" ? "لديك رحلة نشطة بالفعل، أكملها أولًا" : error.message === "DRIVER_PROFILE_MISSING" ? "ملف الكابتن غير موجود. أعد تفعيل الحساب من الإدارة" : error.message === "DRIVER_BLOCKED" ? "الحساب موقوف من الإدارة" : error.message === "DELIVERY_DRIVER_ONLY" ? "هذا الطلب مخصص لكابتن مسجل في خدمة التوصيل" : error.message === "TAXI_DRIVER_ONLY" ? "هذا الطلب مخصص لكابتن تكسي مسجل لخدمة الركوب" : error.message === "OUTSIDE_DRIVER_AREA" ? "هذا الطلب خارج نطاق المدينة المسجلة لحسابك" : error.message === "LOCATION_REQUIRED" ? "يجب تفعيل GPS وتحديد موقعك الحالي قبل قبول أي طلب" : error.message === "OUTSIDE_REQUEST_RADIUS" ? `هذا الطلب أصبح خارج نطاق ${DRIVER_REQUEST_RADIUS_KM} كم من موقعك الحالي` : error.message === "INSUFFICIENT_WALLET" ? `رصيدك غير كافٍ. يلزم ${driverFixedFee("captainOrderFee",250).toLocaleString("ar-IQ")} د.ع لقبول الطلب. اشحن المحفظة أولًا.` : error.message === "USER_PROFILE_MISSING" ? "ملف المحفظة غير موجود. أعد تسجيل الدخول." : driverCallableMessage(error, button.dataset.action === "accept" ? "قبول الطلب" : "تحديث حالة الرحلة"));
   } finally {
     busy(button, false);
   }
+});
+
+byId("driverTopupForm")?.addEventListener("submit",async event=>{
+  event.preventDefault();if(!state.user)return;
+  const amount=Math.round(Number(byId("driverTopupAmount")?.value||0));
+  const transferReference=byId("driverTopupReference")?.value.trim()||"";
+  if(!Number.isFinite(amount)||amount<1000||amount>1000000)return toast("أدخل مبلغًا بين 1,000 و1,000,000 د.ع");
+  if(transferReference.length<3)return toast("اكتب مرجع التحويل");
+  const button=event.submitter||byId("driverTopupSubmit");busy(button,true,"جاري الإرسال…");
+  try{await addDoc(collection(db,"topupRequests"),{userId:state.user.uid,customerName:state.userData?.name||state.user.displayName||"كابتن",email:state.user.email||"",amount,transferReference:transferReference.slice(0,80),method:"mastercard_local",accountType:"captain",accountRole:state.userData?.role||"driver",status:"pending",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});event.currentTarget.reset();toast("تم إرسال طلب الشحن إلى الإدارة");}catch(error){console.error(error);toast("تعذر إرسال طلب الشحن");}finally{busy(button,false);}
 });
 
 onAuthStateChanged(auth, user => {
@@ -1037,6 +1076,7 @@ onAuthStateChanged(auth, user => {
       return;
     }
     state.userData = snapshot.data();
+    renderDriverWallet();
     if (state.userData.role === "driver") {
       openDriverDashboard();
     } else if (state.userData.role === "driverApplicant" || state.userData.role === "serviceApplicant" || state.userData.role === "serviceProvider") {
@@ -1159,3 +1199,5 @@ function setupDriverMapPlaceTool() {
   });
 }
 setupDriverMapPlaceTool();
+
+const karwaBonusExpiryRefresh=setInterval(()=>{if(state.user)renderDriverWallet();},60000);

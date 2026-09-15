@@ -75,14 +75,23 @@ let requestsUnsubscribe = null;
 const pickupOtpBackfillIds = new Set();
 let pricingSettings = {};
 
-function serviceCommissionRate(category="") {
-  const categoryKey={restaurant:"commissionRestaurant",grocery:"commissionGrocery",retail:"commissionRetail",maintenance:"commissionMaintenance",home:"commissionHome",health:"commissionHealth",other:"commissionOther"}[category];
-  const fallback=Number.isFinite(Number(pricingSettings.commissionServiceDelivery))?Number(pricingSettings.commissionServiceDelivery):0.15;
-  const raw=categoryKey&&Number.isFinite(Number(pricingSettings[categoryKey]))?Number(pricingSettings[categoryKey]):fallback;
-  return Math.min(.5,Math.max(0,raw));
+function fixedFee(key,fallback){const n=Number(pricingSettings?.[key]);return Math.max(0,Math.min(100000,Math.round(Number.isFinite(n)?n:fallback)));}
+function timestampMillis(value){if(!value)return 0;if(typeof value.toMillis==="function")return value.toMillis();if(Number.isFinite(Number(value?.seconds)))return Number(value.seconds)*1000;const t=new Date(value).getTime();return Number.isFinite(t)?t:0;}
+function activeBonusAmount(data={}){const amount=Math.max(0,Number(data.bonusBalance||0));return amount>0&&timestampMillis(data.bonusExpiresAt)>Date.now()?amount:0;}
+function walletAvailable(data=currentUserData||{}){return Math.max(0,Number(data?.balance||0))+activeBonusAmount(data||{});}
+function walletDebitPatch(data,amount){const fee=Math.max(0,Math.round(Number(amount||0)));const paid=Math.max(0,Number(data?.balance||0));const bonus=activeBonusAmount(data||{});if(paid+bonus<fee)return null;const useBonus=Math.min(bonus,fee);return {balance:paid-(fee-useBonus),bonusBalance:Math.max(0,Number(data?.bonusBalance||0)-useBonus),updatedAt:serverTimestamp()};}
+function signupBonusFields(settings=pricingSettings||{}){const enabled=settings.signupBonusEnabled!==false;const amount=enabled?Math.max(0,Math.round(Number(settings.signupBonusAmount??1000))):0;const hours=Math.max(1,Math.min(168,Math.round(Number(settings.signupBonusHours??24))));return {bonusBalance:amount,bonusExpiresAt:amount?new Date(Date.now()+hours*3600000):null,welcomeBonusGranted:amount>0,welcomeBonusEvaluated:true};}
+function renderServiceWallet(){
+  const balance=byId("serviceWalletBalance");if(balance)balance.textContent=`${walletAvailable().toLocaleString("ar-IQ")} د.ع`;
+  const bonus=activeBonusAmount(currentUserData||{}),bonusStatus=byId("serviceBonusStatus");
+  if(bonusStatus)bonusStatus.textContent=bonus>0?`مجاني ${bonus.toLocaleString("ar-IQ")} د.ع حتى ${new Date(timestampMillis(currentUserData?.bonusExpiresAt)).toLocaleString("ar-IQ")}`:"الرصيد المشحون";
+  if(byId("serviceTopupTransferId"))byId("serviceTopupTransferId").textContent=pricingSettings.topupTransferId||"أضف معرف التحويل من الإدارة";
+  if(byId("serviceTopupCardHolder"))byId("serviceTopupCardHolder").textContent=pricingSettings.topupCardHolder||"إدارة كروة";
+  if(byId("serviceFeeSummary"))byId("serviceFeeSummary").textContent=`نشر ${fixedFee("publishFee",1000).toLocaleString("ar-IQ")} د.ع • طلب ${fixedFee("providerOrderFee",250).toLocaleString("ar-IQ")} د.ع`;
 }
+function serviceCommissionRate(){return 0;}
 
-onSnapshot(doc(db,"appSettings","pricing"),snapshot=>{pricingSettings=snapshot.exists()?snapshot.data():{};},error=>console.warn("تعذر تحميل إعدادات عمولة الخدمات",error));
+onSnapshot(doc(db,"appSettings","pricing"),snapshot=>{pricingSettings=snapshot.exists()?snapshot.data():{};renderServiceWallet();},error=>console.warn("تعذر تحميل إعدادات التسعير والرسوم",error));
 
 function showView(id) {
   views.forEach(view => byId(view)?.classList.toggle("hidden", view !== id));
@@ -235,14 +244,18 @@ byId("authForm").addEventListener("submit", async event => {
     let profileSaved = false;
     setBusy(submit, true, "جاري إنشاء الحساب وإرسال الطلب…");
     try {
+      const settingsSnapshot = await getDoc(doc(db, "appSettings", "pricing"));
+      pricingSettings = settingsSnapshot.exists() ? settingsSnapshot.data() : {};
       credential = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(credential.user, { displayName: data.ownerName });
       const batch = writeBatch(db);
+      const welcomeBonus=signupBonusFields();
       batch.set(doc(db, "users", credential.user.uid), {
         name: data.ownerName,
         email,
         role: "serviceApplicant",
         balance: 0,
+        ...welcomeBonus,
         notifications: true,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
@@ -593,12 +606,17 @@ byId("providerRequestsList").addEventListener("click", async event => {
   setBusy(button, true);
   try {
     if (nextStatus === "accepted") {
+      const providerFee=fixedFee("providerOrderFee",250);
+      const walletPatch=walletDebitPatch(currentUserData||{},providerFee);
+      if(providerFee>0&&!walletPatch){toast(`رصيدك غير كافٍ لقبول الطلب. يلزم ${providerFee.toLocaleString("ar-IQ")} د.ع رسم كروة. اشحن المحفظة أولًا.`);return;}
       if (request.providerCategory === "restaurant") {
         const batch = writeBatch(db);
         const requestRef = doc(db, "serviceRequests", request.firestoreId);
         const requestUpdate = {
           status: "accepted",
           providerNote: "",
+          providerPlatformFee: providerFee,
+          providerFeeCharged: true,
           deliveryStatus: request.deliveryRequested ? "awaitingCaptain" : "notRequested",
           deliveryOrderId: "",
           pickupOtp: request.deliveryRequested ? String(Math.floor(1000 + Math.random() * 9000)) : "",
@@ -625,25 +643,34 @@ byId("providerRequestsList").addEventListener("click", async event => {
             pickupLocation: request.providerLocation, destinationLocation: request.customerLocation,
             serviceCity: request.providerCity || currentProfile?.city || "", requiredDriverService: "delivery",
             distanceKm: 0, durationMin: 0, routeSource: "serviceDelivery",
-            commissionRate: serviceCommissionRate(request.providerCategory || "restaurant"), commissionAmount: Math.round(deliveryFee * serviceCommissionRate(request.providerCategory || "restaurant")), driverEarnings: deliveryFee - Math.round(deliveryFee * serviceCommissionRate(request.providerCategory || "restaurant")),
+            commissionRate: 0, commissionAmount: 0, driverEarnings: deliveryFee,
+            customerPlatformFee: 0, customerFeeCharged: true, captainPlatformFee: 0, captainFeeCharged: false,
             tripOtp: String(Math.floor(1000 + Math.random() * 9000)), paymentStatus: "pending",
             acceptedAt: null, arrivedAt: null, startedAt: null, completedAt: null, cancellationReason: "",
             statusIndex: 0, cancelled: false, createdAt: serverTimestamp(), createdAtISO: new Date().toISOString(), updatedAt: serverTimestamp()
           });
         }
         batch.update(requestRef, requestUpdate);
+        if(walletPatch)batch.set(doc(db,"users",currentUser.uid),walletPatch,{merge:true});
         await batch.commit();
+        if(walletPatch){currentUserData={...(currentUserData||{}),balance:walletPatch.balance,bonusBalance:walletPatch.bonusBalance};renderServiceWallet();}
         toast(request.deliveryRequested ? "تمت الموافقة وإرسال التوصيل لكباتن التوصيل المطابقين" : "تم قبول طلب الطعام للاستلام من المطعم");
       } else {
         const deliveryAvailable = request.itemDeliveryAvailable === true;
-        await updateDoc(doc(db, "serviceRequests", request.firestoreId), {
+        const batch=writeBatch(db);
+        batch.update(doc(db, "serviceRequests", request.firestoreId), {
           status: "accepted",
           providerNote: "",
+          providerPlatformFee: providerFee,
+          providerFeeCharged: true,
           deliveryStatus: deliveryAvailable ? "awaitingCustomerChoice" : "notRequested",
           deliveryOrderId: "",
           statusUpdatedAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
+        if(walletPatch)batch.set(doc(db,"users",currentUser.uid),walletPatch,{merge:true});
+        await batch.commit();
+        if(walletPatch){currentUserData={...(currentUserData||{}),balance:walletPatch.balance,bonusBalance:walletPatch.bonusBalance};renderServiceWallet();}
         toast(deliveryAvailable ? "تمت الموافقة. ينتظر النظام الآن اختيار العميل للتوصيل أو الاستلام." : "تم قبول الطلب للاستلام من النشاط");
       }
     } else {
@@ -754,6 +781,10 @@ byId("providerForm").addEventListener("submit", async event => {
   if (!providerLocation) return toast("حدد موقع النشاط قبل نشره للعملاء.");
   if (category === "restaurant" && !providerItems.length) return toast("أضف وجبة واحدة على الأقل للمطعم.");
 
+  const publishFee=fixedFee("publishFee",1000);
+  const chargePublish=active&&currentProfile?.publishFeePaid!==true;
+  const publishWalletPatch=chargePublish?walletDebitPatch(currentUserData||{},publishFee):null;
+  if(chargePublish&&publishFee>0&&!publishWalletPatch)return toast(`يلزم ${publishFee.toLocaleString("ar-IQ")} د.ع لنشر النشاط لأول مرة. اشحن المحفظة ثم أعد المحاولة.`);
   const button = byId("saveProviderButton");
   setBusy(button, true, "جاري حفظ التغييرات…");
   try {
@@ -769,6 +800,9 @@ byId("providerForm").addEventListener("submit", async event => {
       location: providerLocation,
       items: providerItems.map(item => ({ ...item })),
       active,
+      publishFeePaid: currentProfile?.publishFeePaid===true || chargePublish,
+      publishFeeAmount: currentProfile?.publishFeePaid===true ? Number(currentProfile.publishFeeAmount||publishFee) : (chargePublish?publishFee:Number(currentProfile?.publishFeeAmount||0)),
+      ...(chargePublish?{publishFeePaidAt:serverTimestamp()}:{}),
       approvalStatus: "approved",
       updatedAt: serverTimestamp()
     }, { merge: true });
@@ -785,8 +819,10 @@ byId("providerForm").addEventListener("submit", async event => {
         updatedAt: serverTimestamp()
       }, { merge: true });
     }
+    if(publishWalletPatch)batch.set(doc(db,"users",currentUser.uid),publishWalletPatch,{merge:true});
     await batch.commit();
-    currentProfile = { ...currentProfile, businessName, category, phone, city, address, description, location: providerLocation, items: providerItems, active };
+    if(publishWalletPatch){currentUserData={...(currentUserData||{}),balance:publishWalletPatch.balance,bonusBalance:publishWalletPatch.bonusBalance};renderServiceWallet();}
+    currentProfile = { ...currentProfile, businessName, category, phone, city, address, description, location: providerLocation, items: providerItems, active, publishFeePaid:currentProfile?.publishFeePaid===true||chargePublish, publishFeeAmount:currentProfile?.publishFeePaid===true?Number(currentProfile.publishFeeAmount||publishFee):(chargePublish?publishFee:Number(currentProfile?.publishFeeAmount||0)) };
     byId("providerHeroName").textContent = businessName;
     renderPreview();
     toast("تم حفظ ملف الخدمة بنجاح");
@@ -796,6 +832,16 @@ byId("providerForm").addEventListener("submit", async event => {
   } finally {
     setBusy(button, false);
   }
+});
+
+byId("serviceTopupForm")?.addEventListener("submit",async event=>{
+  event.preventDefault();if(!currentUser)return;
+  const amount=Math.round(Number(byId("serviceTopupAmount")?.value||0));
+  const transferReference=byId("serviceTopupReference")?.value.trim()||"";
+  if(!Number.isFinite(amount)||amount<1000||amount>1000000)return toast("أدخل مبلغًا بين 1,000 و1,000,000 د.ع");
+  if(transferReference.length<3)return toast("اكتب مرجع التحويل");
+  const button=event.submitter||byId("serviceTopupSubmit");setBusy(button,true,"جاري الإرسال…");
+  try{const ref=doc(collection(db,"topupRequests"));await setDoc(ref,{userId:currentUser.uid,customerName:currentUserData?.name||currentUser.displayName||"مزود خدمة",email:currentUser.email||"",amount,transferReference:transferReference.slice(0,80),method:"mastercard_local",accountType:"service",accountRole:currentUserData?.role||"serviceProvider",status:"pending",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});event.currentTarget.reset();toast("تم إرسال طلب الشحن إلى الإدارة");}catch(error){console.error(error);toast("تعذر إرسال طلب الشحن");}finally{setBusy(button,false);}
 });
 
 function clearRoleContent() {
@@ -831,6 +877,7 @@ onAuthStateChanged(auth, user => {
     }
     currentUserData = snapshot.data();
     byId("accountName").textContent = currentUserData.name || user.displayName || user.email || "";
+    renderServiceWallet();
     const role = currentUserData.role;
     if (role === activeRole) return;
     activeRole = role;
@@ -859,3 +906,5 @@ onAuthStateChanged(auth, user => {
     showView("deniedView");
   });
 });
+
+const karwaBonusExpiryRefresh=setInterval(()=>{if(currentUser)renderServiceWallet();},60000);
