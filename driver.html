@@ -165,6 +165,16 @@ body.driver-map-mode #driverView{height:100dvh!important}
 .driver-options-header{flex:0 0 auto}.driver-options-body{flex:1 1 auto;min-height:0;scroll-behavior:smooth}.road-report-card{scroll-margin-top:8px}.map-place-locate{width:100%;min-height:42px;display:flex;align-items:center;justify-content:center;gap:8px;border:1.5px solid #9fded8;border-radius:12px;color:#005f5b;background:#eafbf8;font:inherit;font-size:12px;font-weight:900;cursor:pointer}.map-place-locate:hover{border-color:#008f88;background:#dff8f3}.map-place-locate:disabled{opacity:.58;cursor:wait}.map-place-filters{display:grid;grid-template-columns:1fr 1fr;gap:7px}.map-place-filters select{width:100%;min-width:0;min-height:41px;padding:8px 10px;border:1.5px solid #c8d4df;border-radius:12px;color:#243d56;background:#f8fafc;font:inherit;font-size:10px;font-weight:800;box-sizing:border-box}.map-place-filters select:focus{border-color:#008f88;outline:3px solid rgba(0,143,136,.14)}.map-place-result .map-place-distance{margin-top:4px;display:block;color:#00746f;font-size:9px;font-weight:900}.map-place-tool .map-place-search-row>button:disabled{opacity:.58;cursor:wait}
 @media(max-width:430px){.map-place-filters{grid-template-columns:1fr}.map-place-locate{min-height:40px}}
 </style>
+
+<style id="karwa-landmark-name-labels">
+.karwa-landmark-div-icon{background:transparent!important;border:0!important;overflow:visible!important}
+.karwa-landmark-label{position:relative;min-width:54px;max-width:180px;height:30px;display:flex;align-items:center;justify-content:center;padding:0 10px;border:1px solid rgba(5,58,72,.22);border-radius:10px;background:rgba(255,255,255,.96);box-shadow:0 4px 14px rgba(0,31,38,.18);color:#073f4b;font-size:11px;font-weight:900;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:rtl;text-align:center;transform:translateY(-2px);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
+.karwa-landmark-label span{display:block;max-width:158px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.karwa-landmark-label::after{content:"";position:absolute;left:50%;bottom:-5px;width:8px;height:8px;border-right:1px solid rgba(5,58,72,.22);border-bottom:1px solid rgba(5,58,72,.22);background:rgba(255,255,255,.96);transform:translateX(-50%) rotate(45deg)}
+.leaflet-marker-icon.karwa-landmark-div-icon:hover .karwa-landmark-label{z-index:1000;max-width:240px;box-shadow:0 6px 20px rgba(0,31,38,.26);border-color:#008f88}
+.leaflet-marker-icon.karwa-landmark-div-icon:hover .karwa-landmark-label span{max-width:218px}
+@media(max-width:480px){.karwa-landmark-label{max-width:150px;font-size:10px}.karwa-landmark-label span{max-width:128px}}
+</style>
 </head>
 <body>
   <header class="topbar">
@@ -475,8 +485,8 @@ body.driver-map-mode #driverView{height:100dvh!important}
   <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
   <script>try{if(window.maplibregl&&maplibregl.setRTLTextPlugin&&(!maplibregl.getRTLTextPluginStatus||maplibregl.getRTLTextPluginStatus()==="unavailable")){maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",true).catch(()=>{});}}catch(e){}</script>
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
-  <script type="module" src="./driver.js?v=52"></script>
-  <script src="./pwa.js?v=52"></script>
+  <script type="module" src="./driver.js?v=53"></script>
+  <script src="./pwa.js?v=53"></script>
 <script id="phase20-driver-map-first-js">
 window.addEventListener("DOMContentLoaded",()=>{
   const view=document.getElementById("driverView");

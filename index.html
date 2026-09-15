@@ -1799,6 +1799,16 @@ body{color:#12243f;background:radial-gradient(circle at 85% 0,rgba(27,174,158,.1
 .ride-traffic-info{margin:-2px 0 12px;padding:9px 11px;border:1px solid #d7e9e6;border-radius:12px;background:#f3fbf9;color:#416a69;font-size:11px;font-weight:800}.vehicle-button small{display:grid;gap:2px}.vehicle-button small b{font-size:11px}.vehicle-button small span{font-size:9px;font-weight:700;opacity:.75}.wallet-note{display:block;margin-top:8px;opacity:.8}.wallet-topup-grid{align-items:start}.topup-card,.referral-card{min-height:100%}.topup-destination{display:flex;align-items:center;gap:12px;padding:13px;margin:10px 0;border:1px solid #cce5e1;border-radius:14px;background:#f3fbf9}.topup-destination>span{font-size:28px}.topup-destination div{display:grid;gap:3px}.topup-destination strong{font-size:16px;word-break:break-word}.topup-destination small{color:#63778a}.topup-form{display:grid;gap:10px;margin-top:12px}.referral-code-box{display:grid;gap:5px;padding:16px;margin:12px 0;border:1px dashed #69aaa3;border-radius:14px;background:#eefaf8;text-align:center}.referral-code-box strong{font-size:25px;letter-spacing:2px;color:#087b75}.referral-code-box span{font-size:10px;color:#5d7286}.referral-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px}.topup-history{display:grid;gap:8px}.topup-history-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid #e0e8ee;border-radius:12px}.topup-history-row div{display:grid;gap:3px}.topup-history-row small{color:#738296}.topup-status{padding:5px 8px;border-radius:999px;background:#fff3cf;color:#976000;font-size:9px;font-weight:900}.topup-status.approved{background:#e2f7ef;color:#08765b}.topup-status.rejected{background:#ffebef;color:#ae263b}.leaflet-container{touch-action:pan-x pan-y;will-change:transform}.karwa-map-marker{pointer-events:auto}
 @media(max-width:620px){.referral-actions{grid-template-columns:1fr}.wallet-topup-grid{grid-template-columns:1fr}.topup-destination{align-items:flex-start}}
 </style>
+
+<style id="karwa-landmark-name-labels">
+.karwa-landmark-div-icon{background:transparent!important;border:0!important;overflow:visible!important}
+.karwa-landmark-label{position:relative;min-width:54px;max-width:180px;height:30px;display:flex;align-items:center;justify-content:center;padding:0 10px;border:1px solid rgba(5,58,72,.22);border-radius:10px;background:rgba(255,255,255,.96);box-shadow:0 4px 14px rgba(0,31,38,.18);color:#073f4b;font-size:11px;font-weight:900;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:rtl;text-align:center;transform:translateY(-2px);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
+.karwa-landmark-label span{display:block;max-width:158px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.karwa-landmark-label::after{content:"";position:absolute;left:50%;bottom:-5px;width:8px;height:8px;border-right:1px solid rgba(5,58,72,.22);border-bottom:1px solid rgba(5,58,72,.22);background:rgba(255,255,255,.96);transform:translateX(-50%) rotate(45deg)}
+.leaflet-marker-icon.karwa-landmark-div-icon:hover .karwa-landmark-label{z-index:1000;max-width:240px;box-shadow:0 6px 20px rgba(0,31,38,.26);border-color:#008f88}
+.leaflet-marker-icon.karwa-landmark-div-icon:hover .karwa-landmark-label span{max-width:218px}
+@media(max-width:480px){.karwa-landmark-label{max-width:150px;font-size:10px}.karwa-landmark-label span{max-width:128px}}
+</style>
 </head>
 
 <body>
@@ -2410,8 +2420,8 @@ body{color:#12243f;background:radial-gradient(circle at 85% 0,rgba(27,174,158,.1
   <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
   <script>try{if(window.maplibregl&&maplibregl.setRTLTextPlugin&&(!maplibregl.getRTLTextPluginStatus||maplibregl.getRTLTextPluginStatus()==="unavailable")){maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",true).catch(()=>{});}}catch(e){}</script>
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
-  <script type="module" src="./app.js?v=52"></script>
-  <script src="./pwa.js?v=52"></script>
+  <script type="module" src="./app.js?v=53"></script>
+  <script src="./pwa.js?v=53"></script>
 
 <script id="phase20-map-first-js">
 window.addEventListener("DOMContentLoaded",()=>{

@@ -339,3 +339,8 @@ firebase deploy --only hosting
 - Captain and service portals now show top-up request history and review status.
 - Transfer label, Mastercard destination, recipient, available balance, temporary bonus status, and fixed fees are rendered consistently from admin pricing settings.
 - PWA cache bumped to phase 52 so wallet UI updates are not hidden by the previous service-worker cache.
+
+## تحديث أسماء المعالم على الخريطة
+- أي معلم مضاف إلى مجموعة `landmarks` يظهر باسمه مباشرة على خريطة العميل والكابتن بدل رمز الدبوس فقط.
+- التحديث لحظي لجميع المستخدمين المسجلين الذين تسمح لهم قواعد Firestore بقراءة المعالم.
+- الضغط على اسم المعلم ما زال يفتح بطاقة التفاصيل.
