@@ -458,6 +458,7 @@ function showOwnPosition(position) {
   byId("locationHint").textContent = acc>100?`دقة الموقع منخفضة (${acc} م). انتقل لمكان مفتوح لتحسين التتبع.`:`دقة الموقع نحو ${acc} متر.`;
   if(Number.isFinite(position.coords.heading)){const el=state.driverMarker?.getElement()?.querySelector(".portal-map-marker");if(el)el.style.transform=`rotate(${position.coords.heading}deg)`;}
   drawPickupRoute();
+  checkRoadReportProximity(position);
 }
 
 async function sharePosition(position, force = false) {
@@ -1283,9 +1284,13 @@ const createDriverSafetyEvent=httpsCallable(functions,"createSafetyEvent");
 window.karwaRateCustomer=async(orderId)=>{const score=Number(prompt("قيّم الراكب من 1 إلى 5:","5"));if(!score||score<1||score>5)return;try{await driverRateCustomerSecure({orderId,score});toast("تم تقييم الراكب");}catch(e){console.error(e);toast("تعذر حفظ التقييم أو تم تقييم الرحلة سابقًا");}};
 window.karwaDriverSOS=async(orderId)=>{if(!confirm("إرسال تنبيه سلامة عاجل للإدارة؟"))return;try{await createDriverSafetyEvent({orderId,kind:"driver_sos",latitude:state.lastPosition?.latitude||null,longitude:state.lastPosition?.longitude||null,note:"SOS من الكابتن"});toast("تم إرسال تنبيه السلامة");}catch(e){console.error(e);toast("تعذر إرسال التنبيه");}};
 
-// Phase 19 — verified community traffic + landmarks for customer and driver
-const communityLayers={reports:new Map(),landmarks:new Map(),landmarkData:[],started:false,nearbyAlerted:new Set()};
+// Phase 61 — road alerts + two-driver verification directly with Firestore (no Cloud Function for this feature)
+const communityLayers={reports:new Map(),reportData:new Map(),landmarks:new Map(),landmarkData:[],started:false,proximity:new Map(),activePrompt:null,myVerificationRounds:new Map()};
 const reportMeta={traffic:["🚦","ازدحام"],accident:["💥","حادث"],closure:["⛔","شارع مغلق"],roadwork:["🚧","حفريات / أعمال طريق"],hazard:["⚠️","عائق على الطريق"]};
+const ROAD_REPORT_WARNING_M=150;
+const ROAD_REPORT_RESET_M=220;
+const ROAD_REPORT_PROMPT_SECONDS=6;
+const ROAD_REPORT_VERIFY_MAX_M=120;
 function communityIcon(kind,type="report",confirmations=0,name=""){
  const meta=reportMeta[kind]||["📌","بلاغ"],badge=type==='report'&&confirmations?`<b class="confirm-badge">${confirmations}</b>`:"";
  if(type==='landmark'){
@@ -1296,14 +1301,87 @@ function communityIcon(kind,type="report",confirmations=0,name=""){
 }
 function reportLifetimeMs(x){const c=Number(x.confirmations||0);if(x.type==='closure')return c>=2?6*3600000:2*3600000;if(c>=3)return 4*3600000;if(c>=1)return 2*3600000;return 60*60000;}
 function reportIsLive(x){const ts=x.createdAt?.toMillis?.()||Date.parse(x.createdAtISO||0);return x.active!==false&&ts&&Date.now()-ts<reportLifetimeMs(x);}
-window.karwaConfirmRoadReport=async(id)=>{if(!state.user)return toast("سجّل الدخول أولًا");try{await runTransaction(db,async tx=>{const ref=doc(db,"roadReports",id),snap=await tx.get(ref);if(!snap.exists())throw new Error("missing");const x=snap.data(),arr=Array.isArray(x.confirmedBy)?x.confirmedBy:[];if(arr.includes(state.user.uid))return;tx.update(ref,{confirmedBy:[...arr,state.user.uid],confirmations:Number(x.confirmations||0)+1,lastConfirmedAt:serverTimestamp()});});toast("تم تأكيد البلاغ — شكرًا لك");}catch(e){console.error(e);toast("تعذر تأكيد البلاغ");}};
+function roadReportRound(x){return Math.max(0,Math.floor(Number(x?.verificationRound||0)));}
+function roadReportDistanceMeters(position,x){if(!position?.coords)return Infinity;return haversine({latitude:Number(position.coords.latitude),longitude:Number(position.coords.longitude)},{latitude:Number(x.latitude),longitude:Number(x.longitude)})*1000;}
+function roadReportArrivalRadius(position){const accuracy=Math.max(0,Number(position?.coords?.accuracy||0));return Math.max(32,Math.min(55,accuracy>0?accuracy*.75:36));}
+function roadReportAnsweredByMe(reportId,x){const uid=state.user?.uid;if(!uid)return true;if(x.reportedBy===uid)return true;if(x.lastVerifiedBy===uid&&x.lastVerificationResult==='present')return true;if((Array.isArray(x.confirmedBy)&&x.confirmedBy.includes(uid))||(Array.isArray(x.absenceVotes)&&x.absenceVotes.includes(uid)))return true;return communityLayers.myVerificationRounds.get(reportId)===roadReportRound(x);}
+function roadReportTransactionMessage(error){const key=String(error?.karwaCode||error?.code||error?.message||"").toUpperCase();if(key.includes('TOO_FAR'))return "يجب أن تكون قريبًا من موقع البلاغ لتأكيد حالته.";if(key.includes('LOCATION_STALE'))return "موقعك لم يُحدّث بعد. انتظر GPS لحظات ثم حاول.";if(key.includes('ALREADY_VERIFIED'))return "سبق أن تحققت من هذا البلاغ في الجولة الحالية.";if(key.includes('REPORT_REMOVED')||key.includes('NOT_FOUND'))return "البلاغ لم يعد موجودًا على الخريطة.";if(key.includes('DRIVER_ONLY')||key.includes('PERMISSION_DENIED'))return "هذه الميزة متاحة للكباتن المعتمدين فقط.";if(key.includes('UNAUTHENTICATED'))return "سجّل الدخول من جديد ثم حاول مرة أخرى.";return "تعذر تسجيل التحقق. تحقق من الإنترنت ومن قواعد Firestore ثم أعد المحاولة.";}
+function karwaRoadError(code){const error=new Error(code);error.karwaCode=code;return error;}
+async function verifyRoadReportDirect(reportId,answer){
+ if(!state.user)throw karwaRoadError('UNAUTHENTICATED');
+ if(!['yes','no'].includes(answer))throw karwaRoadError('INVALID_VERIFICATION');
+ const uid=state.user.uid,reportRef=doc(db,'roadReports',reportId),driverRef=doc(db,'drivers',uid),verificationRef=doc(db,'roadReportVerifications',`${reportId}_${uid}`);
+ return runTransaction(db,async tx=>{
+  const reportSnap=await tx.get(reportRef),driverSnap=await tx.get(driverRef),verificationSnap=await tx.get(verificationRef);
+  if(!reportSnap.exists())throw karwaRoadError('REPORT_REMOVED');
+  if(!driverSnap.exists())throw karwaRoadError('DRIVER_ONLY');
+  const report=reportSnap.data(),driver=driverSnap.data();
+  if(report.active===false)throw karwaRoadError('REPORT_REMOVED');
+  const lat=Number(driver.latitude),lng=Number(driver.longitude),rLat=Number(report.latitude),rLng=Number(report.longitude),updatedAt=driver.locationUpdatedAt?.toMillis?.()||driver.updatedAt?.toMillis?.()||0;
+  if(![lat,lng,rLat,rLng].every(Number.isFinite)||!updatedAt||Date.now()-updatedAt>120000)throw karwaRoadError('LOCATION_STALE');
+  const distance=haversine({latitude:lat,longitude:lng},{latitude:rLat,longitude:rLng})*1000;
+  if(!Number.isFinite(distance)||distance>ROAD_REPORT_VERIFY_MAX_M)throw karwaRoadError('TOO_FAR');
+  const round=roadReportRound(report),oldVerification=verificationSnap.exists()?verificationSnap.data():null;
+  if(oldVerification&&Number(oldVerification.round)===round)throw karwaRoadError('ALREADY_VERIFIED');
+  if(oldVerification&&Number(oldVerification.round)>round)throw karwaRoadError('ALREADY_VERIFIED');
+  const verification={reportId,driverId:uid,answer,round,driverLatitude:lat,driverLongitude:lng,locationAccuracy:Math.max(0,Number(driver.locationAccuracy||0)),verifiedAt:serverTimestamp()};
+  tx.set(verificationRef,verification,{merge:true});
+  const base={lastVerificationId:verificationRef.id,lastVerificationResult:answer==='yes'?'present':'absent',lastVerifiedBy:uid,lastVerifiedAt:serverTimestamp(),updatedAt:serverTimestamp()};
+  if(answer==='yes'){
+   tx.update(reportRef,{...base,active:true,confirmations:Number(report.confirmations||0)+1,absenceVoteCount:0,firstAbsentBy:'',firstAbsentAt:null,verificationRound:round+1});
+   return {kept:true,removed:false,status:'present',distance:Math.round(distance),round:round+1};
+  }
+  const firstAbsentBy=String(report.firstAbsentBy||'').trim(),hasValidFirst=Number(report.absenceVoteCount||0)===1&&!!firstAbsentBy;
+  if(hasValidFirst&&firstAbsentBy===uid)throw karwaRoadError('ALREADY_VERIFIED');
+  if(hasValidFirst){
+   tx.update(reportRef,{...base,active:false,absenceVoteCount:2,firstAbsentBy,removedBySecond:uid,removedReason:'two_distinct_drivers_confirmed_absent',removedAt:serverTimestamp(),verificationRound:round});
+   return {kept:false,removed:true,status:'removed',noVotes:2,distance:Math.round(distance)};
+  }
+  tx.update(reportRef,{...base,active:true,absenceVoteCount:1,firstAbsentBy:uid,firstAbsentAt:serverTimestamp(),verificationRound:round});
+  return {kept:true,removed:false,status:'awaiting_second',noVotes:1,distance:Math.round(distance)};
+ });
+}
+function ensureRoadVerificationDialog(){
+ let overlay=byId("roadReportVerifyOverlay");if(overlay)return overlay;
+ const style=document.createElement("style");style.id="roadReportVerifyStyle";style.textContent=`
+ #roadReportVerifyOverlay{position:fixed;inset:0;z-index:10080;display:grid;place-items:end center;padding:18px;background:linear-gradient(180deg,rgba(4,18,28,.08),rgba(4,18,28,.52));backdrop-filter:blur(2px)}
+ #roadReportVerifyOverlay[hidden]{display:none!important}.road-verify-card{width:min(440px,100%);box-sizing:border-box;background:#fff;border:1px solid rgba(5,88,83,.16);border-radius:24px;padding:18px;box-shadow:0 22px 70px rgba(0,0,0,.28);direction:rtl;text-align:right;animation:roadVerifyIn .18s ease-out}.road-verify-head{display:flex;align-items:center;gap:12px}.road-verify-icon{width:54px;height:54px;border-radius:17px;display:grid;place-items:center;background:#e9f8f5;font-size:30px;flex:0 0 auto}.road-verify-copy{min-width:0;flex:1}.road-verify-copy small{display:block;color:#00756f;font-weight:900;margin-bottom:3px}.road-verify-copy h2{font-size:19px;margin:0;color:#102e3d}.road-verify-question{margin:14px 0 13px;color:#304a59;font-weight:800;line-height:1.65}.road-verify-timer{height:5px;background:#e7eef2;border-radius:8px;overflow:hidden;margin-bottom:14px}.road-verify-timer>i{display:block;height:100%;width:100%;background:#008f88;transform-origin:right center;animation:roadVerifyTimer 6s linear forwards}.road-verify-actions{display:grid;grid-template-columns:1fr 1fr;gap:9px}.road-verify-actions button{min-height:48px;border:0;border-radius:14px;font:inherit;font-weight:950;cursor:pointer}.road-verify-yes{background:#087b75;color:#fff}.road-verify-no{background:#fff1f1;color:#a62323;border:1px solid #f0bebe!important}.road-verify-actions button:disabled{opacity:.55;cursor:wait}.road-verify-note{display:block;text-align:center;color:#6b7e88;font-size:11px;font-weight:800;margin-top:10px}@keyframes roadVerifyIn{from{transform:translateY(22px);opacity:0}to{transform:none;opacity:1}}@keyframes roadVerifyTimer{to{transform:scaleX(0)}}`;
+ document.head.appendChild(style);
+ overlay=document.createElement("div");overlay.id="roadReportVerifyOverlay";overlay.hidden=true;overlay.innerHTML=`<section class="road-verify-card" role="dialog" aria-modal="true" aria-labelledby="roadReportVerifyTitle"><div class="road-verify-head"><div class="road-verify-icon" id="roadReportVerifyIcon">⚠️</div><div class="road-verify-copy"><small>تحقق ميداني · <span id="roadReportVerifyCountdown">6</span> ثوانٍ</small><h2 id="roadReportVerifyTitle">بلاغ طريق</h2></div></div><p class="road-verify-question">هل لا يزال هذا البلاغ موجودًا في هذا المكان؟</p><div class="road-verify-timer"><i id="roadReportVerifyTimerBar"></i></div><div class="road-verify-actions"><button type="button" class="road-verify-yes" id="roadReportVerifyYes">نعم، ما زال موجودًا</button><button type="button" class="road-verify-no" id="roadReportVerifyNo">لا، لم يعد موجودًا</button></div><small class="road-verify-note">إذا اخترت «لا» فلن يختفي البلاغ إلا بعد تأكيد كابتن ثانٍ مختلف.</small></section>`;
+ document.body.appendChild(overlay);return overlay;
+}
+function closeRoadVerificationPrompt(reason="closed"){
+ const current=communityLayers.activePrompt;if(!current)return;clearInterval(current.interval);clearTimeout(current.timeout);communityLayers.activePrompt=null;const overlay=byId("roadReportVerifyOverlay");if(overlay)overlay.hidden=true;if(reason==='timeout')toast("انتهى وقت التحقق — يمكنك التأكيد عند المرور بالموقع مرة أخرى.");
+}
+async function submitRoadVerification(reportId,answer){
+ const current=communityLayers.activePrompt;if(!current||current.reportId!==reportId)return;
+ const yes=byId("roadReportVerifyYes"),no=byId("roadReportVerifyNo");if(yes)yes.disabled=true;if(no)no.disabled=true;clearInterval(current.interval);clearTimeout(current.timeout);
+ try{
+  const result=await verifyRoadReportDirect(reportId,answer);
+  if(answer==='yes'){toast("تم تأكيد أن البلاغ ما زال موجودًا — شكرًا لك.");}
+  else if(result.removed){toast("أكد كابتنان زوال البلاغ — تم حذفه من خريطة كروة.");}
+  else toast("تم تسجيل «لا». ننتظر تأكيد كابتن آخر يمر بالمكان.");
+  closeRoadVerificationPrompt("answered");
+ }catch(error){console.error("road verification",error);toast(roadReportTransactionMessage(error));closeRoadVerificationPrompt("error");}
+}
+function showRoadVerificationPrompt(reportId,x,distanceM){
+ if(communityLayers.activePrompt||!state.user)return;const meta=reportMeta[x.type]||["⚠️","بلاغ طريق"],overlay=ensureRoadVerificationDialog();const icon=byId("roadReportVerifyIcon"),title=byId("roadReportVerifyTitle"),countdown=byId("roadReportVerifyCountdown"),bar=byId("roadReportVerifyTimerBar"),yes=byId("roadReportVerifyYes"),no=byId("roadReportVerifyNo");if(icon)icon.textContent=meta[0];if(title)title.textContent=`${meta[1]}${x.note?` — ${String(x.note).slice(0,55)}`:""}`;if(countdown)countdown.textContent=String(ROAD_REPORT_PROMPT_SECONDS);if(bar){bar.style.animation='none';void bar.offsetWidth;bar.style.animation=`roadVerifyTimer ${ROAD_REPORT_PROMPT_SECONDS}s linear forwards`;}if(yes){yes.disabled=false;yes.onclick=()=>submitRoadVerification(reportId,'yes');}if(no){no.disabled=false;no.onclick=()=>submitRoadVerification(reportId,'no');}overlay.hidden=false;
+ let remaining=ROAD_REPORT_PROMPT_SECONDS;const interval=setInterval(()=>{remaining-=1;if(countdown)countdown.textContent=String(Math.max(0,remaining));},1000);const timeout=setTimeout(()=>closeRoadVerificationPrompt("timeout"),ROAD_REPORT_PROMPT_SECONDS*1000);communityLayers.activePrompt={reportId,interval,timeout,openedAt:Date.now(),distanceM};try{navigator.vibrate?.([90,55,90]);}catch(_){}
+}
+function warnRoadReportAhead(reportId,x,distanceM){const meta=reportMeta[x.type]||["⚠️","بلاغ طريق"],meters=Math.max(1,Math.round(distanceM/10)*10);toast(`${meta[0]} ${meta[1]} أمامك على بعد ${meters} م`);addDriverNotification({id:`road-ahead:${reportId}:${Date.now()}`,type:"warning",title:`${meta[0]} تنبيه طريق بعد ${meters} م`,message:`${meta[1]}${x.note?` — ${String(x.note).slice(0,100)}`:""}`,target:"map",device:true});try{navigator.vibrate?.([180,80,180]);}catch(_){} }
+function checkRoadReportProximity(position){
+ if(!position?.coords||!state.user||!state.driverData?.online)return;const arrival=roadReportArrivalRadius(position);
+ for(const [id,x] of communityLayers.reportData){if(!reportIsLive(x))continue;const distanceM=roadReportDistanceMeters(position,x);let encounter=communityLayers.proximity.get(id);if(!encounter){encounter={warned:false,prompted:false,lastDistance:Infinity};communityLayers.proximity.set(id,encounter);}if(distanceM>ROAD_REPORT_RESET_M){encounter.warned=false;encounter.prompted=false;}if(distanceM<=ROAD_REPORT_WARNING_M&&!encounter.warned){encounter.warned=true;warnRoadReportAhead(id,x,distanceM);}if(distanceM<=arrival&&!encounter.prompted&&!roadReportAnsweredByMe(id,x)){encounter.prompted=true;showRoadVerificationPrompt(id,x,distanceM);}encounter.lastDistance=distanceM;
+ }
+}
+window.karwaConfirmRoadReport=async(id)=>{if(!state.user)return toast("سجّل الدخول أولًا");try{await sharePosition(state.lastPosition,true).catch(()=>{});const result=await verifyRoadReportDirect(id,"yes");toast(result.removed?"البلاغ لم يعد موجودًا":"تم تأكيد البلاغ — شكرًا لك");}catch(e){console.error(e);toast(roadReportTransactionMessage(e));}};
 function startDriverCommunityLayers(){if(communityLayers.started||!state.map||!state.user)return;communityLayers.started=true;
-  onSnapshot(collection(db,"roadReports"),snap=>{const live=new Set();snap.forEach(d=>{const x=d.data();if(!reportIsLive(x))return;live.add(d.id);const ll=[Number(x.latitude),Number(x.longitude)];if(!Number.isFinite(ll[0])||!Number.isFinite(ll[1]))return;const label=reportMeta[x.type]?.[1]||"بلاغ طريق",c=Number(x.confirmations||0),mine=(x.confirmedBy||[]).includes(state.user.uid)||x.reportedBy===state.user.uid;let m=communityLayers.reports.get(d.id);if(!m){m=window.L.marker(ll,{icon:communityIcon(x.type,"report",c)}).addTo(state.map);communityLayers.reports.set(d.id,m)}else{m.setLatLng(ll);m.setIcon(communityIcon(x.type,"report",c));}m.bindPopup(`<div dir="rtl"><b>${label}</b>${x.note?`<br>${x.note}`:""}<br><small>${c?`أكده ${c} من الكباتن`:'بانتظار تأكيد كابتن آخر'}</small>${mine?'':`<br><button class="report-confirm" onclick="karwaConfirmRoadReport('${d.id}')">✓ ما زال موجودًا</button>`}</div>`);
-    const p=state.lastPosition?.coords;if(p){const dist=haversine({latitude:p.latitude,longitude:p.longitude},{latitude:ll[0],longitude:ll[1]});if(dist<0.7&&!communityLayers.nearbyAlerted.has(d.id)&&x.reportedBy!==state.user.uid){communityLayers.nearbyAlerted.add(d.id);toast(`تنبيه أمامك: ${label} على بعد ${Math.max(50,Math.round(dist*1000))} م`);}}
-  });for(const [id,m] of communityLayers.reports)if(!live.has(id)){state.map.removeLayer(m);communityLayers.reports.delete(id)}});
+  onSnapshot(query(collection(db,"roadReportVerifications"),where("driverId","==",state.user.uid)),snap=>{communityLayers.myVerificationRounds.clear();snap.forEach(d=>{const x=d.data(),reportId=String(x.reportId||"");if(reportId)communityLayers.myVerificationRounds.set(reportId,Math.max(0,Math.floor(Number(x.round||0))));});if(state.lastPosition)checkRoadReportProximity(state.lastPosition);},error=>console.warn("تعذر تحميل سجل تحقق البلاغات",error));
+  onSnapshot(collection(db,"roadReports"),snap=>{const live=new Set(),liveData=new Map();snap.forEach(d=>{const x=d.data();if(!reportIsLive(x))return;live.add(d.id);liveData.set(d.id,x);const ll=[Number(x.latitude),Number(x.longitude)];if(!Number.isFinite(ll[0])||!Number.isFinite(ll[1]))return;const label=reportMeta[x.type]?.[1]||"بلاغ طريق",c=Number(x.confirmations||0),mine=roadReportAnsweredByMe(d.id,x),absenceCount=Number(x.absenceVoteCount||0);let m=communityLayers.reports.get(d.id);if(!m){m=window.L.marker(ll,{icon:communityIcon(x.type,"report",c)}).addTo(state.map);communityLayers.reports.set(d.id,m)}else{m.setLatLng(ll);m.setIcon(communityIcon(x.type,"report",c));}const verifyStatus=absenceCount===1?'<br><small>كابتن واحد أفاد بزواله — بانتظار تحقق ثانٍ.</small>':`<br><small>${c?`أكده ${c} من الكباتن`:'بلاغ حديث'}</small>`;m.bindPopup(`<div dir="rtl"><b>${label}</b>${x.note?`<br>${escapeHtml(x.note)}`:""}${verifyStatus}${mine?'':`<br><button class="report-confirm" onclick="karwaConfirmRoadReport('${d.id}')">✓ ما زال موجودًا</button>`}</div>`);
+  });communityLayers.reportData=liveData;for(const [id,m] of communityLayers.reports)if(!live.has(id)){state.map.removeLayer(m);communityLayers.reports.delete(id);communityLayers.proximity.delete(id);communityLayers.myVerificationRounds.delete(id);if(communityLayers.activePrompt?.reportId===id)closeRoadVerificationPrompt("removed");}if(state.lastPosition)checkRoadReportProximity(state.lastPosition);},error=>console.warn("تعذر تحميل بلاغات الطريق",error));
   onSnapshot(collection(db,"landmarks"),snap=>{const live=new Set(),data=[];snap.forEach(d=>{const x=d.data();if(x.status==="hidden")return;data.push({...x,id:d.id});live.add(d.id);const ll=[Number(x.latitude),Number(x.longitude)];if(!Number.isFinite(ll[0])||!Number.isFinite(ll[1]))return;let m=communityLayers.landmarks.get(d.id);const landmarkName=x.name||"معلم كروة",landmarkCategory=x.category||"معلم محلي",landmarkIcon=communityIcon(null,"landmark",0,landmarkName);if(!m){m=window.L.marker(ll,{icon:landmarkIcon,riseOnHover:true,title:landmarkName}).addTo(state.map);communityLayers.landmarks.set(d.id,m)}else{m.setLatLng(ll);m.setIcon(landmarkIcon)}m.bindPopup(`<div dir="rtl"><b>${escapeHtml(landmarkName)}</b><br><small>${escapeHtml(landmarkCategory)} · أضيف بواسطة ${x.createdByRole==='driver'?'كابتن':'عميل'}</small></div>`)});communityLayers.landmarkData=data;driverMapSearchCache.clear();for(const [id,m] of communityLayers.landmarks)if(!live.has(id)){state.map.removeLayer(m);communityLayers.landmarks.delete(id)}});
 }
-async function submitRoadReport(type){if(!state.user)return toast("سجّل الدخول أولًا");const p=state.lastPosition?.coords;if(!p||!Number.isFinite(Number(p.latitude)))return toast("فعّل GPS وانتظر تحديد موقعك");const meta=reportMeta[type];if(!meta)return;try{await addDoc(collection(db,"roadReports"),{type,note:byId("roadReportNote")?.value.trim()||"",latitude:Number(p.latitude),longitude:Number(p.longitude),reportedBy:state.user.uid,reporterName:state.driverData?.name||"كابتن كروة",confirmedBy:[state.user.uid],confirmations:1,active:true,createdAt:serverTimestamp(),createdAtISO:new Date().toISOString()});if(byId("roadReportNote"))byId("roadReportNote").value="";toast(`تم إرسال بلاغ: ${meta[1]}`)}catch(e){console.error(e);toast("تعذر حفظ البلاغ — انشر قواعد Firestore الجديدة")}}
+async function submitRoadReport(type){if(!state.user)return toast("سجّل الدخول أولًا");const p=state.lastPosition?.coords;if(!p||!Number.isFinite(Number(p.latitude)))return toast("فعّل GPS وانتظر تحديد موقعك");const meta=reportMeta[type];if(!meta)return;try{await addDoc(collection(db,"roadReports"),{type,note:byId("roadReportNote")?.value.trim()||"",latitude:Number(p.latitude),longitude:Number(p.longitude),reportedBy:state.user.uid,reporterName:state.driverData?.name||"كابتن كروة",confirmedBy:[state.user.uid],confirmations:1,absenceVotes:[],absenceVoteCount:0,firstAbsentBy:"",verificationRound:0,active:true,createdAt:serverTimestamp(),createdAtISO:new Date().toISOString()});if(byId("roadReportNote"))byId("roadReportNote").value="";toast(`تم إرسال بلاغ: ${meta[1]}`)}catch(e){console.error(e);toast("تعذر حفظ البلاغ — انشر قواعد Firestore الجديدة")}}
 document.querySelectorAll("[data-road-report]").forEach(b=>b.addEventListener("click",()=>submitRoadReport(b.dataset.roadReport)));
 const driverMapSearchCache = new Map();
 function normalizeDriverPlaceSearch(value) { return String(value || "").trim().replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").replace(/[\u064B-\u065F]/g, "").replace(/\s+/g, " ").toLowerCase(); }

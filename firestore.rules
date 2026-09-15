@@ -10,6 +10,19 @@ service cloud.firestore { match /databases/{database}/documents {
  function customer(){return signed()&&role()=='customer';}
  function serviceApplicant(){return signed()&&role()=='serviceApplicant';}
  function serviceProvider(){return signed()&&role()=='serviceProvider';}
+ function roadDriverDoc(){return get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data;}
+ function driverNearRoadReport(reportData){
+   let d=roadDriverDoc();
+   return driver()
+     && exists(/databases/$(database)/documents/drivers/$(request.auth.uid))
+     && d.get('blocked',false)!=true
+     && d.latitude is number && d.longitude is number
+     && d.get('locationUpdatedAt',null) is timestamp
+     && d.locationUpdatedAt>request.time-duration.value(2,'m')
+     && reportData.latitude is number && reportData.longitude is number
+     && ((reportData.latitude-d.latitude)*111.32)*((reportData.latitude-d.latitude)*111.32)
+       +((reportData.longitude-d.longitude)*(d.latitude>=35?90:(d.latitude>=33?92:(d.latitude>=31?94.5:97))))*((reportData.longitude-d.longitude)*(d.latitude>=35?90:(d.latitude>=33?92:(d.latitude>=31?94.5:97))))<=0.0144;
+ }
  function validServiceCategory(value){return value in ['restaurant','grocery','retail','maintenance','home','health','other'];}
  function validDriverApplication(data){return data.serviceType in ['taxi','delivery','other']&&((data.serviceType=='taxi'&&data.vehicleType!='دراجة')||data.serviceType=='delivery'||data.serviceType=='other');}
  function pricingExists(){return exists(/databases/$(database)/documents/appSettings/pricing);}
@@ -504,11 +517,92 @@ service cloud.firestore { match /databases/{database}/documents {
    allow delete:if admin();
  }
  match /roadReports/{id}{
+   function verificationAfter(){return getAfter(/databases/$(database)/documents/roadReportVerifications/$(request.resource.data.lastVerificationId)).data;}
+   function hasFreshVerification(answer){return request.resource.data.lastVerificationId is string
+     && existsAfter(/databases/$(database)/documents/roadReportVerifications/$(request.resource.data.lastVerificationId))
+     && verificationAfter().reportId==id
+     && verificationAfter().driverId==request.auth.uid
+     && verificationAfter().answer==answer
+     && verificationAfter().round==resource.data.get('verificationRound',0);}
+   function commonVerificationFields(answer){return resource.data.active==true
+     && driverNearRoadReport(resource.data)
+     && hasFreshVerification(answer)
+     && request.resource.data.lastVerifiedBy==request.auth.uid
+     && request.resource.data.lastVerificationResult==(answer=='yes'?'present':'absent')
+     && request.resource.data.lastVerifiedAt==request.time
+     && request.resource.data.updatedAt==request.time;}
+   function validPresentVerification(){return commonVerificationFields('yes')
+     && !(resource.data.get('lastVerificationResult','')=='present'&&resource.data.get('lastVerifiedBy','')==request.auth.uid)
+     && request.resource.data.active==true
+     && request.resource.data.confirmations==resource.data.get('confirmations',0)+1
+     && request.resource.data.absenceVoteCount==0
+     && request.resource.data.firstAbsentBy==''
+     && request.resource.data.firstAbsentAt==null
+     && request.resource.data.verificationRound==resource.data.get('verificationRound',0)+1
+     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['confirmations','absenceVoteCount','firstAbsentBy','firstAbsentAt','verificationRound','lastVerificationId','lastVerificationResult','lastVerifiedBy','lastVerifiedAt','updatedAt']);}
+   function validFirstAbsentVerification(){return commonVerificationFields('no')
+     && !(resource.data.get('lastVerificationResult','')=='present'&&resource.data.get('lastVerifiedBy','')==request.auth.uid)
+     && resource.data.get('firstAbsentBy','')==''
+     && request.resource.data.active==true
+     && request.resource.data.confirmations==resource.data.get('confirmations',0)
+     && request.resource.data.absenceVoteCount==1
+     && request.resource.data.firstAbsentBy==request.auth.uid
+     && request.resource.data.firstAbsentAt==request.time
+     && request.resource.data.verificationRound==resource.data.get('verificationRound',0)
+     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['absenceVoteCount','firstAbsentBy','firstAbsentAt','verificationRound','lastVerificationId','lastVerificationResult','lastVerifiedBy','lastVerifiedAt','updatedAt']);}
+   function validSecondAbsentVerification(){return commonVerificationFields('no')
+     && resource.data.get('absenceVoteCount',0)==1
+     && resource.data.get('firstAbsentBy','') is string
+     && resource.data.get('firstAbsentBy','')!=''
+     && resource.data.firstAbsentBy!=request.auth.uid
+     && request.resource.data.active==false
+     && request.resource.data.confirmations==resource.data.get('confirmations',0)
+     && request.resource.data.absenceVoteCount==2
+     && request.resource.data.firstAbsentBy==resource.data.firstAbsentBy
+     && request.resource.data.removedBySecond==request.auth.uid
+     && request.resource.data.removedReason=='two_distinct_drivers_confirmed_absent'
+     && request.resource.data.removedAt==request.time
+     && request.resource.data.verificationRound==resource.data.get('verificationRound',0)
+     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active','absenceVoteCount','removedBySecond','removedReason','removedAt','verificationRound','lastVerificationId','lastVerificationResult','lastVerifiedBy','lastVerifiedAt','updatedAt']);}
    allow read:if signed();
-   allow create:if driver()&&request.resource.data.reportedBy==request.auth.uid;
-   allow update:if driver();
+   allow create:if driver()
+     && request.resource.data.reportedBy==request.auth.uid
+     && request.resource.data.type in ['traffic','accident','closure','roadwork','hazard']
+     && request.resource.data.latitude is number && request.resource.data.latitude>=-90 && request.resource.data.latitude<=90
+     && request.resource.data.longitude is number && request.resource.data.longitude>=-180 && request.resource.data.longitude<=180
+     && request.resource.data.active==true
+     && request.resource.data.get('absenceVoteCount',0)==0
+     && request.resource.data.get('firstAbsentBy','')==''
+     && request.resource.data.get('verificationRound',0)==0;
+   allow update:if admin()||(driver()&&(validPresentVerification()||validFirstAbsentVerification()||validSecondAbsentVerification()));
    allow delete:if admin();
  }
+ match /roadReportVerifications/{id}{
+   function reportBefore(){return get(/databases/$(database)/documents/roadReports/$(request.resource.data.reportId)).data;}
+   function validVerificationData(){let d=roadDriverDoc();return request.resource.data.keys().hasOnly(['reportId','driverId','answer','round','driverLatitude','driverLongitude','locationAccuracy','verifiedAt'])
+     && request.resource.data.reportId is string && request.resource.data.reportId.size()>0
+     && request.resource.data.driverId==request.auth.uid
+     && request.resource.data.answer in ['yes','no']
+     && request.resource.data.round is int && request.resource.data.round>=0
+     && request.resource.data.verifiedAt==request.time
+     && request.resource.data.driverLatitude==d.latitude
+     && request.resource.data.driverLongitude==d.longitude
+     && request.resource.data.locationAccuracy==d.get('locationAccuracy',0)
+     && exists(/databases/$(database)/documents/roadReports/$(request.resource.data.reportId))
+     && reportBefore().active==true
+     && request.resource.data.round==reportBefore().get('verificationRound',0)
+     && driverNearRoadReport(reportBefore());}
+   allow read:if admin()||(driver()&&resource.data.driverId==request.auth.uid);
+   allow create:if driver()&&validVerificationData();
+   allow update:if driver()&&resource.data.driverId==request.auth.uid
+     && request.resource.data.driverId==resource.data.driverId
+     && request.resource.data.reportId==resource.data.reportId
+     && request.resource.data.round>resource.data.round
+     && validVerificationData();
+   allow delete:if admin();
+ }
+ match /roadReportArchive/{id}{allow read:if admin();allow write:if false;}
+
  match /landmarks/{id}{
    allow read:if signed();
    allow create:if signed()&&request.resource.data.createdBy==request.auth.uid;

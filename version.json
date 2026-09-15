@@ -1,8 +1,9 @@
 {
-  "phase": 59,
-  "version": "2.1.0",
+  "phase": 61,
+  "version": "2.1.2",
   "webBasePhase": 58,
   "updateMode": "server-first-local-fallback-auto-refresh",
   "hosting": "https://karwa0.web.app",
-  "notifications": "android-native-sound-vibration"
+  "notifications": "android-native-sound-vibration",
+  "roadReports": "150m-warning-6s-two-driver-firestore-transaction-no-road-function"
 }
