@@ -384,9 +384,10 @@ function customerCancellationMeta(reason) {
 }
 
 function customerDriverMarkerSvg(style="car") {
+  // Same north-facing shapes used by the captain map so the customer sees identical direction.
   if(style==="arrow") return `<svg viewBox="0 0 48 48" aria-hidden="true"><path class="marker-shadow" d="M24 3 39 40 24 33 9 40Z"/><path class="marker-fill" d="M24 5 36 36 24 30 12 36Z"/><path class="marker-accent" d="M24 9v20"/></svg>`;
-  if(style==="bike") return `<svg viewBox="0 0 48 48" aria-hidden="true"><circle class="marker-wheel" cx="14" cy="33" r="7"/><circle class="marker-wheel" cx="35" cy="33" r="7"/><path class="marker-stroke" d="M14 33 21 20h8l6 13M20 20l-4-6m5 6 8 13m-8 0h14M27 15h7"/><circle class="marker-accent-dot" cx="25" cy="11" r="4"/></svg>`;
-  return `<svg viewBox="0 0 48 48" aria-hidden="true"><path class="marker-shadow" d="M14 39c-3 0-5-2-5-5v-14l5-10c1-3 4-5 7-5h6c3 0 6 2 7 5l5 10v14c0 3-2 5-5 5h-1v4h-5v-4H20v4h-5v-4Z"/><path class="marker-fill" d="M13 22h22l-4-10c-.7-1.7-2-2.5-4-2.5h-6c-2 0-3.3.8-4 2.5l-4 10Zm1 4v8h20v-8H14Z"/><circle class="marker-light" cx="17" cy="30" r="2.4"/><circle class="marker-light" cx="31" cy="30" r="2.4"/><path class="marker-accent" d="M24 3v6"/></svg>`;
+  if(style==="bike") return `<svg viewBox="0 0 48 48" aria-hidden="true"><circle class="marker-wheel" cx="24" cy="10" r="6"/><circle class="marker-wheel" cx="24" cy="38" r="6"/><path class="marker-stroke" d="M24 16v7m0 5v4M17 17h14M19 17l5 8 5-8M18 32h12M21 25h6"/><circle class="marker-accent-dot" cx="24" cy="25" r="4"/></svg>`;
+  return `<svg viewBox="0 0 48 48" aria-hidden="true"><path class="marker-shadow" d="M24 3c7 0 12 5 13 13l2 18c.5 6-3 10-9 10H18c-6 0-9.5-4-9-10l2-18C12 8 17 3 24 3Z"/><path class="marker-fill" d="M24 6c5.2 0 8.7 3.7 9.5 10l1.8 17.5c.3 3.9-1.6 6.5-5.8 6.5h-11c-4.2 0-6.1-2.6-5.8-6.5L14.5 16C15.3 9.7 18.8 6 24 6Z"/><path class="marker-stroke" d="M17 20h14M18 29h12"/><circle class="marker-light" cx="19" cy="11.5" r="2.2"/><circle class="marker-light" cx="29" cy="11.5" r="2.2"/><path class="marker-accent" d="M24 4v8"/></svg>`;
 }
 function customerDriverMarkerHtml(style="car"){
   const safe=["arrow","car","bike"].includes(style)?style:"car";
@@ -532,7 +533,7 @@ function animateDriverMarker(point, heading=null, markerStyle="car"){
   if(state.driverMarkerStyle!==safe){state.driverMarkerStyle=safe;state.driverMarker.setIcon(mapIcon("driver",safe));}
   const from=state.driverMarker.getLatLng(), to=window.L.latLng(point);
   if(state.driverAnimationFrame) cancelAnimationFrame(state.driverAnimationFrame);
-  const started=performance.now(), duration=2100;
+  const started=performance.now(), duration=1850;
   const tick=now=>{const t=Math.min(1,(now-started)/duration),e=1-Math.pow(1-t,3);state.driverMarker.setLatLng([from.lat+(to.lat-from.lat)*e,from.lng+(to.lng-from.lng)*e]);updateCustomerDriverVisual(heading,safe);if(t<1)state.driverAnimationFrame=requestAnimationFrame(tick);};
   state.driverAnimationFrame=requestAnimationFrame(tick);
 }

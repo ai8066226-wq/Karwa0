@@ -1,7 +1,7 @@
 {
-  "phase": 75,
-  "version": "2.2.6",
-  "webBasePhase": 75,
+  "phase": 76,
+  "version": "2.2.7",
+  "webBasePhase": 76,
   "updateMode": "native-single-reload-web-guarded-single-attempt-server-first-local-fallback",
   "hosting": "https://karwa0.web.app",
   "notifications": "android-native-sound-vibration",
@@ -18,5 +18,5 @@
   "multiItemOrders": "single-or-multi-items-same-provider-max8-unit-aware-one-delivery-fee-edit-before-pickup",
   "barcodeVerification": "customer-code128-under-otp-driver-camera-scan-with-manual-fallback",
   "walletFeeGuard": "admin-per-operation-fixed-fees-customer-taxi-delivery-service-captain-taxi-delivery-provider-restaurant-service-publish",
-  "driverNavigation": "heading-aware-driving-camera-arrow-car-bike-live-customer-direction-2.5s"
+  "driverNavigation": "heading-aware-driving-camera-topdown-arrow-car-bike-live-customer-direction-2.0s-reroute-5s"
 }

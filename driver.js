@@ -409,9 +409,10 @@ function bearingBetween(a,b){
   return normalizeHeading(Math.atan2(y,x)*180/Math.PI);
 }
 function driverMarkerSvg(style="car") {
+  // All shapes face north (top of SVG) at heading 0°, then rotate with GPS/bearing.
   if(style==="arrow") return `<svg viewBox="0 0 48 48" aria-hidden="true"><path class="marker-shadow" d="M24 3 39 40 24 33 9 40Z"/><path class="marker-fill" d="M24 5 36 36 24 30 12 36Z"/><path class="marker-accent" d="M24 9v20"/></svg>`;
-  if(style==="bike") return `<svg viewBox="0 0 48 48" aria-hidden="true"><circle class="marker-wheel" cx="14" cy="33" r="7"/><circle class="marker-wheel" cx="35" cy="33" r="7"/><path class="marker-stroke" d="M14 33 21 20h8l6 13M20 20l-4-6m5 6 8 13m-8 0h14M27 15h7"/><circle class="marker-accent-dot" cx="25" cy="11" r="4"/></svg>`;
-  return `<svg viewBox="0 0 48 48" aria-hidden="true"><path class="marker-shadow" d="M14 39c-3 0-5-2-5-5v-14l5-10c1-3 4-5 7-5h6c3 0 6 2 7 5l5 10v14c0 3-2 5-5 5h-1v4h-5v-4H20v4h-5v-4Z"/><path class="marker-fill" d="M13 22h22l-4-10c-.7-1.7-2-2.5-4-2.5h-6c-2 0-3.3.8-4 2.5l-4 10Zm1 4v8h20v-8H14Z"/><circle class="marker-light" cx="17" cy="30" r="2.4"/><circle class="marker-light" cx="31" cy="30" r="2.4"/><path class="marker-accent" d="M24 3v6"/></svg>`;
+  if(style==="bike") return `<svg viewBox="0 0 48 48" aria-hidden="true"><circle class="marker-wheel" cx="24" cy="10" r="6"/><circle class="marker-wheel" cx="24" cy="38" r="6"/><path class="marker-stroke" d="M24 16v7m0 5v4M17 17h14M19 17l5 8 5-8M18 32h12M21 25h6"/><circle class="marker-accent-dot" cx="24" cy="25" r="4"/></svg>`;
+  return `<svg viewBox="0 0 48 48" aria-hidden="true"><path class="marker-shadow" d="M24 3c7 0 12 5 13 13l2 18c.5 6-3 10-9 10H18c-6 0-9.5-4-9-10l2-18C12 8 17 3 24 3Z"/><path class="marker-fill" d="M24 6c5.2 0 8.7 3.7 9.5 10l1.8 17.5c.3 3.9-1.6 6.5-5.8 6.5h-11c-4.2 0-6.1-2.6-5.8-6.5L14.5 16C15.3 9.7 18.8 6 24 6Z"/><path class="marker-stroke" d="M17 20h14M18 29h12"/><circle class="marker-light" cx="19" cy="11.5" r="2.2"/><circle class="marker-light" cx="29" cy="11.5" r="2.2"/><path class="marker-accent" d="M24 4v8"/></svg>`;
 }
 function liveDriverMarkerHtml(style=state.markerStyle){
   const safe=["arrow","car","bike"].includes(style)?style:"car";
@@ -681,7 +682,7 @@ async function drawPickupRoute(force=false) {
   const activeOrder=state.orders.find(order=>order.driverId===state.user?.uid&&!order.cancelled&&Number(order.statusIndex||0)<4);
   const st=Number(activeOrder?.statusIndex||0),target=st>=3?activeOrder?.destinationLocation:activeOrder?.pickupLocation;if(!target)return;
   const targetPoint=[Number(target.latitude),Number(target.longitude)];if(state.pickupMarker)state.pickupMarker.setLatLng(targetPoint);else state.pickupMarker=window.L.marker(targetPoint,{icon:mapIcon("pickup")}).addTo(state.map);state.pickupMarker.bindPopup(st>=3?"عنوان العميل":(activeOrder?.type==="serviceDelivery"?"عنوان النشاط / الاستلام":"موقع العميل"));
-  if(!state.driverMarker)return;const pos=state.driverMarker.getLatLng(),now=Date.now(),current={latitude:pos.lat,longitude:pos.lng};const moved=state.lastRoutePoint?haversine(current,state.lastRoutePoint):Infinity;if(!force&&now-state.lastRouteAt<9000&&moved<.08)return;state.lastRouteAt=now;state.lastRoutePoint=current;
+  if(!state.driverMarker)return;const pos=state.driverMarker.getLatLng(),now=Date.now(),current={latitude:pos.lat,longitude:pos.lng};const moved=state.lastRoutePoint?haversine(current,state.lastRoutePoint):Infinity;if(!force&&now-state.lastRouteAt<5000&&moved<.03)return;state.lastRouteAt=now;state.lastRoutePoint=current;
   let coords=[[pos.lat,pos.lng],targetPoint],km=haversine(current,target)*1.28,mins=km/28*60,provider="تقدير",maneuvers=[];
   try{const vr=await valhallaNavigate(current,target);coords=vr.coords;km=vr.km;mins=vr.mins;maneuvers=vr.maneuvers;provider="Valhalla";}catch(e){try{const u=`https://router.project-osrm.org/route/v1/driving/${pos.lng},${pos.lat};${target.longitude},${target.latitude}?overview=full&geometries=geojson`;const r=await fetch(u,{signal:AbortSignal.timeout(4500)}),x=await r.json(),route=x.routes?.[0];if(!route)throw 0;coords=route.geometry.coordinates.map(([lng,lat])=>[lat,lng]);km=route.distance/1000;mins=route.duration/60;provider="OSRM";}catch(_){}}
   if(state.routeLine)state.routeLine.setLatLngs(coords);else state.routeLine=window.L.polyline(coords,{color:"#087b75",weight:8,opacity:.95,lineCap:"round"}).addTo(state.map);
@@ -742,7 +743,7 @@ async function sharePosition(position, force = false) {
   }
   const now = Date.now();
   const hasActiveOrder = state.orders.some(order => order.driverId === state.user.uid && !order.cancelled && Number(order.statusIndex || 0) < 4);
-  const shareInterval = hasActiveOrder ? 2500 : 5500;
+  const shareInterval = hasActiveOrder ? 2000 : 5500;
   if (!force && now - state.lastLocationWrite < shareInterval) return;
   const activeOrders = state.orders.filter(order =>
     order.driverId === state.user.uid && !order.cancelled && Number(order.statusIndex || 0) < 4
