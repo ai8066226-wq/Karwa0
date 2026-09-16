@@ -137,6 +137,12 @@ const state = {
   ratingTags: [],
   trackingUnsubscribe: null,
   trackingOrderId: null,
+  lastDriverTracking: null,
+  customerTripWatchId: null,
+  customerTripWatchOrderId: null,
+  customerTripLastWrite: 0,
+  customerAutoArrivalSince: 0,
+  autoArrivalCompleting: false,
   map: null,
   baseLayer: null,
   mapTheme: readCustomerPreference("karwa.customer.mapTheme", "day") === "night" ? "night" : "day",
@@ -312,6 +318,30 @@ function showToast(message) {
   window.karwaToastTimer = setTimeout(() => element.classList.remove("show"), 2800);
 }
 
+function requestCancellationReason(subject = "الطلب") {
+  const value = prompt(`اكتب سبب إلغاء ${subject}. السبب مطلوب وسيظهر للإدارة:`, "") ;
+  if (value === null) return null;
+  const reason = String(value || "").trim();
+  if (reason.length < 3) {
+    showToast("يجب كتابة سبب واضح للإلغاء (3 أحرف على الأقل).");
+    return null;
+  }
+  return reason.slice(0, 300);
+}
+
+function customerCancellationMeta(reason) {
+  return {
+    cancellationReason: reason,
+    cancelledBy: "customer",
+    cancelledByRole: "customer",
+    cancelledByUserId: state.user?.uid || "",
+    cancelledByName: state.name || state.user?.displayName || "عميل كروة",
+    cancelledByEmail: state.user?.email || "",
+    cancelledAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+}
+
 function mapIcon(type) {
   if (!window.L) return null;
   const emoji = type === "driver" ? "🚗" : "●";
@@ -467,6 +497,7 @@ function clearDriverLocation() {
 }
 
 function showDriverLocation(data) {
+  state.lastDriverTracking = data ? { ...data } : null;
   initializeCustomerMap();
   const latitude = Number(data.latitude);
   const longitude = Number(data.longitude);
@@ -479,6 +510,126 @@ function showDriverLocation(data) {
   const quality=Number(data.accuracy||0)>80?" • دقة GPS منخفضة":"";
   byId("mapInfoText").textContent = `${age>30000?"آخر تحديث منذ "+Math.round(age/1000)+" ث":"الموقع مباشر"}${data.accuracy ? ` • دقة ${Math.round(data.accuracy)} م` : ""}${quality}`;
   drawLiveRoute(!state.routeLine);
+  evaluateCustomerAutoArrival();
+}
+
+
+const AUTO_ARRIVAL_RADIUS_M = 120;
+const AUTO_ARRIVAL_PAIR_M = 180;
+const AUTO_ARRIVAL_DWELL_MS = 8000;
+const AUTO_ARRIVAL_MAX_ACCURACY_M = 45;
+
+function distanceMeters(a,b){
+  if(!a||!b)return Infinity;
+  return haversineKm({latitude:Number(a.latitude),longitude:Number(a.longitude)},{latitude:Number(b.latitude),longitude:Number(b.longitude)})*1000;
+}
+function currentAutoArrivalRide(){
+  const order=state.activeOrder;
+  const status=Number(order?.statusIndex||0);
+  return order&&order.type==="ride"&&order.driverId&&!order.cancelled&&status===2&&order.destinationLocation?order:null;
+}
+function customerTrackingPointFromPosition(position){
+  return {customerId:state.user?.uid||"",latitude:Number(position.coords.latitude),longitude:Number(position.coords.longitude),accuracy:Number(position.coords.accuracy||9999),updatedAt:serverTimestamp()};
+}
+async function writeCustomerTripPosition(position){
+  const order=state.activeOrder;
+  if(!state.user||!order?.firestoreId||order.type!=="ride"||!order.driverId||order.cancelled||Number(order.statusIndex||0)>=4)return;
+  const accuracy=Number(position.coords?.accuracy||9999);
+  if(!Number.isFinite(accuracy)||accuracy>AUTO_ARRIVAL_MAX_ACCURACY_M)return;
+  const now=Date.now();
+  if(now-state.customerTripLastWrite<5000)return;
+  state.customerTripLastWrite=now;
+  state.customerLocation={latitude:Number(position.coords.latitude),longitude:Number(position.coords.longitude),accuracy};
+  await setDoc(doc(db,"orders",order.firestoreId,"customerTracking","current"),customerTrackingPointFromPosition(position),{merge:true}).catch(error=>console.warn("تعذر إرسال موقع العميل للرحلة",error));
+  evaluateCustomerAutoArrival();
+}
+function stopCustomerTripLocationSharing(){
+  if(state.customerTripWatchId!==null){
+    try{if(window.KarwaGeo?.clearWatch)window.KarwaGeo.clearWatch(state.customerTripWatchId);else navigator.geolocation?.clearWatch?.(state.customerTripWatchId);}catch{}
+  }
+  state.customerTripWatchId=null;
+  state.customerTripWatchOrderId=null;
+  state.customerTripLastWrite=0;
+  state.customerAutoArrivalSince=0;
+}
+function startCustomerTripLocationSharing(){
+  const order=state.activeOrder;
+  const eligible=order?.firestoreId&&order.type==="ride"&&order.driverId&&!order.cancelled&&Number(order.statusIndex||0)<4;
+  if(!eligible){stopCustomerTripLocationSharing();return;}
+  if(state.customerTripWatchId!==null&&state.customerTripWatchOrderId===order.firestoreId)return;
+  stopCustomerTripLocationSharing();
+  state.customerTripWatchOrderId=order.firestoreId;
+  const onPosition=position=>{
+    const accuracy=Number(position.coords?.accuracy||9999);
+    if(!Number.isFinite(accuracy)||accuracy>AUTO_ARRIVAL_MAX_ACCURACY_M)return;
+    state.customerLocation={latitude:Number(position.coords.latitude),longitude:Number(position.coords.longitude),accuracy};
+    if(state.customerMarker)state.customerMarker.setLatLng([state.customerLocation.latitude,state.customerLocation.longitude]);
+    writeCustomerTripPosition(position).catch(console.warn);
+    evaluateCustomerAutoArrival();
+  };
+  const onError=error=>console.warn("تعذر تتبع موقع العميل أثناء الرحلة",error);
+  try{
+    if(window.KarwaGeo?.watchPosition){
+      state.customerTripWatchId=window.KarwaGeo.watchPosition(onPosition,onError,{maxAccuracy:AUTO_ARRIVAL_MAX_ACCURACY_M});
+    }else if(navigator.geolocation){
+      state.customerTripWatchId=navigator.geolocation.watchPosition(onPosition,onError,{enableHighAccuracy:true,maximumAge:0,timeout:15000});
+    }
+  }catch(error){console.warn("تعذر بدء تتبع العميل",error);}
+}
+function syncCustomerTripLocationSharing(){startCustomerTripLocationSharing();}
+
+function autoArrivalGeometryOk(order,customerPoint,driverPoint){
+  if(!order?.destinationLocation||!customerPoint||!driverPoint)return false;
+  const ca=Number(customerPoint.accuracy||9999),da=Number(driverPoint.accuracy||9999);
+  if(ca>AUTO_ARRIVAL_MAX_ACCURACY_M||da>AUTO_ARRIVAL_MAX_ACCURACY_M)return false;
+  return distanceMeters(customerPoint,order.destinationLocation)<=AUTO_ARRIVAL_RADIUS_M
+    && distanceMeters(driverPoint,order.destinationLocation)<=AUTO_ARRIVAL_RADIUS_M
+    && distanceMeters(customerPoint,driverPoint)<=AUTO_ARRIVAL_PAIR_M;
+}
+async function autoCompleteTaxiFromCustomer(order){
+  if(state.autoArrivalCompleting||!state.user||!order?.firestoreId)return;
+  state.autoArrivalCompleting=true;
+  try{
+    const orderRef=doc(db,"orders",order.firestoreId);
+    await runTransaction(db,async transaction=>{
+      const driverTrackRef=doc(db,"orders",order.firestoreId,"tracking","current");
+      const customerTrackRef=doc(db,"orders",order.firestoreId,"customerTracking","current");
+      const [freshSnap,driverTrackSnap,customerTrackSnap]=await Promise.all([transaction.get(orderRef),transaction.get(driverTrackRef),transaction.get(customerTrackRef)]);
+      if(!freshSnap.exists()||!driverTrackSnap.exists()||!customerTrackSnap.exists())throw new Error("TRACKING_MISSING");
+      const fresh=freshSnap.data(),status=Number(fresh.statusIndex||0);
+      if(fresh.userId!==state.user.uid||fresh.type!=="ride"||fresh.cancelled||!fresh.driverId||status!==2)throw new Error("NOT_ELIGIBLE");
+      if(fresh.customerFeeCharged!==true||fresh.captainFeeCharged!==true)throw new Error("FEES_PENDING");
+      const dp=driverTrackSnap.data(),cp=customerTrackSnap.data();
+      const now=Date.now();
+      const dt=timestampMillis(dp.updatedAt),ct=timestampMillis(cp.updatedAt);
+      if(!dt||!ct||now-dt>75000||now-ct>75000)throw new Error("TRACKING_STALE");
+      if(!autoArrivalGeometryOk(fresh,cp,dp))throw new Error("NOT_AT_DESTINATION");
+      transaction.update(orderRef,{
+        statusIndex:4,
+        startedAt:fresh.startedAt||fresh.arrivedAt||serverTimestamp(),
+        completedAt:serverTimestamp(),
+        paymentStatus:"paid",
+        autoCompletedByGPS:true,
+        autoCompletionReason:"both_near_destination_without_otp",
+        autoCompletedAt:serverTimestamp(),
+        autoCompletionActor:state.user.uid,
+        autoArrivalRadiusM:AUTO_ARRIVAL_RADIUS_M,
+        otpBypassed:true,
+        updatedAt:serverTimestamp()
+      });
+    });
+    showToast("تم تأكيد الوصول تلقائيًا عبر GPS وإكمال الرحلة. رسوم كروة محسوبة للطرفين مرة واحدة فقط.");
+    state.customerAutoArrivalSince=0;
+  }catch(error){
+    const quiet=["TRACKING_MISSING","TRACKING_STALE","NOT_AT_DESTINATION","NOT_ELIGIBLE"].includes(error?.message);
+    if(!quiet)console.warn("تعذر الإكمال التلقائي للرحلة",error);
+  }finally{state.autoArrivalCompleting=false;}
+}
+function evaluateCustomerAutoArrival(){
+  const order=currentAutoArrivalRide(),driverPoint=state.lastDriverTracking,customerPoint=state.customerLocation;
+  if(!order||!autoArrivalGeometryOk(order,customerPoint,driverPoint)){state.customerAutoArrivalSince=0;return;}
+  if(!state.customerAutoArrivalSince){state.customerAutoArrivalSince=Date.now();return;}
+  if(Date.now()-state.customerAutoArrivalSince>=AUTO_ARRIVAL_DWELL_MS)autoCompleteTaxiFromCustomer(order);
 }
 
 function syncTrackingSubscription() {
@@ -488,7 +639,9 @@ function syncTrackingSubscription() {
   if (state.trackingUnsubscribe) state.trackingUnsubscribe();
   state.trackingUnsubscribe = null;
   state.trackingOrderId = nextId;
+  state.lastDriverTracking = null;
   clearDriverLocation();
+  syncCustomerTripLocationSharing();
 
   if (!nextId) {
     byId("mapInfoTitle").textContent = order ? "بانتظار قبول كابتن" : "خريطة كروة المباشرة";
@@ -732,6 +885,7 @@ function subscribeToOrders(user) {
     renderOrders();
     renderTracking();
     syncTrackingSubscription();
+    syncCustomerTripLocationSharing();
   }, error => {
     console.error(error);
     showToast("تعذر قراءة الطلبات. تحقق من قواعد Firestore.");
@@ -1181,7 +1335,7 @@ function restaurantSafeText(value) {
 }
 
 function karwaServiceTheme(input = {}) {
-  return window.KarwaServiceThemes?.resolve?.(input) || { key:"parcel", image:"./theme-parcel.webp?v=68", accent:"#087b75", icon:"🧰" };
+  return window.KarwaServiceThemes?.resolve?.(input) || { key:"parcel", image:"./theme-parcel.webp?v=70", accent:"#087b75", icon:"🧰" };
 }
 function karwaServiceThemeStyle(input = {}) {
   const theme = karwaServiceTheme(input);
@@ -1707,14 +1861,15 @@ byId("myServiceRequests")?.addEventListener("click", async event => {
 
   if (cancelButton) {
     if (!confirm("هل تريد إلغاء طلب الخدمة؟")) return;
+    const reason = requestCancellationReason("طلب الخدمة");
+    if (!reason) return;
     setButtonBusy(cancelButton, true, "جاري الإلغاء…");
     try {
       await updateDoc(doc(db, "serviceRequests", cancelButton.dataset.cancelServiceRequest), {
         status: "cancelled",
-        cancelledAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
+        ...customerCancellationMeta(reason)
       });
-      showToast("تم إلغاء طلب الخدمة");
+      showToast("تم إلغاء طلب الخدمة وتسجيل السبب للإدارة");
     } catch (error) {
       console.error(error);
       showToast("تعذر إلغاء الطلب");
@@ -1926,7 +2081,7 @@ function renderTracking() {
   byId("trackingCode").textContent = "رقم الطلب: " + order.id;
   byId("trackingDriver").textContent = order.driverName ? ` • الكابتن: ${order.driverName}` : " • بانتظار قبول كابتن";
   const call=byId("callDriver"); if(call){call.classList.toggle("hidden",!order.driverPhone);call.href=order.driverPhone?`tel:${String(order.driverPhone).replace(/[^+\d]/g,"")}`:"#";}
-  const stageHint=byId("tripStageHint"); if(stageHint)stageHint.textContent=order.type==="serviceDelivery"?(statusIndex===0?"بانتظار كابتن توصيل":statusIndex===1?"الكابتن في الطريق إلى المطعم":statusIndex===2?"الكابتن وصل إلى المطعم لاستلام الطلب":statusIndex===3?"الطلب في الطريق إليك — أعطِ رمز التسليم للكابتن فقط عند وصوله":"تم تسليم الطلب"):(statusIndex===0?"نبحث عن كابتن قريب":statusIndex===1?"الكابتن في الطريق إلى نقطة الانطلاق":statusIndex===2?"الكابتن وصل — تحقق من السيارة ثم أعطه رمز الرحلة":statusIndex===3?"الرحلة جارية نحو الوجهة":"وصلت بالسلامة");
+  const stageHint=byId("tripStageHint"); if(stageHint)stageHint.textContent=order.type==="serviceDelivery"?(statusIndex===0?"بانتظار كابتن توصيل":statusIndex===1?"الكابتن في الطريق إلى المطعم":statusIndex===2?"الكابتن وصل إلى المطعم لاستلام الطلب":statusIndex===3?"الطلب في الطريق إليك — أعطِ رمز التسليم للكابتن فقط عند وصوله":"تم تسليم الطلب"):(statusIndex===0?"نبحث عن كابتن قريب":statusIndex===1?"الكابتن في الطريق إلى نقطة الانطلاق":statusIndex===2?"الكابتن وصل — أعطه رمز الرحلة. وإذا لم يُدخل الرمز، سيتحقق كروة تلقائيًا عند وصولكما معًا إلى الوجهة":statusIndex===3?"الرحلة جارية نحو الوجهة":"وصلت بالسلامة");
   if(order.driverId && state.driverMarker) drawLiveRoute(true);
   byId("trackingStatus").textContent = order.type === "serviceDelivery"
     ? (["بانتظار كابتن", "الكابتن في الطريق إلى الاستلام", "وصل الكابتن إلى نقطة الاستلام", "الطلب في الطريق إليك", "تم التسليم"][statusIndex] || "قيد المتابعة")
@@ -1943,17 +2098,16 @@ function renderTracking() {
 
 byId("cancelOrder").addEventListener("click", async event => {
   if (!state.activeOrder?.firestoreId || !confirm("هل تريد إلغاء الطلب؟")) return;
+  const reason = requestCancellationReason("الطلب");
+  if (!reason) return;
   const button = event.currentTarget;
   setButtonBusy(button, true, "جاري الإلغاء…");
   try {
     await updateDoc(doc(db, "orders", state.activeOrder.firestoreId), {
       cancelled: true,
-      cancellationReason: prompt("سبب الإلغاء (اختياري):", "") || "",
-      cancelledBy: "customer",
-      cancelledAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+      ...customerCancellationMeta(reason)
     });
-    showToast("تم إلغاء الطلب");
+    showToast("تم إلغاء الطلب وتسجيل السبب للإدارة");
   } catch (error) {
     console.error(error);
     showToast("تعذر إلغاء الطلب");
@@ -2670,6 +2824,7 @@ onAuthStateChanged(auth, async user => {
     state.serviceRequests = [];
     state.selectedServiceProfile = null;
     state.activeOrder = null;
+    stopCustomerTripLocationSharing();
     if (state.trackingUnsubscribe) state.trackingUnsubscribe();
     state.trackingUnsubscribe = null;
     state.trackingOrderId = null;

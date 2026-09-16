@@ -129,6 +129,27 @@ function toast(message) {
   window.servicesToast = setTimeout(() => element.classList.remove("show"), 2800);
 }
 
+function requestProviderCancellationReason() {
+  const value = prompt("اكتب سبب إلغاء الطلب. السبب مطلوب وسيظهر للإدارة والعميل:", "");
+  if (value === null) return null;
+  const reason = String(value || "").trim();
+  if (reason.length < 3) { toast("يجب كتابة سبب واضح للإلغاء (3 أحرف على الأقل)."); return null; }
+  return reason.slice(0, 300);
+}
+
+function providerCancellationMeta(reason) {
+  return {
+    cancellationReason: reason,
+    cancelledBy: "serviceProvider",
+    cancelledByRole: "serviceProvider",
+    cancelledByUserId: currentUser?.uid || "",
+    cancelledByName: currentUserData?.name || currentUser?.displayName || currentProfile?.ownerName || "مزود خدمة",
+    cancelledByEmail: currentUser?.email || currentUserData?.email || "",
+    cancelledAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+}
+
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>'"]/g, character => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
@@ -553,7 +574,7 @@ byId("pAddItem").addEventListener("click", event => {
 
 function renderPreview() {
   const category = currentProfile?.category || currentApplication?.category || "other";
-  const theme = window.KarwaServiceThemes?.resolve?.({ category, serviceType:currentApplication?.serviceType || "", description:byId("pDescription")?.value || currentProfile?.description || "", items:providerItems }) || { image:"./theme-parcel.webp?v=68", accent:"#087b75", icon:"🧰", key:"parcel" };
+  const theme = window.KarwaServiceThemes?.resolve?.({ category, serviceType:currentApplication?.serviceType || "", description:byId("pDescription")?.value || currentProfile?.description || "", items:providerItems }) || { image:"./theme-parcel.webp?v=70", accent:"#087b75", icon:"🧰", key:"parcel" };
   const cover = byId("previewThemeCover");
   if (cover) { cover.style.backgroundImage = `linear-gradient(180deg,rgba(3,15,24,.02),rgba(3,15,24,.2)),url('${theme.image}')`; cover.style.setProperty("--preview-theme-accent", theme.accent); cover.dataset.theme = theme.key; }
   const themeIcon = byId("previewThemeIcon"); if (themeIcon) themeIcon.textContent = theme.icon;
@@ -592,7 +613,7 @@ const requestStatusLabels = {
   accepted: "تم القبول",
   completed: "مكتمل",
   rejected: "مرفوض",
-  cancelled: "ألغاه العميل"
+  cancelled: "ملغي"
 };
 
 function renderProviderRequests(requests) {
@@ -614,8 +635,8 @@ function renderProviderRequests(requests) {
         const deliveryStatus = request.deliveryStatus || (request.deliveryRequested ? "awaitingCaptain" : "notRequested");
         const actions = status === "pending"
           ? `<div class="request-actions"><button class="button primary" type="button" data-request-action="accepted" data-request-id="${request.firestoreId}">موافقة على الحاجة</button><button class="button danger" type="button" data-request-action="rejected" data-request-id="${request.firestoreId}">رفض</button></div>`
-          : status === "accepted" && deliveryStatus !== "awaitingCustomerChoice"
-            ? `<div class="request-actions"><button class="button primary" type="button" data-request-action="completed" data-request-id="${request.firestoreId}">تم إكمال الخدمة</button></div>`
+          : status === "accepted"
+            ? `<div class="request-actions">${deliveryStatus !== "awaitingCustomerChoice" ? `<button class="button primary" type="button" data-request-action="completed" data-request-id="${request.firestoreId}">تم إكمال الخدمة</button>` : ""}<button class="button danger" type="button" data-request-action="cancelled" data-request-id="${request.firestoreId}">إلغاء الطلب</button></div>`
             : "";
         let deliveryText = "🏪 استلام من النشاط";
         if (status === "pending") deliveryText = request.providerCategory === "restaurant"
@@ -648,7 +669,9 @@ byId("providerRequestsList").addEventListener("click", async event => {
   const providerNote = nextStatus === "rejected"
     ? prompt("اكتب سبب رفض الطلب للعميل:", "الخدمة غير متاحة حاليًا")?.trim()
     : "";
+  const cancellationReason = nextStatus === "cancelled" ? requestProviderCancellationReason() : "";
   if (nextStatus === "rejected" && !providerNote) return;
+  if (nextStatus === "cancelled" && !cancellationReason) return;
   setBusy(button, true);
   try {
     if (nextStatus === "accepted") {
@@ -719,6 +742,24 @@ byId("providerRequestsList").addEventListener("click", async event => {
         if(walletPatch){currentUserData={...(currentUserData||{}),balance:walletPatch.balance,bonusBalance:walletPatch.bonusBalance};renderServiceWallet();}
         toast(deliveryAvailable ? "تمت الموافقة. ينتظر النظام الآن اختيار العميل للتوصيل أو الاستلام." : "تم قبول الطلب للاستلام من النشاط");
       }
+    } else if (nextStatus === "cancelled") {
+      const batch = writeBatch(db);
+      const requestRef = doc(db, "serviceRequests", request.firestoreId);
+      const cancelMeta = providerCancellationMeta(cancellationReason);
+      batch.update(requestRef, { status:"cancelled", providerNote:cancellationReason, statusUpdatedAt:serverTimestamp(), ...cancelMeta });
+      if (request.deliveryOrderId) {
+        const deliveryRef = doc(db, "orders", request.deliveryOrderId);
+        const deliverySnap = await getDoc(deliveryRef);
+        if (deliverySnap.exists()) {
+          const delivery = deliverySnap.data();
+          if (!delivery.cancelled && Number(delivery.statusIndex || 0) >= 4) throw new Error("DELIVERY_COMPLETED");
+          if (!delivery.cancelled) {
+            batch.update(deliveryRef, { cancelled:true, assignmentStatus:"cancelled", ...cancelMeta });
+          }
+        }
+      }
+      await batch.commit();
+      toast("تم إلغاء الطلب وتسجيل السبب للإدارة");
     } else {
       await updateDoc(doc(db, "serviceRequests", request.firestoreId), {
         status: nextStatus,
@@ -730,7 +771,7 @@ byId("providerRequestsList").addEventListener("click", async event => {
     }
   } catch (error) {
     console.error(error);
-    toast("تعذر تحديث حالة الطلب.");
+    toast(error?.message === "DELIVERY_COMPLETED" ? "لا يمكن إلغاء الطلب بعد اكتمال التوصيل." : "تعذر تحديث حالة الطلب.");
   } finally {
     setBusy(button, false);
   }

@@ -137,6 +137,53 @@ service cloud.firestore { match /databases/{database}/documents {
        && d.latitude is number && d.longitude is number
        && dLat*dLat+dLon*dLon<=100;
    }
+   function autoDriverTracking(){return get(/databases/$(database)/documents/orders/$(id)/tracking/current).data;}
+   function autoCustomerTracking(){return get(/databases/$(database)/documents/orders/$(id)/customerTracking/current).data;}
+   function autoTrackingFresh(point){return point.get('accuracy',9999) is number&&point.get('accuracy',9999)<=45&&point.get('updatedAt',null) is timestamp&&point.updatedAt>request.time-duration.value(75,'s');}
+   function autoNearDestination(point){
+     let p=resource.data.destinationLocation;
+     let latKm=(point.latitude-p.latitude)*111.32;
+     let lonFactor=p.latitude>=35?90:(p.latitude>=33?92:(p.latitude>=31?94.5:97));
+     let lonKm=(point.longitude-p.longitude)*lonFactor;
+     return p is map&&p.latitude is number&&p.longitude is number&&point.latitude is number&&point.longitude is number&&latKm*latKm+lonKm*lonKm<=0.0144;
+   }
+   function autoPairNear(customerPoint,driverPoint){
+     let latKm=(customerPoint.latitude-driverPoint.latitude)*111.32;
+     let lonFactor=driverPoint.latitude>=35?90:(driverPoint.latitude>=33?92:(driverPoint.latitude>=31?94.5:97));
+     let lonKm=(customerPoint.longitude-driverPoint.longitude)*lonFactor;
+     return latKm*latKm+lonKm*lonKm<=0.0324;
+   }
+   function gpsAutoCompleteAllowed(){
+     let d=autoDriverTracking();
+     let c=autoCustomerTracking();
+     return signed()
+       && resource.data.type=='ride'
+       && resource.data.cancelled==false
+       && resource.data.statusIndex==2
+       && resource.data.driverId is string && resource.data.driverId.size()>0
+       && ((customer()&&request.auth.uid==resource.data.userId)||(driver()&&request.auth.uid==resource.data.driverId))
+       && resource.data.get('customerFeeCharged',false)==true
+       && resource.data.get('captainFeeCharged',false)==true
+       && d.driverId==resource.data.driverId
+       && c.customerId==resource.data.userId
+       && autoTrackingFresh(d) && autoTrackingFresh(c)
+       && autoNearDestination(d) && autoNearDestination(c) && autoPairNear(c,d)
+       && request.resource.data.driverId==resource.data.driverId
+       && request.resource.data.userId==resource.data.userId
+       && request.resource.data.statusIndex==4
+       && request.resource.data.completedAt is timestamp
+       && request.resource.data.startedAt is timestamp
+       && request.resource.data.paymentStatus=='paid'
+       && request.resource.data.autoCompletedByGPS==true
+       && request.resource.data.autoCompletionReason=='both_near_destination_without_otp'
+       && request.resource.data.autoCompletedAt is timestamp
+       && request.resource.data.autoCompletionActor==request.auth.uid
+       && request.resource.data.autoArrivalRadiusM==120
+       && request.resource.data.otpBypassed==true
+       && request.resource.data.customerFeeCharged==true
+       && request.resource.data.captainFeeCharged==true
+       && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['statusIndex','startedAt','completedAt','paymentStatus','autoCompletedByGPS','autoCompletionReason','autoCompletedAt','autoCompletionActor','autoArrivalRadiusM','otpBypassed','updatedAt']);
+   }
    function taxiOrderVisible(){return driver()&&currentDriver().get('serviceType','')=='taxi'&&currentDriver().get('vehicleType','')!='دراجة'&&resource.data.type=='ride';}
    function deliveryOrderVisible(){return driver()&&currentDriver().get('serviceType','')=='delivery'&&currentDriver().get('vehicleType','') in ['اقتصادي','تكسي','عائلي','دراجة']&&resource.data.type in ['parcel','food','serviceDelivery'];}
    allow read:if signed()&&(resource.data.userId==request.auth.uid||resource.data.driverId==request.auth.uid||taxiOrderVisible()||deliveryOrderVisible()||admin()||(serviceProvider()&&resource.data.get('providerId','')==request.auth.uid));
@@ -202,7 +249,41 @@ service cloud.firestore { match /databases/{database}/documents {
        && linkedServiceRequest().totalPrice==request.resource.data.serviceTotal
        && linkedServiceRequest().deliveryFee==request.resource.data.price);
    allow update:if admin()
-     || (customer()&&resource.data.userId==request.auth.uid&&resource.data.cancelled==false&&request.resource.data.cancelled==true&&request.resource.data.cancelledBy=='customer'&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cancelled','cancellationReason','cancelledBy','cancelledAt','updatedAt']))
+     || (customer()
+       && resource.data.userId==request.auth.uid
+       && resource.data.cancelled==false
+       && request.resource.data.cancelled==true
+       && request.resource.data.cancelledBy=='customer'
+       && request.resource.data.cancelledByRole=='customer'
+       && request.resource.data.cancelledByUserId==request.auth.uid
+       && request.resource.data.cancelledByName==userDoc().get('name','')
+       && request.resource.data.cancelledByEmail==userDoc().get('email','')
+       && request.resource.data.cancellationReason is string
+       && request.resource.data.cancellationReason.size()>=3
+       && request.resource.data.cancellationReason.size()<=300
+       && request.resource.data.cancelledAt is timestamp
+       && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cancelled','cancellationReason','cancelledBy','cancelledByRole','cancelledByUserId','cancelledByName','cancelledByEmail','cancelledAt','updatedAt']))
+     || (serviceProvider()
+       && resource.data.type=='serviceDelivery'
+       && resource.data.providerId==request.auth.uid
+       && resource.data.cancelled==false
+       && resource.data.statusIndex<4
+       && request.resource.data.cancelled==true
+       && request.resource.data.cancelledBy=='serviceProvider'
+       && request.resource.data.cancelledByRole=='serviceProvider'
+       && request.resource.data.cancelledByUserId==request.auth.uid
+       && request.resource.data.cancelledByName==userDoc().get('name','')
+       && request.resource.data.cancelledByEmail==userDoc().get('email','')
+       && request.resource.data.cancellationReason is string
+       && request.resource.data.cancellationReason.size()>=3
+       && request.resource.data.cancellationReason.size()<=300
+       && request.resource.data.cancelledAt is timestamp
+       && request.resource.data.assignmentStatus=='cancelled'
+       && request.resource.data.statusIndex==resource.data.statusIndex
+       && linkedServiceRequest().providerId==request.auth.uid
+       && linkedServiceRequest().status=='cancelled'
+       && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cancelled','cancellationReason','cancelledBy','cancelledByRole','cancelledByUserId','cancelledByName','cancelledByEmail','cancelledAt','assignmentStatus','updatedAt']))
+     || gpsAutoCompleteAllowed()
      || (driver() && (
        (resource.data.driverId==null && resource.data.cancelled==false && resource.data.statusIndex==0 && request.resource.data.driverId==request.auth.uid && request.resource.data.statusIndex==resource.data.statusIndex
          && resource.data.get('captainFeeCharged',false)==false && request.resource.data.captainFeeCharged==true && request.resource.data.captainPlatformFee==captainOrderFee() && walletCharged(request.auth.uid,captainOrderFee())
@@ -213,10 +294,42 @@ service cloud.firestore { match /databases/{database}/documents {
          && currentDriver().get('activeOrderId','')=='' && getAfter(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.activeOrderId==id)
        || (resource.data.driverId==request.auth.uid && request.resource.data.driverId==request.auth.uid && request.resource.data.statusIndex==resource.data.statusIndex+1 && request.resource.data.statusIndex<=4 && !(resource.data.type=='serviceDelivery'&&resource.data.statusIndex==2) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['statusIndex','arrivedAt','startedAt','completedAt','paymentStatus','updatedAt']))
        || (resource.data.driverId==request.auth.uid && request.resource.data.driverId==request.auth.uid && resource.data.type=='serviceDelivery' && resource.data.statusIndex==2 && request.resource.data.statusIndex==3 && pickupOtpMatches() && request.resource.data.pickupVerifiedAt is timestamp && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['statusIndex','startedAt','pickupVerificationCode','pickupVerifiedAt','updatedAt']))
-       || (resource.data.driverId==request.auth.uid && request.resource.data.driverId==request.auth.uid && resource.data.cancelled==false && request.resource.data.cancelled==true && request.resource.data.cancelledBy=='driver' && request.resource.data.statusIndex==resource.data.statusIndex && resource.data.statusIndex<4 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cancelled','cancelledBy','cancellationReason','cancelledAt','assignmentStatus','updatedAt']))
+       || (resource.data.driverId==request.auth.uid
+         && request.resource.data.driverId==request.auth.uid
+         && resource.data.cancelled==false
+         && request.resource.data.cancelled==true
+         && request.resource.data.cancelledBy=='driver'
+         && request.resource.data.cancelledByRole=='driver'
+         && request.resource.data.cancelledByUserId==request.auth.uid
+         && request.resource.data.cancelledByName==userDoc().get('name','')
+         && request.resource.data.cancelledByEmail==userDoc().get('email','')
+         && request.resource.data.cancellationReason is string
+         && request.resource.data.cancellationReason.size()>=3
+         && request.resource.data.cancellationReason.size()<=300
+         && request.resource.data.cancelledAt is timestamp
+         && request.resource.data.assignmentStatus=='cancelled'
+         && request.resource.data.statusIndex==resource.data.statusIndex
+         && resource.data.statusIndex<4
+         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cancelled','cancelledBy','cancelledByRole','cancelledByUserId','cancelledByName','cancelledByEmail','cancellationReason','cancelledAt','assignmentStatus','updatedAt']))
      ));
    allow delete:if admin();
    match /tracking/{tid}{function o(){return get(/databases/$(database)/documents/orders/$(id)).data;}allow read:if signed()&&(o().userId==request.auth.uid||o().driverId==request.auth.uid||admin());allow create,update:if driver()&&o().driverId==request.auth.uid&&request.resource.data.driverId==request.auth.uid;allow delete:if admin();}
+   match /customerTracking/{tid}{
+     function o(){return get(/databases/$(database)/documents/orders/$(id)).data;}
+     allow read:if signed()&&(o().userId==request.auth.uid||o().driverId==request.auth.uid||admin());
+     allow create,update:if customer()
+       && o().userId==request.auth.uid
+       && o().type=='ride'
+       && o().cancelled==false
+       && o().statusIndex<4
+       && request.resource.data.keys().hasOnly(['customerId','latitude','longitude','accuracy','updatedAt'])
+       && request.resource.data.customerId==request.auth.uid
+       && request.resource.data.latitude is number && request.resource.data.latitude>=-90 && request.resource.data.latitude<=90
+       && request.resource.data.longitude is number && request.resource.data.longitude>=-180 && request.resource.data.longitude<=180
+       && request.resource.data.accuracy is number && request.resource.data.accuracy>=0 && request.resource.data.accuracy<=45
+       && request.resource.data.updatedAt is timestamp;
+     allow delete:if admin();
+   }
  }
  match /orderSecrets/{id}{
    allow read:if admin()||(signed()&&resource.data.userId==request.auth.uid);
@@ -411,7 +524,20 @@ service cloud.firestore { match /databases/{database}/documents {
 
    allow read:if admin()||(customer()&&resource.data.customerId==request.auth.uid)||(serviceProvider()&&resource.data.providerId==request.auth.uid);
    allow update:if admin()
-     || (customer()&&resource.data.customerId==request.auth.uid&&resource.data.status=='pending'&&request.resource.data.status=='cancelled'&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','cancelledAt','updatedAt']))
+     || (customer()
+       && resource.data.customerId==request.auth.uid
+       && resource.data.status=='pending'
+       && request.resource.data.status=='cancelled'
+       && request.resource.data.cancelledBy=='customer'
+       && request.resource.data.cancelledByRole=='customer'
+       && request.resource.data.cancelledByUserId==request.auth.uid
+       && request.resource.data.cancelledByName==userDoc().get('name','')
+       && request.resource.data.cancelledByEmail==userDoc().get('email','')
+       && request.resource.data.cancellationReason is string
+       && request.resource.data.cancellationReason.size()>=3
+       && request.resource.data.cancellationReason.size()<=300
+       && request.resource.data.cancelledAt is timestamp
+       && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','cancellationReason','cancelledBy','cancelledByRole','cancelledByUserId','cancelledByName','cancelledByEmail','cancelledAt','updatedAt']))
      || (customer()
        && resource.data.providerCategory!='restaurant'
        && resource.data.customerId==request.auth.uid
@@ -468,6 +594,24 @@ service cloud.firestore { match /databases/{database}/documents {
        && (
          (resource.data.status=='pending'&&request.resource.data.status=='rejected'&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','providerNote','statusUpdatedAt','updatedAt']))
          || (resource.data.status=='accepted'&&request.resource.data.status=='accepted'&&resource.data.get('deliveryStatus','')=='awaitingCaptain'&&resource.data.get('pickupOtp','')==''&&request.resource.data.pickupOtp is string&&request.resource.data.pickupOtp.matches('^[0-9]{4}$')&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pickupOtp','updatedAt']))
+         || (resource.data.status=='accepted'
+           && request.resource.data.status=='cancelled'
+           && request.resource.data.providerNote==request.resource.data.cancellationReason
+           && request.resource.data.cancellationReason is string
+           && request.resource.data.cancellationReason.size()>=3
+           && request.resource.data.cancellationReason.size()<=300
+           && request.resource.data.cancelledBy=='serviceProvider'
+           && request.resource.data.cancelledByRole=='serviceProvider'
+           && request.resource.data.cancelledByUserId==request.auth.uid
+           && request.resource.data.cancelledByName==userDoc().get('name','')
+           && request.resource.data.cancelledByEmail==userDoc().get('email','')
+           && request.resource.data.cancelledAt is timestamp
+           && request.resource.data.statusUpdatedAt is timestamp
+           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','providerNote','statusUpdatedAt','cancellationReason','cancelledBy','cancelledByRole','cancelledByUserId','cancelledByName','cancelledByEmail','cancelledAt','updatedAt'])
+           && (resource.data.get('deliveryOrderId','')==''
+             || (existsAfter(/databases/$(database)/documents/orders/$(resource.data.deliveryOrderId))
+               && getAfter(/databases/$(database)/documents/orders/$(resource.data.deliveryOrderId)).data.cancelled==true
+               )))
          || (resource.data.status=='accepted'&&request.resource.data.status=='completed'&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','providerNote','statusUpdatedAt','updatedAt']))
          || (resource.data.providerCategory!='restaurant'
            && resource.data.status=='pending'&&request.resource.data.status=='accepted'

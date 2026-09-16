@@ -320,7 +320,7 @@ function driverTripDetail(order) {
       <p class="order-route">${escapeHtml(order.route || "-")}</p>
       <div class="order-meta"><span>رمز الرحلة: <b>${escapeHtml(code)}</b></span><span>قيمة الرحلة: ${money(order.price)}</span></div>
       ${completed ? `<div class="order-meta trip-money"><span>رسوم كروة: ${money(Number(order.customerPlatformFee||0)+Number(order.captainPlatformFee||0))}</span><span>أجرة الكابتن: <b>${money(order.driverEarnings)}</b></span></div>` : ""}
-      ${order.cancelled && order.cancellationReason ? `<p class="admin-note danger-note">سبب الإلغاء: ${escapeHtml(order.cancellationReason)}</p>` : ""}
+      ${order.cancelled ? `<p class="admin-note danger-note">سبب الإلغاء: ${escapeHtml(order.cancellationReason || "غير مسجل")}</p><div class="order-meta"><span>ألغى بواسطة: ${escapeHtml(order.cancelledByName || cancellationRoleLabel(order.cancelledByRole || order.cancelledBy))}</span><span>${escapeHtml(order.cancelledByEmail || "البريد غير مسجل")}</span></div>` : ""}
       <div class="order-meta trip-dates">${order.acceptedAt?.seconds ? `<span>القبول: ${new Date(order.acceptedAt.seconds*1000).toLocaleString("ar-IQ")}</span>` : ""}${order.completedAt?.seconds ? `<span>الإكمال: ${new Date(order.completedAt.seconds*1000).toLocaleString("ar-IQ")}</span>` : ""}</div>
     </div>`;
 }
@@ -521,8 +521,9 @@ function orderCard(order) {
         ${Number(order.discountAmount||0)>0?`<div class="order-meta"><span>خصم ${money(order.discountAmount)}</span><span>${escapeHtml(order.couponCode||"")}</span></div>`:""}
         ${Array.isArray(order.dispatchCandidateIds)?`<div class="order-meta"><span>مرشحو التوزيع: ${order.dispatchCandidateIds.length}</span><span>الجولة ${Number(order.dispatchRound||1)}</span></div>`:""}
         ${Number(order.statusIndex||0)>=4&&!order.cancelled?`<div class="order-meta"><span>رسوم كروة: ${money(Number(order.customerPlatformFee||0)+Number(order.captainPlatformFee||0))}</span><span>أجرة الكابتن: ${money(order.driverEarnings)}</span></div>`:""}
+        ${order.autoCompletedByGPS===true?`<div class="order-meta"><span>📍 إكمال تلقائي عبر GPS</span><span>العميل والكابتن وصلا ضمن ${Number(order.autoArrivalRadiusM||120)} م من الوجهة</span></div>`:""}
       </div>
-      ${order.cancelled && order.cancellationReason ? `<p class="admin-note danger-note">سبب الإلغاء: ${escapeHtml(order.cancellationReason)}</p>` : ""}
+      ${order.cancelled ? `<p class="admin-note danger-note">سبب الإلغاء: ${escapeHtml(order.cancellationReason || "غير مسجل")}</p><div class="order-meta"><span>ألغى بواسطة: ${escapeHtml(order.cancelledByName || cancellationRoleLabel(order.cancelledByRole || order.cancelledBy))}</span><span>${escapeHtml(order.cancelledByEmail || "البريد غير مسجل")}</span></div>` : ""}
       ${order.acceptedAt ? `<div class="order-meta"><span>قبول: ${new Date(order.acceptedAt.seconds*1000).toLocaleString("ar-IQ")}</span>${order.completedAt ? `<span>إكمال: ${new Date(order.completedAt.seconds*1000).toLocaleString("ar-IQ")}</span>` : ""}</div>` : ""}
       ${cancel}
     </article>`;
@@ -539,6 +540,72 @@ function renderOrders() {
     ? sorted.map(orderCard).join("")
     : `<div class="empty"><span>✅</span>لا توجد طلبات بانتظار كابتن حالياً.</div>`;
 }
+function cancellationRoleLabel(role) {
+  return ({ customer:"عميل", driver:"كابتن", serviceProvider:"خدمات أخرى", admin:"الإدارة" })[role] || "مستخدم";
+}
+
+function cancellationOperationLabel(item, source) {
+  if (source === "service") return item.providerCategory === "restaurant" ? "طلب مطعم" : "طلب خدمة";
+  return ({ ride:"تكسي", parcel:"توصيل أغراض", food:"توصيل طعام", serviceDelivery:"توصيل خدمة" })[item.type] || "طلب كروة";
+}
+
+function cancellationTimestamp(item) {
+  const value = item.cancelledAt || item.statusUpdatedAt || item.updatedAt || item.createdAt;
+  if (value?.seconds) return Number(value.seconds) * 1000;
+  if (typeof value?.toMillis === "function") return value.toMillis();
+  const n = new Date(value || 0).getTime();
+  return Number.isFinite(n) ? n : 0;
+}
+
+function cancellationActor(item, source) {
+  const explicitRole = String(item.cancelledByRole || item.cancelledBy || (source === "service" ? "customer" : "")).trim();
+  const role = ["customer","driver","serviceProvider","admin"].includes(explicitRole) ? explicitRole : "customer";
+  const fallbackId = item.cancelledByUserId || (role === "driver" ? item.driverId : role === "serviceProvider" ? item.providerId : source === "service" ? item.customerId : item.userId) || "";
+  const user = state.users.find(entry => entry.firestoreId === fallbackId) || {};
+  let fallbackName = user.name || "";
+  if (!fallbackName && role === "driver") fallbackName = item.driverName || "كابتن كروة";
+  if (!fallbackName && role === "serviceProvider") fallbackName = item.providerName || "مزود خدمة";
+  if (!fallbackName && role === "customer") fallbackName = item.customerName || "عميل كروة";
+  if (!fallbackName && role === "admin") fallbackName = "إدارة كروة";
+  return {
+    role,
+    id: fallbackId,
+    name: item.cancelledByName || fallbackName || "غير معروف",
+    email: item.cancelledByEmail || user.email || (role === "admin" && state.user?.uid === fallbackId ? state.user?.email || "" : "") || ""
+  };
+}
+
+function cancellationRecords() {
+  const orderRows = state.orders.filter(item => item.cancelled === true).map(item => ({ source:"order", item }));
+  const serviceRows = state.serviceRequests.filter(item => item.status === "cancelled").map(item => ({ source:"service", item }));
+  return [...orderRows, ...serviceRows].sort((a,b) => cancellationTimestamp(b.item) - cancellationTimestamp(a.item));
+}
+
+function renderCancellations() {
+  const list = byId("cancellationsList");
+  if (!list) return;
+  const rows = cancellationRecords();
+  const filter = byId("cancellationRoleFilter")?.value || "all";
+  const filtered = rows.filter(row => filter === "all" || cancellationActor(row.item, row.source).role === filter);
+  if (byId("cancellationsBadge")) byId("cancellationsBadge").textContent = `${rows.length} إلغاء`;
+  if (byId("navCancellationsCount")) byId("navCancellationsCount").textContent = String(rows.length);
+  list.innerHTML = filtered.length ? filtered.map(({source,item}) => {
+    const actor = cancellationActor(item, source);
+    const dateMs = cancellationTimestamp(item);
+    const code = source === "service" ? (item.firestoreId || "—") : (item.id || item.orderCode || item.firestoreId || "—");
+    const title = source === "service" ? (item.itemName || item.providerName || "طلب خدمة") : (item.title || "طلب كروة");
+    const reason = String(item.cancellationReason || item.providerNote || "لم يُسجل سبب في النسخ القديمة").trim();
+    return `<article class="cancellation-card">
+      <div class="cancellation-head"><div><small>${escapeHtml(cancellationOperationLabel(item, source))}</small><strong>${escapeHtml(title)}</strong></div><span class="cancellation-chip">${escapeHtml(cancellationRoleLabel(actor.role))}</span></div>
+      <div class="cancellation-reason">سبب الإلغاء: ${escapeHtml(reason)}</div>
+      <div class="cancellation-user"><b>${escapeHtml(actor.name)}</b><small>${escapeHtml(actor.email || "البريد غير مسجل")} • UID: ${escapeHtml(actor.id || "غير متوفر")}</small></div>
+      <div class="cancellation-meta"><span>رقم العملية: ${escapeHtml(code)}</span><span>${dateMs ? new Date(dateMs).toLocaleString("ar-IQ") : "وقت الإلغاء غير متوفر"}</span>${source === "service" ? `<span>النشاط: ${escapeHtml(item.providerName || "—")}</span>` : item.driverName ? `<span>الكابتن: ${escapeHtml(item.driverName)}</span>` : ""}</div>
+    </article>`;
+  }).join("") : `<div class="empty"><span>✓</span>لا توجد إلغاءات مطابقة للفلتر.</div>`;
+}
+
+byId("cancellationRoleFilter")?.addEventListener("change", renderCancellations);
+
 function repairLegacyCaptainService(collectionName, record) {
   const normalized = normalizeCaptainServiceType(record);
   if (!["taxi", "delivery"].includes(normalized) || record.serviceType === normalized) return;
@@ -602,6 +669,7 @@ function openDashboard() {
   const usersUnsubscribe = onSnapshot(collection(db, "users"), snapshot => {
     state.users = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
     renderMetrics();
+    renderCancellations();
   });
   const applicationsUnsubscribe = onSnapshot(collection(db, "driverApplications"), snapshot => {
     state.applications = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
@@ -629,10 +697,12 @@ function openDashboard() {
     renderOrders();
     renderDrivers();
     renderMetrics();
+    renderCancellations();
   });
   const serviceRequestsUnsubscribe = onSnapshot(collection(db, "serviceRequests"), snapshot => {
     state.serviceRequests = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
     renderMetrics();
+    renderCancellations();
   });
   const driversUnsubscribe = onSnapshot(collection(db, "drivers"), snapshot => {
     state.drivers = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
@@ -865,12 +935,21 @@ document.addEventListener("click", async event => {
       toast("تمت إعادة تفعيل الكابتن");
     } else if (button.dataset.action === "cancel-order") {
       if (!confirm("هل تريد إلغاء هذا الطلب إداريًا؟")) return;
+      const reason = prompt("اكتب سبب الإلغاء الإداري. السبب مطلوب وسيظهر في سجل الإلغاءات:", "")?.trim();
+      if (!reason || reason.length < 3) { toast("يجب كتابة سبب واضح للإلغاء."); return; }
+      const adminProfile = state.users.find(item => item.firestoreId === state.user?.uid) || {};
       await updateDoc(doc(db, "orders", id), {
         cancelled: true,
+        cancellationReason: reason.slice(0,300),
         cancelledBy: "admin",
+        cancelledByRole: "admin",
+        cancelledByUserId: state.user?.uid || "",
+        cancelledByName: adminProfile.name || state.user?.displayName || "إدارة كروة",
+        cancelledByEmail: state.user?.email || adminProfile.email || "",
+        cancelledAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
-      toast("تم إلغاء الطلب");
+      toast("تم إلغاء الطلب وتسجيل السبب وهوية المدير");
     }
   } catch (error) {
     console.error(error);

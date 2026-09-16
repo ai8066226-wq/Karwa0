@@ -175,6 +175,11 @@ const state = {
   locationWatchId: null,
   lastLocationWrite: 0,
   lastPosition: null,
+  customerTrackingUnsubscribe: null,
+  customerTrackingOrderId: null,
+  customerTripPosition: null,
+  driverAutoArrivalSince: 0,
+  autoArrivalCompleting: false,
   map: null,
   baseLayer: null,
   mapTheme: readDriverPreference("karwa.driver.mapTheme", "day") === "night" ? "night" : "day",
@@ -246,6 +251,29 @@ function toast(message) {
   element.classList.add("show");
   clearTimeout(window.driverToast);
   window.driverToast = setTimeout(() => element.classList.remove("show"), 2800);
+}
+
+function requestDriverCancellationReason() {
+  const value = prompt("اكتب سبب إلغاء الطلب. السبب مطلوب وسيظهر للإدارة:", "");
+  if (value === null) return null;
+  const reason = String(value || "").trim();
+  if (reason.length < 3) { toast("يجب كتابة سبب واضح للإلغاء (3 أحرف على الأقل)."); return null; }
+  return reason.slice(0, 300);
+}
+
+function driverCancellationMeta(reason) {
+  return {
+    cancelled: true,
+    cancellationReason: reason,
+    cancelledBy: "driver",
+    cancelledByRole: "driver",
+    cancelledByUserId: state.user?.uid || "",
+    cancelledByName: state.userData?.name || state.user?.displayName || state.driverData?.name || "كابتن كروة",
+    cancelledByEmail: state.user?.email || "",
+    cancelledAt: serverTimestamp(),
+    assignmentStatus: "cancelled",
+    updatedAt: serverTimestamp()
+  };
 }
 
 const DRIVER_NOTIFICATION_TYPES = new Set(["order", "trip", "warning", "wallet", "system"]);
@@ -429,6 +457,103 @@ function decodeValhallaShape(encoded){let index=0,lat=0,lng=0,out=[];while(index
 function turnIcon(m){const t=String(m?.type??"");if([9,10,11,12,13].includes(Number(t)))return "↪️";if([14,15,16,17,18].includes(Number(t)))return "↩️";if([26,27].includes(Number(t)))return "🔄";if([4,5,6].includes(Number(t)))return "➡️";if([7,8].includes(Number(t)))return "⬅️";return "⬆️";}
 async function valhallaNavigate(a,b){const body={locations:[{lat:a.latitude,lon:a.longitude},{lat:Number(b.latitude),lon:Number(b.longitude)}],costing:"auto",units:"kilometers",language:"ar-IQ",directions_options:{units:"kilometers",language:"ar-IQ"},alternates:1};const r=await fetch("https://valhalla1.openstreetmap.de/route",{method:"POST",headers:{"Content-Type":"application/json","X-Client-Id":"karwa0.app"},body:JSON.stringify(body),signal:AbortSignal.timeout(5500)});if(!r.ok)throw new Error("VALHALLA");const x=await r.json(),leg=x.trip?.legs?.[0],sum=x.trip?.summary;if(!leg||!sum)throw 0;return{coords:decodeValhallaShape(leg.shape),km:Number(sum.length||0),mins:Number(sum.time||0)/60,maneuvers:leg.maneuvers||[]};}
 function haversine(a,b){const R=6371,r=v=>v*Math.PI/180,dl=r(b.latitude-a.latitude),dn=r(b.longitude-a.longitude);const x=Math.sin(dl/2)**2+Math.cos(r(a.latitude))*Math.cos(r(b.latitude))*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(x));}
+
+const AUTO_ARRIVAL_RADIUS_M = 120;
+const AUTO_ARRIVAL_PAIR_M = 180;
+const AUTO_ARRIVAL_DWELL_MS = 8000;
+const AUTO_ARRIVAL_MAX_ACCURACY_M = 45;
+
+function activeDriverAutoArrivalRide(){
+  return state.orders.find(order=>order.type==="ride"&&order.driverId===state.user?.uid&&!order.cancelled&&Number(order.statusIndex||0)===2&&order.destinationLocation)||null;
+}
+function autoArrivalDriverGeometryOk(order,customerPoint,driverPoint){
+  if(!order?.destinationLocation||!customerPoint||!driverPoint)return false;
+  const ca=Number(customerPoint.accuracy||9999),da=Number(driverPoint.accuracy||9999);
+  if(ca>AUTO_ARRIVAL_MAX_ACCURACY_M||da>AUTO_ARRIVAL_MAX_ACCURACY_M)return false;
+  const d={latitude:Number(driverPoint.latitude),longitude:Number(driverPoint.longitude)};
+  const c={latitude:Number(customerPoint.latitude),longitude:Number(customerPoint.longitude)};
+  return haversine(c,order.destinationLocation)*1000<=AUTO_ARRIVAL_RADIUS_M
+    && haversine(d,order.destinationLocation)*1000<=AUTO_ARRIVAL_RADIUS_M
+    && haversine(c,d)*1000<=AUTO_ARRIVAL_PAIR_M;
+}
+function stopDriverCustomerTracking(){
+  try{state.customerTrackingUnsubscribe?.();}catch{}
+  state.customerTrackingUnsubscribe=null;
+  state.customerTrackingOrderId=null;
+  state.customerTripPosition=null;
+  state.driverAutoArrivalSince=0;
+}
+function syncDriverCustomerTracking(){
+  const order=activeDriverAutoArrivalRide();
+  const nextId=order?.firestoreId||null;
+  if(state.customerTrackingOrderId===nextId)return;
+  stopDriverCustomerTracking();
+  if(!nextId)return;
+  state.customerTrackingOrderId=nextId;
+  state.customerTrackingUnsubscribe=onSnapshot(doc(db,"orders",nextId,"customerTracking","current"),snapshot=>{
+    state.customerTripPosition=snapshot.exists()?snapshot.data():null;
+    evaluateDriverAutoArrival();
+  },error=>console.warn("تعذر قراءة موقع العميل للتحقق من الوصول",error));
+}
+async function autoCompleteTaxiFromDriver(order){
+  if(state.autoArrivalCompleting||!state.user||!order?.firestoreId)return;
+  state.autoArrivalCompleting=true;
+  try{
+    const orderRef=doc(db,"orders",order.firestoreId);
+    const driverRef=doc(db,"drivers",state.user.uid);
+    await runTransaction(db,async transaction=>{
+      const driverTrackRef=doc(db,"orders",order.firestoreId,"tracking","current");
+      const customerTrackRef=doc(db,"orders",order.firestoreId,"customerTracking","current");
+      const [freshSnap,driverTrackSnap,customerTrackSnap,driverSnap]=await Promise.all([transaction.get(orderRef),transaction.get(driverTrackRef),transaction.get(customerTrackRef),transaction.get(driverRef)]);
+      if(!freshSnap.exists()||!driverTrackSnap.exists()||!customerTrackSnap.exists())throw new Error("TRACKING_MISSING");
+      const fresh=freshSnap.data(),status=Number(fresh.statusIndex||0);
+      if(fresh.driverId!==state.user.uid||fresh.type!=="ride"||fresh.cancelled||status!==2)throw new Error("NOT_ELIGIBLE");
+      if(fresh.customerFeeCharged!==true||fresh.captainFeeCharged!==true)throw new Error("FEES_PENDING");
+      const dp=driverTrackSnap.data(),cp=customerTrackSnap.data(),now=Date.now();
+      const dt=driverTimestampMillis(dp.updatedAt),ct=driverTimestampMillis(cp.updatedAt);
+      if(!dt||!ct||now-dt>75000||now-ct>75000)throw new Error("TRACKING_STALE");
+      if(!autoArrivalDriverGeometryOk(fresh,cp,dp))throw new Error("NOT_AT_DESTINATION");
+      transaction.update(orderRef,{
+        statusIndex:4,
+        startedAt:fresh.startedAt||fresh.arrivedAt||serverTimestamp(),
+        completedAt:serverTimestamp(),
+        paymentStatus:"paid",
+        autoCompletedByGPS:true,
+        autoCompletionReason:"both_near_destination_without_otp",
+        autoCompletedAt:serverTimestamp(),
+        autoCompletionActor:state.user.uid,
+        autoArrivalRadiusM:AUTO_ARRIVAL_RADIUS_M,
+        otpBypassed:true,
+        updatedAt:serverTimestamp()
+      });
+      if(driverSnap.exists()&&driverSnap.data().activeOrderId===order.firestoreId){
+        transaction.update(driverRef,{activeOrderId:"",activeOrderCode:"",busySince:null,updatedAt:serverTimestamp()});
+      }
+    });
+    toast("تم تأكيد وصولك أنت والعميل إلى الوجهة عبر GPS وإكمال الرحلة تلقائيًا.");
+    addDriverNotification({id:`auto-arrival:${order.firestoreId}`,type:"trip",title:"تم إكمال الرحلة تلقائيًا",message:"تم تأكيد وصول الطرفين إلى الوجهة عبر GPS. رسوم كروة محتسبة مرة واحدة فقط.",target:""});
+    state.driverAutoArrivalSince=0;
+  }catch(error){
+    const quiet=["TRACKING_MISSING","TRACKING_STALE","NOT_AT_DESTINATION","NOT_ELIGIBLE"].includes(error?.message);
+    if(!quiet)console.warn("تعذر الإكمال التلقائي للرحلة",error);
+  }finally{state.autoArrivalCompleting=false;}
+}
+function evaluateDriverAutoArrival(){
+  const order=activeDriverAutoArrivalRide();
+  const p=state.lastPosition?.coords?{latitude:Number(state.lastPosition.coords.latitude),longitude:Number(state.lastPosition.coords.longitude),accuracy:Number(state.lastPosition.coords.accuracy||9999)}:null;
+  const customer=state.customerTripPosition;
+  if(!order||!autoArrivalDriverGeometryOk(order,customer,p)){state.driverAutoArrivalSince=0;return;}
+  if(!state.driverAutoArrivalSince){state.driverAutoArrivalSince=Date.now();return;}
+  if(Date.now()-state.driverAutoArrivalSince>=AUTO_ARRIVAL_DWELL_MS)autoCompleteTaxiFromDriver(order);
+}
+async function releaseDriverLockForCompletedOrder(){
+  const activeId=String(state.driverData?.activeOrderId||"");
+  if(!activeId||!state.user)return;
+  const terminal=state.orders.find(order=>order.firestoreId===activeId&&(order.cancelled===true||Number(order.statusIndex||0)>=4));
+  if(!terminal)return;
+  await updateDoc(doc(db,"drivers",state.user.uid),{activeOrderId:"",activeOrderCode:"",busySince:null,updatedAt:serverTimestamp()}).catch(error=>console.warn("تعذر تحرير حالة الكابتن بعد انتهاء الطلب",error));
+}
+
 async function drawPickupRoute(force=false) {
   if (!state.map) return;
   const activeOrder=state.orders.find(order=>order.driverId===state.user?.uid&&!order.cancelled&&Number(order.statusIndex||0)<4);
@@ -481,6 +606,7 @@ function showOwnPosition(position) {
   if(Number.isFinite(position.coords.heading)){const el=state.driverMarker?.getElement()?.querySelector(".portal-map-marker");if(el)el.style.transform=`rotate(${position.coords.heading}deg)`;}
   drawPickupRoute();
   checkRoadReportProximity(position);
+  evaluateDriverAutoArrival();
 }
 
 async function sharePosition(position, force = false) {
@@ -621,6 +747,7 @@ function showView(name) {
 }
 
 function clearViewListeners() {
+  stopDriverCustomerTracking();
   state.viewUnsubscribes.forEach(unsubscribe => unsubscribe?.());
   state.viewUnsubscribes = [];
   stopLocationSharing();
@@ -957,7 +1084,7 @@ function orderCard(order, mode) {
   const action = mode === "available"
     ? `<button class="primary" data-action="accept" data-id="${order.firestoreId}" ${state.driverData?.online ? "" : "disabled"}>قبول الطلب</button>`
     : statusIndex < 4 && !order.cancelled
-      ? `<button class="primary" data-action="advance" data-id="${order.firestoreId}">${escapeHtml(driverStatusLabel(order, statusIndex + 1))}</button>`
+      ? `<button class="primary" data-action="advance" data-id="${order.firestoreId}">${escapeHtml(driverStatusLabel(order, statusIndex + 1))}</button><button class="danger" data-action="cancel" data-id="${order.firestoreId}">إلغاء الطلب</button>`
       : "";
   return `
     <article class="order-card">
@@ -972,6 +1099,7 @@ function orderCard(order, mode) {
         ${order.distanceKm ? `<div class="order-meta"><span>المشوار ${Number(order.distanceKm).toFixed(1)} كم</span><span>≈ ${Math.round(Number(order.durationMin||0))} دقيقة</span><span>صافي الكابتن ${money(order.driverEarnings)}</span></div>` : ""}
         <span class="order-price">${money(order.price)}</span>
       </div>
+      ${order.type==="ride"&&statusIndex===2?`<div class="order-meta"><span>📍 إذا لم تُدخل رمز العميل، سيؤكد كروة الوصول تلقائيًا عندما تصلان معًا إلى الوجهة عبر GPS الدقيق.</span></div>`:""}
       ${action ? `<div class="order-actions">${action}</div>` : ""}
     </article>`;
 }
@@ -1097,6 +1225,8 @@ function openDriverDashboard() {
       knownOrderIds = new Set(incoming.map(o=>o.firestoreId));
       ordersSnapshotReady = true;
       state.orders = incoming.filter(o => canDriverHandleOrder(o) || o.driverId === state.user?.uid).sort((a, b) => String(b.createdAtISO || "").localeCompare(String(a.createdAtISO || "")));
+      syncDriverCustomerTracking();
+      releaseDriverLockForCompletedOrder();
       renderOrders();
     }, error => {
       console.error(error);
@@ -1194,6 +1324,21 @@ document.addEventListener("click", async event => {
       });
       if (state.lastPosition) await sharePosition(state.lastPosition, true);
       setTimeout(()=>drawPickupRoute(true),400); toast("تم قبول الطلب بنجاح");
+    } else if (button.dataset.action === "cancel") {
+      const reason = requestDriverCancellationReason();
+      if (!reason) return;
+      await runTransaction(db, async transaction => {
+        const driverRef = doc(db, "drivers", state.user.uid);
+        const [orderSnap, driverSnap] = await Promise.all([transaction.get(orderRef), transaction.get(driverRef)]);
+        if (!orderSnap.exists()) throw new Error("ORDER_NOT_FOUND");
+        const fresh = orderSnap.data();
+        if (fresh.driverId !== state.user.uid || fresh.cancelled === true || Number(fresh.statusIndex || 0) >= 4) throw new Error("ORDER_NOT_AVAILABLE");
+        transaction.update(orderRef, driverCancellationMeta(reason));
+        if (driverSnap.exists() && driverSnap.data().activeOrderId === button.dataset.id) {
+          transaction.update(driverRef, { activeOrderId:"", activeOrderCode:"", busySince:null, updatedAt:serverTimestamp() });
+        }
+      });
+      toast("تم إلغاء الطلب وتسجيل السبب للإدارة");
     } else if (button.dataset.action === "advance") {
       const order = state.orders.find(item => item.firestoreId === button.dataset.id);
       if (!order) throw new Error("ORDER_NOT_FOUND");
