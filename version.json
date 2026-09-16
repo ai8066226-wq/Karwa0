@@ -1,12 +1,13 @@
 {
-  "phase": 65,
-  "version": "2.1.6",
-  "webBasePhase": 65,
+  "phase": 66,
+  "version": "2.1.7",
+  "webBasePhase": 66,
   "updateMode": "server-first-local-fallback-version-check-no-resume-reload",
   "hosting": "https://karwa0.web.app",
   "notifications": "android-native-sound-vibration",
   "location": "native-gps-precise-permission-best-fix-20m-target-35m-acceptable",
   "roadReports": "150m-warning-6s-two-driver-firestore-transaction-no-road-function-45m-gps-gate",
   "backgroundConnection": "android-special-use-foreground-session-until-task-removed",
-  "serviceThemes": "24-preloaded-textless-auto-by-service-type"
+  "serviceThemes": "24-preloaded-textless-auto-by-service-type",
+  "ratings": "unified-customer-taxi-delivery-service-admin-analytics"
 }

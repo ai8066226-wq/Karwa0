@@ -611,5 +611,57 @@ service cloud.firestore { match /databases/{database}/documents {
  }
  match /tripShares/{id}{allow read,write:if false;}
  match /customerRatings/{id}{allow read:if admin()||(signed()&&(resource.data.customerId==request.auth.uid||resource.data.driverId==request.auth.uid));allow write:if false;}
- match /ratings/{id}{function o(){return get(/databases/$(database)/documents/orders/$(id)).data;}allow create:if signed()&&o().userId==request.auth.uid&&o().statusIndex>=4&&request.resource.data.customerId==request.auth.uid;allow read:if signed()&&(resource.data.customerId==request.auth.uid||resource.data.driverId==request.auth.uid||admin());allow update:if false;allow delete:if admin();}
+ match /ratings/{id}{
+   function orderForRating(){return get(/databases/$(database)/documents/orders/$(request.resource.data.referenceId)).data;}
+   function serviceForRating(){return get(/databases/$(database)/documents/serviceRequests/$(request.resource.data.referenceId)).data;}
+   function baseRatingValid(){return customer()
+     && request.resource.data.customerId==request.auth.uid
+     && request.resource.data.score is int
+     && request.resource.data.score>=1 && request.resource.data.score<=5
+     && request.resource.data.comment is string && request.resource.data.comment.size()<=300
+     && request.resource.data.tags is list && request.resource.data.tags.size()<=4
+     && request.resource.data.targetName is string && request.resource.data.targetName.size()>=1 && request.resource.data.targetName.size()<=100
+     && request.resource.data.customerName is string && request.resource.data.customerName.size()>=1 && request.resource.data.customerName.size()<=100
+     && request.resource.data.createdAt==request.time
+     && request.resource.data.referenceId==id;}
+   function validLegacyOrderRating(){let o=get(/databases/$(database)/documents/orders/$(id)).data;return customer()
+     && o.userId==request.auth.uid && o.get('cancelled',false)==false && o.statusIndex>=4
+     && o.driverId is string && o.driverId.size()>0
+     && request.resource.data.customerId==request.auth.uid
+     && request.resource.data.orderId==id
+     && request.resource.data.driverId==o.driverId
+     && request.resource.data.score is int && request.resource.data.score>=1 && request.resource.data.score<=5
+     && request.resource.data.comment is string && request.resource.data.comment.size()<=300
+     && request.resource.data.createdAt==request.time
+     && request.resource.data.keys().hasOnly(['orderId','orderCode','customerId','driverId','driverName','score','comment','createdAt']);}
+   function validOrderRating(){let o=orderForRating();return baseRatingValid()
+     && request.resource.data.referenceType=='order'
+     && request.resource.data.targetType=='driver'
+     && request.resource.data.orderId==id
+     && request.resource.data.driverId==o.driverId
+     && request.resource.data.targetId==o.driverId
+     && o.userId==request.auth.uid
+     && o.get('cancelled',false)==false
+     && o.statusIndex>=4
+     && o.driverId is string && o.driverId.size()>0
+     && ((o.type=='ride'&&request.resource.data.ratingType=='taxi')||(o.type in ['parcel','food','serviceDelivery']&&request.resource.data.ratingType=='delivery'))
+     && request.resource.data.keys().hasOnly(['ratingType','targetType','targetId','targetName','referenceType','referenceId','referenceCode','customerId','customerName','score','comment','tags','createdAt','orderId','orderCode','driverId','driverName']);}
+   function validServiceRating(){let s=serviceForRating();return baseRatingValid()
+     && request.resource.data.referenceType=='serviceRequest'
+     && request.resource.data.ratingType=='service'
+     && request.resource.data.targetType=='provider'
+     && request.resource.data.serviceRequestId==id
+     && request.resource.data.providerId==s.providerId
+     && request.resource.data.targetId==s.providerId
+     && request.resource.data.providerCategory==s.providerCategory
+     && request.resource.data.itemName==s.itemName
+     && s.customerId==request.auth.uid
+     && s.status=='completed'
+     && s.providerId is string && s.providerId.size()>0
+     && request.resource.data.keys().hasOnly(['ratingType','targetType','targetId','targetName','referenceType','referenceId','referenceCode','customerId','customerName','score','comment','tags','createdAt','serviceRequestId','providerId','providerName','providerCategory','itemName']);}
+   allow create:if validOrderRating()||validServiceRating()||validLegacyOrderRating();
+   allow read:if admin()||(signed()&&resource.data.customerId==request.auth.uid)||(driver()&&(resource.data.get('driverId','')==request.auth.uid||(resource.data.get('targetType','')=='driver'&&resource.data.get('targetId','')==request.auth.uid)))||(serviceProvider()&&(resource.data.get('providerId','')==request.auth.uid||(resource.data.get('targetType','')=='provider'&&resource.data.get('targetId','')==request.auth.uid)));
+   allow update:if false;
+   allow delete:if admin();
+ }
 }}

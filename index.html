@@ -1361,6 +1361,12 @@
       font: inherit;
     }
     #ratingComment:focus { border-color: var(--mint); outline: 0; box-shadow: 0 0 0 4px rgba(25,183,159,.1); }
+    .rating-tags-picker { display:flex; flex-wrap:wrap; justify-content:center; gap:7px; margin:0 0 13px; }
+    .rating-tag-button { min-height:34px; padding:7px 11px; border:1px solid #d9e3ea; border-radius:999px; color:#536579; background:#fff; font-size:10px; font-weight:900; transition:.15s ease; }
+    .rating-tag-button.active { border-color:#8fd9cf; color:#08635e; background:#e8f8f5; box-shadow:0 0 0 3px rgba(8,123,117,.07); }
+    .service-rate-button { width:100%; margin-top:10px; min-height:39px; }
+    .service-rating-result { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:10px; padding:9px 11px; border:1px solid #f2df9d; border-radius:12px; background:#fffaf0; }
+    .service-rating-result small { color:#6b7788; font-size:10px; font-weight:800; }
 
     .sync-badge::before {
       content: "";
@@ -2451,10 +2457,10 @@ body.customer-map-mode #home>.welcome::after { display: none; }
   #authModal .role-entry-card { transition: none; }
 }
 </style>
-  <link rel="stylesheet" href="./native-notifications.css?v=65">
+  <link rel="stylesheet" href="./native-notifications.css?v=66">
 
-<style id="phase65-service-theme-css">
-/* Phase 65 — ثيمات الأنشطة التلقائية. الصور نفسها بلا أسماء أو نصوص. */
+<style id="phase66-service-theme-css">
+/* Phase 66 — ثيمات الأنشطة التلقائية. الصور نفسها بلا أسماء أو نصوص. */
 .restaurant-card{transition:transform .2s ease,box-shadow .2s ease}.restaurant-card:hover{transform:translateY(-2px);box-shadow:0 18px 38px rgba(15,23,42,.11)}
 .restaurant-card-head{min-height:154px;display:flex;flex-direction:column;justify-content:flex-end;position:relative;isolation:isolate;background-color:#0f4f58;background-image:linear-gradient(180deg,rgba(5,18,29,.04) 0%,rgba(5,18,29,.22) 44%,rgba(5,18,29,.9) 100%),var(--karwa-service-theme);background-size:cover;background-position:center;box-shadow:inset 0 -1px 0 rgba(255,255,255,.08)}
 .restaurant-card-head h3{font-size:20px;text-shadow:0 2px 8px rgba(0,0,0,.48)}.restaurant-card-meta{font-weight:750;text-shadow:0 1px 5px rgba(0,0,0,.55)}
@@ -2981,8 +2987,8 @@ body.customer-map-mode #home>.welcome::after { display: none; }
 
   <div class="modal-backdrop" id="ratingModal" role="dialog" aria-modal="true" aria-labelledby="ratingTitle">
     <div class="modal rating-modal">
-      <h2 id="ratingTitle">قيّم رحلتك</h2>
-      <p>يساعد تقييمك في تحسين جودة كباتن كروة.</p>
+      <h2 id="ratingTitle">قيّم تجربتك</h2>
+      <p id="ratingIntro">يساعد تقييمك في تحسين جودة خدمات كروة.</p>
       <div class="rating-driver-card">
         <strong id="ratingDriverName">كابتن كروة</strong>
         <small id="ratingOrderCode"></small>
@@ -2996,7 +3002,8 @@ body.customer-map-mode #home>.welcome::after { display: none; }
           <button type="button" data-rating-score="5" aria-label="خمس نجوم">★</button>
         </div>
         <div id="ratingLabel">اختر تقييمك</div>
-        <textarea id="ratingComment" maxlength="300" placeholder="اكتب ملاحظة اختيارية عن الرحلة"></textarea>
+        <div class="rating-tags-picker" id="ratingTags" aria-label="نقاط سريعة عن التجربة"></div>
+        <textarea id="ratingComment" maxlength="300" placeholder="اكتب ملاحظة اختيارية عن تجربتك"></textarea>
         <div class="modal-actions">
           <button class="secondary-button" id="closeRating" type="button">إلغاء</button>
           <button class="primary-button" id="submitRating" type="submit">إرسال التقييم</button>
@@ -3084,11 +3091,11 @@ body.customer-map-mode #home>.welcome::after { display: none; }
   <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
   <script>try{if(window.maplibregl&&maplibregl.setRTLTextPlugin&&(!maplibregl.getRTLTextPluginStatus||maplibregl.getRTLTextPluginStatus()==="unavailable")){maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",true).catch(()=>{});}}catch(e){}</script>
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
-  <script src="./precise-location.js?v=65"></script>
-  <script src="./native-notifications.js?v=65"></script>
-  <script src="./service-themes.js?v=65"></script>
-  <script type="module" src="./app.js?v=65"></script>
-  <script src="./pwa.js?v=65"></script>
+  <script src="./precise-location.js?v=66"></script>
+  <script src="./native-notifications.js?v=66"></script>
+  <script src="./service-themes.js?v=66"></script>
+  <script type="module" src="./app.js?v=66"></script>
+  <script src="./pwa.js?v=66"></script>
 
 <script id="phase20-map-first-js">
 window.addEventListener("DOMContentLoaded",()=>{

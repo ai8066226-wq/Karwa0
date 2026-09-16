@@ -59,6 +59,7 @@ const state = {
   restaurants: [],
   drivers: [],
   ratings: [],
+  ratingsFilter: "all",
   orders: [],
   serviceRequests: [],
   topupRequests: [],
@@ -264,11 +265,30 @@ function renderMetrics() {
 }
 
 function ratingSummary(driverId) {
-  const ratings = state.ratings.filter(item => item.driverId === driverId);
+  const ratings = state.ratings.filter(item => item.driverId === driverId || (item.targetType === "driver" && item.targetId === driverId));
   const average = ratings.length
     ? ratings.reduce((total, item) => total + Number(item.score || 0), 0) / ratings.length
     : 0;
   return { count: ratings.length, average };
+}
+
+function providerRatingSummary(providerId) {
+  const ratings = state.ratings.filter(item => item.providerId === providerId || (item.targetType === "provider" && item.targetId === providerId));
+  const average = ratings.length
+    ? ratings.reduce((total, item) => total + Number(item.score || 0), 0) / ratings.length
+    : 0;
+  return { count: ratings.length, average };
+}
+
+function normalizedRatingType(rating = {}) {
+  if (rating.ratingType === "service" || rating.targetType === "provider" || rating.providerId) return "service";
+  if (rating.ratingType === "delivery") return "delivery";
+  if (rating.ratingType === "taxi") return "taxi";
+  return "taxi";
+}
+
+function ratingTypeLabel(type) {
+  return ({ taxi: "تكسي", delivery: "توصيل", service: "خدمات أخرى" })[type] || "تقييم";
 }
 
 function driverTripSummary(driverId) {
@@ -368,19 +388,43 @@ function renderDrivers() {
 }
 
 function renderRatings() {
-  const sorted = [...state.ratings].sort((a, b) =>
-    Number(b.createdAt?.seconds || 0) - Number(a.createdAt?.seconds || 0)
-  ).slice(0, 12);
+  const all = [...state.ratings];
+  const typed = type => all.filter(item => normalizedRatingType(item) === type);
+  const avg = list => list.length ? list.reduce((sum, item) => sum + Number(item.score || 0), 0) / list.length : 0;
+  const totalAverage = avg(all);
+  const taxi = typed("taxi"), delivery = typed("delivery"), service = typed("service");
+  if (byId("ratingsAverage")) byId("ratingsAverage").textContent = all.length ? totalAverage.toFixed(1) : "—";
+  if (byId("ratingsTaxiCount")) byId("ratingsTaxiCount").textContent = String(taxi.length);
+  if (byId("ratingsDeliveryCount")) byId("ratingsDeliveryCount").textContent = String(delivery.length);
+  if (byId("ratingsServiceCount")) byId("ratingsServiceCount").textContent = String(service.length);
+
+  const selected = state.ratingsFilter || "all";
+  const filtered = all.filter(item => selected === "all" || normalizedRatingType(item) === selected);
+  const sorted = filtered.sort((a, b) => Number(b.createdAt?.seconds || 0) - Number(a.createdAt?.seconds || 0));
   byId("ratingsList").innerHTML = sorted.length
-    ? sorted.map(rating => `
-      <article class="review-card">
-        <div><strong>${escapeHtml(rating.driverName || "كابتن كروة")}</strong><small>${escapeHtml(rating.orderCode || "")}</small></div>
-        <span class="stars" aria-label="${Number(rating.score || 0)} من 5">${"★".repeat(Number(rating.score || 0))}${"☆".repeat(5 - Number(rating.score || 0))}</span>
-        ${rating.comment ? `<p>${escapeHtml(rating.comment)}</p>` : ""}
-      </article>`).join("")
-    : `<div class="empty"><span>★</span>لا توجد تقييمات بعد.</div>`;
+    ? sorted.map(rating => {
+      const type = normalizedRatingType(rating);
+      const score = Math.max(0, Math.min(5, Number(rating.score || 0)));
+      const targetName = rating.targetName || rating.providerName || rating.driverName || "خدمة كروة";
+      const reference = rating.referenceCode || rating.orderCode || rating.itemName || "";
+      const tags = Array.isArray(rating.tags) ? rating.tags.slice(0, 4) : [];
+      const created = rating.createdAt?.seconds ? new Date(rating.createdAt.seconds * 1000).toLocaleString("ar-IQ") : "";
+      return `<article class="review-card review-card-pro">
+        <div class="review-card-head"><div><strong>${escapeHtml(targetName)}</strong><small>${escapeHtml(reference)}</small></div><span class="rating-type-chip ${type}">${ratingTypeLabel(type)}</span></div>
+        <div class="review-stars-row"><span class="stars" aria-label="${score} من 5">${"★".repeat(score)}${"☆".repeat(5 - score)}</span><b>${score.toFixed(1)}</b></div>
+        ${tags.length ? `<div class="review-tags">${tags.map(tag => `<span>${escapeHtml(tag)}</span>`).join("")}</div>` : ""}
+        ${rating.comment ? `<p>${escapeHtml(rating.comment)}</p>` : `<p class="muted">بدون تعليق مكتوب.</p>`}
+        <div class="review-meta"><span>العميل: ${escapeHtml(rating.customerName || "عميل كروة")}</span>${created ? `<span>${escapeHtml(created)}</span>` : ""}</div>
+      </article>`;
+    }).join("")
+    : `<div class="empty"><span>★</span>لا توجد تقييمات في هذا القسم بعد.</div>`;
   renderAdminNotifications();
 }
+
+byId("ratingsTypeFilter")?.addEventListener("change", event => {
+  state.ratingsFilter = event.target.value || "all";
+  renderRatings();
+});
 
 function applicationCard(application) {
   const status = application.status || "pending";
@@ -424,6 +468,7 @@ function serviceApplicationCard(application) {
   const gps = location?.latitude != null && location?.longitude != null ? `${Number(location.latitude).toFixed(5)}, ${Number(location.longitude).toFixed(5)}` : "غير محدد";
   const items = profile?.items || restaurant?.meals || [];
   const hasLocation = Number.isFinite(Number(location?.latitude)) && Number.isFinite(Number(location?.longitude));
+  const providerRating = providerRatingSummary(application.firestoreId || application.userId);
   const actions = status === "pending" ? `<div class="order-actions"><button class="primary" data-action="approve-service" data-source="${source}" data-id="${application.firestoreId}" ${hasLocation ? "" : 'disabled title="يجب أن يحدد المزود موقع GPS أولًا"'}>${hasLocation ? "قبول وتفعيل" : "GPS مطلوب قبل القبول"}</button><button class="danger" data-action="reject-service" data-source="${source}" data-id="${application.firestoreId}">رفض مع ملاحظة</button></div>` : "";
   return `<article class="order-card service-application-card">
     <div class="order-top"><h3>🧰 ${escapeHtml(businessName)}</h3><span class="status-chip ${status}">${labels[status] || escapeHtml(status)}</span></div>
@@ -431,7 +476,7 @@ function serviceApplicationCard(application) {
     <div class="order-meta"><span>صاحب الخدمة: ${escapeHtml(ownerName)}</span><span>الهاتف: ${escapeHtml(application.phone || profile?.phone || restaurant?.phone || "—")}</span></div>
     <div class="order-meta"><span>البريد: ${escapeHtml(application.email || "—")}</span><span>العنوان: ${escapeHtml(address)}</span><span>GPS: ${escapeHtml(gps)}</span></div>
     ${application.description ? `<p class="admin-note">${escapeHtml(application.description)}</p>` : ""}
-    <div class="order-meta"><span>العناصر المضافة: ${Array.isArray(items) ? items.length : 0}</span>${application.legacy ? `<span>طلب قديم — مدعوم تلقائيًا</span>` : ""}</div>
+    <div class="order-meta"><span>العناصر المضافة: ${Array.isArray(items) ? items.length : 0}</span><span>★ ${providerRating.count ? providerRating.average.toFixed(1) : "جديد"} • ${providerRating.count} تقييم</span>${application.legacy ? `<span>طلب قديم — مدعوم تلقائيًا</span>` : ""}</div>
     ${application.reviewNote ? `<p class="admin-note danger-note">ملاحظة المراجعة: ${escapeHtml(application.reviewNote)}</p>` : ""}
     ${actions}
   </article>`;
@@ -598,6 +643,7 @@ function openDashboard() {
   const ratingsUnsubscribe = onSnapshot(collection(db, "ratings"), snapshot => {
     state.ratings = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
     renderDrivers();
+    renderServiceApplications();
     renderRatings();
   });
   const topupsUnsubscribe = onSnapshot(collection(db,"topupRequests"), snapshot => {

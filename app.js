@@ -132,7 +132,9 @@ const state = {
   unsubscribeRatings: null,
   ratings: [],
   ratingOrderId: null,
+  ratingContext: null,
   ratingScore: 0,
+  ratingTags: [],
   trackingUnsubscribe: null,
   trackingOrderId: null,
   map: null,
@@ -1179,7 +1181,7 @@ function restaurantSafeText(value) {
 }
 
 function karwaServiceTheme(input = {}) {
-  return window.KarwaServiceThemes?.resolve?.(input) || { key:"parcel", image:"./theme-parcel.webp?v=65", accent:"#087b75", icon:"🧰" };
+  return window.KarwaServiceThemes?.resolve?.(input) || { key:"parcel", image:"./theme-parcel.webp?v=66", accent:"#087b75", icon:"🧰" };
 }
 function karwaServiceThemeStyle(input = {}) {
   const theme = karwaServiceTheme(input);
@@ -1512,6 +1514,14 @@ function renderMyServiceRequests() {
       <div class="service-provider-note">🚚 ${restaurantSafeText(deliveryLabel)}${deliveryStatus === "awaitingCaptain" ? ` • أجرة التوصيل ${formatMoney(request.deliveryFee)}` : ""}</div>
       ${request.providerNote ? `<div class="service-provider-note">ملاحظة المزود: ${restaurantSafeText(request.providerNote)}</div>` : ""}
       ${choiceBox}
+      ${(() => {
+        const deliveryFinished = !request.deliveryRequested || !request.deliveryOrderId || (deliveryOrder && !deliveryOrder.cancelled && Number(deliveryOrder.statusIndex || 0) >= 4);
+        if (request.status !== "completed" || !deliveryFinished) return "";
+        const savedProviderRating = findServiceRating(request.firestoreId);
+        return savedProviderRating
+          ? `<div class="service-rating-result"><span class="rating-result">${"★".repeat(Number(savedProviderRating.score||0))}${"☆".repeat(5-Number(savedProviderRating.score||0))}</span><small>تم تقييم ${restaurantSafeText(request.providerName || "الخدمة")}</small></div>`
+          : `<button class="primary-button service-rate-button" type="button" data-rate-service-request="${restaurantSafeText(request.firestoreId)}">★ قيّم الخدمة</button>`;
+      })()}
       ${request.status === "pending" ? `<button class="secondary-button danger-button" type="button" data-cancel-service-request="${restaurantSafeText(request.firestoreId)}">إلغاء الطلب</button>` : ""}
     </article>`;
   }).join("") : '<div class="restaurant-empty">لا توجد طلبات خدمات بعد.</div>';
@@ -1619,6 +1629,11 @@ byId("bookOtherService")?.addEventListener("click", async event => {
 });
 
 byId("myServiceRequests")?.addEventListener("click", async event => {
+  const ratingButton = event.target.closest("[data-rate-service-request]");
+  if (ratingButton) {
+    openRatingModal("service", ratingButton.dataset.rateServiceRequest);
+    return;
+  }
   const cancelButton = event.target.closest("[data-cancel-service-request]");
   const locateButton = event.target.closest("[data-service-delivery-locate]");
   const deliveryButton = event.target.closest("[data-service-delivery-confirm]");
@@ -1933,15 +1948,15 @@ function renderOrders() {
     if (completed) {
       const review = document.createElement("div");
       review.className = "order-review";
-      const savedRating = state.ratings.find(item => item.orderId === order.firestoreId);
+      const savedRating = findOrderRating(order.firestoreId);
       if (savedRating) {
-        review.innerHTML = `<span class="rating-result" aria-label="تقييم ${savedRating.score} من 5">${"★".repeat(savedRating.score)}${"☆".repeat(5 - savedRating.score)}</span><small>تم تقييم الكابتن</small>`;
+        review.innerHTML = `<span class="rating-result" aria-label="تقييم ${savedRating.score} من 5">${"★".repeat(Number(savedRating.score||0))}${"☆".repeat(5 - Number(savedRating.score||0))}</span><small>${order.type === "ride" ? "تم تقييم كابتن التكسي" : "تم تقييم كابتن التوصيل"}</small>`;
       } else {
         const rateButton = document.createElement("button");
         rateButton.type = "button";
         rateButton.className = "rate-driver-button";
-        rateButton.textContent = "★ قيّم الكابتن";
-        rateButton.addEventListener("click", () => openRatingModal(order.firestoreId));
+        rateButton.textContent = order.type === "ride" ? "★ قيّم كابتن التكسي" : "★ قيّم كابتن التوصيل";
+        rateButton.addEventListener("click", () => openRatingModal("order", order.firestoreId));
         review.appendChild(rateButton);
       }
       details.appendChild(review);
@@ -1957,6 +1972,35 @@ function renderOrders() {
 }
 
 const ratingModal = byId("ratingModal");
+const RATING_TAGS = {
+  taxi: ["قيادة آمنة", "التزام بالوقت", "سيارة نظيفة", "تعامل ممتاز"],
+  delivery: ["توصيل سريع", "حفظ الطلب", "التزام بالوقت", "تعامل ممتاز"],
+  service: ["جودة ممتازة", "التزام بالموعد", "سعر مناسب", "تعامل ممتاز"]
+};
+
+function findOrderRating(orderId) {
+  return state.ratings.find(item =>
+    (item.referenceType === "order" && item.referenceId === orderId) || item.orderId === orderId || item.firestoreId === orderId
+  );
+}
+
+function findServiceRating(requestId) {
+  return state.ratings.find(item =>
+    (item.referenceType === "serviceRequest" && item.referenceId === requestId) || item.serviceRequestId === requestId || item.firestoreId === `service_${requestId}`
+  );
+}
+
+function ratingTypeForOrder(order) {
+  return order?.type === "ride" ? "taxi" : "delivery";
+}
+
+function renderRatingTags() {
+  const host = byId("ratingTags");
+  if (!host) return;
+  const type = state.ratingContext?.ratingType || "taxi";
+  const tags = RATING_TAGS[type] || RATING_TAGS.service;
+  host.innerHTML = tags.map(tag => `<button type="button" class="rating-tag-button ${state.ratingTags.includes(tag) ? "active" : ""}" data-rating-tag="${restaurantSafeText(tag)}">${restaurantSafeText(tag)}</button>`).join("");
+}
 
 function renderRatingPicker() {
   document.querySelectorAll("[data-rating-score]").forEach(button => {
@@ -1967,27 +2011,65 @@ function renderRatingPicker() {
   byId("ratingLabel").textContent = state.ratingScore
     ? ["", "ضعيف", "مقبول", "جيد", "جيد جدًا", "ممتاز"][state.ratingScore]
     : "اختر تقييمك";
+  renderRatingTags();
 }
 
-function openRatingModal(orderId) {
-  const order = state.orders.find(item => item.firestoreId === orderId);
-  if (!order || order.cancelled || Number(order.statusIndex || 0) < 4 || !order.driverId) {
-    showToast("يمكن التقييم بعد اكتمال الرحلة فقط");
-    return;
+function openRatingModal(kind, referenceId) {
+  let context = null;
+  if (kind === "order") {
+    const order = state.orders.find(item => item.firestoreId === referenceId);
+    if (!order || order.cancelled || Number(order.statusIndex || 0) < 4 || !order.driverId) {
+      showToast("يمكن تقييم الكابتن بعد اكتمال الرحلة أو التوصيل فقط");
+      return;
+    }
+    if (findOrderRating(referenceId)) return showToast("تم تقييم هذا الطلب سابقًا");
+    const ratingType = ratingTypeForOrder(order);
+    context = {
+      kind: "order", referenceId, ratingType,
+      targetType: "driver", targetId: order.driverId,
+      targetName: order.driverName || (ratingType === "taxi" ? "كابتن التكسي" : "كابتن التوصيل"),
+      referenceCode: order.id || referenceId,
+      order
+    };
+    byId("ratingTitle").textContent = ratingType === "taxi" ? "قيّم تجربة التكسي" : "قيّم تجربة التوصيل";
+    byId("ratingIntro").textContent = ratingType === "taxi" ? "تقييمك يساعدنا على متابعة جودة الكباتن وسلامة الرحلات." : "قيّم سرعة التوصيل والتعامل والمحافظة على الطلب.";
+  } else if (kind === "service") {
+    const request = state.serviceRequests.find(item => item.firestoreId === referenceId);
+    const deliveryOrder = state.orders.find(order => order.firestoreId === request?.deliveryOrderId);
+    const deliveryFinished = !request?.deliveryRequested || !request?.deliveryOrderId || (deliveryOrder && !deliveryOrder.cancelled && Number(deliveryOrder.statusIndex || 0) >= 4);
+    if (!request || request.status !== "completed" || !deliveryFinished || !request.providerId) {
+      showToast("يمكن تقييم الخدمة بعد اكتمالها فقط");
+      return;
+    }
+    if (findServiceRating(referenceId)) return showToast("تم تقييم هذه الخدمة سابقًا");
+    context = {
+      kind: "service", referenceId, ratingType: "service",
+      targetType: "provider", targetId: request.providerId,
+      targetName: request.providerName || "مزود الخدمة",
+      referenceCode: request.itemName || referenceId,
+      request
+    };
+    byId("ratingTitle").textContent = "قيّم الخدمة";
+    byId("ratingIntro").textContent = "شارك رأيك في جودة الخدمة والالتزام والتعامل. يظهر التقييم للإدارة لمتابعة الجودة.";
   }
-  state.ratingOrderId = orderId;
+  if (!context) return;
+  state.ratingContext = context;
+  state.ratingOrderId = context.kind === "order" ? context.referenceId : null;
   state.ratingScore = 0;
+  state.ratingTags = [];
   byId("ratingComment").value = "";
-  byId("ratingDriverName").textContent = order.driverName || "كابتن كروة";
-  byId("ratingOrderCode").textContent = order.id || "";
+  byId("ratingDriverName").textContent = context.targetName;
+  byId("ratingOrderCode").textContent = context.kind === "order" ? `الطلب ${context.referenceCode}` : context.referenceCode;
   renderRatingPicker();
   ratingModal.classList.add("show");
 }
 
 function closeRatingModal() {
   ratingModal.classList.remove("show");
+  state.ratingContext = null;
   state.ratingOrderId = null;
   state.ratingScore = 0;
+  state.ratingTags = [];
 }
 
 document.querySelectorAll("[data-rating-score]").forEach(button => {
@@ -1997,6 +2079,16 @@ document.querySelectorAll("[data-rating-score]").forEach(button => {
   });
 });
 
+byId("ratingTags")?.addEventListener("click", event => {
+  const button = event.target.closest("[data-rating-tag]");
+  if (!button) return;
+  const tag = button.dataset.ratingTag;
+  state.ratingTags = state.ratingTags.includes(tag)
+    ? state.ratingTags.filter(item => item !== tag)
+    : [...state.ratingTags, tag].slice(-4);
+  renderRatingTags();
+});
+
 byId("closeRating").addEventListener("click", closeRatingModal);
 ratingModal.addEventListener("click", event => {
   if (event.target === ratingModal) closeRatingModal();
@@ -2004,8 +2096,8 @@ ratingModal.addEventListener("click", event => {
 
 byId("ratingForm").addEventListener("submit", async event => {
   event.preventDefault();
-  const order = state.orders.find(item => item.firestoreId === state.ratingOrderId);
-  if (!order || !state.user) return;
+  const context = state.ratingContext;
+  if (!context || !state.user) return;
   if (!state.ratingScore) {
     showToast("اختر عدد النجوم أولًا");
     return;
@@ -2013,21 +2105,48 @@ byId("ratingForm").addEventListener("submit", async event => {
   const button = byId("submitRating");
   setButtonBusy(button, true, "جاري الإرسال…");
   try {
-    await setDoc(doc(db, "ratings", order.firestoreId), {
-      orderId: order.firestoreId,
-      orderCode: order.id || "",
+    const base = {
+      ratingType: context.ratingType,
+      targetType: context.targetType,
+      targetId: context.targetId,
+      targetName: context.targetName,
+      referenceType: context.kind === "order" ? "order" : "serviceRequest",
+      referenceId: context.referenceId,
+      referenceCode: context.referenceCode || "",
       customerId: state.user.uid,
-      driverId: order.driverId,
-      driverName: order.driverName || "كابتن كروة",
+      customerName: state.name || "عميل كروة",
       score: state.ratingScore,
       comment: byId("ratingComment").value.trim().slice(0, 300),
+      tags: [...state.ratingTags],
       createdAt: serverTimestamp()
-    });
+    };
+    let ratingId = context.referenceId;
+    let payload = base;
+    if (context.kind === "order") {
+      payload = {
+        ...base,
+        orderId: context.referenceId,
+        orderCode: context.order?.id || "",
+        driverId: context.targetId,
+        driverName: context.targetName
+      };
+    } else {
+      ratingId = context.referenceId;
+      payload = {
+        ...base,
+        serviceRequestId: context.referenceId,
+        providerId: context.targetId,
+        providerName: context.targetName,
+        providerCategory: context.request?.providerCategory || "other",
+        itemName: context.request?.itemName || "خدمة"
+      };
+    }
+    await setDoc(doc(db, "ratings", ratingId), payload);
     closeRatingModal();
-    showToast("شكرًا، تم إرسال تقييمك");
+    showToast("شكرًا، تم إرسال تقييمك للإدارة");
   } catch (error) {
     console.error(error);
-    showToast("تعذر إرسال التقييم");
+    showToast("تعذر إرسال التقييم أو تم تقييم الطلب سابقًا");
   } finally {
     setButtonBusy(button, false);
   }
