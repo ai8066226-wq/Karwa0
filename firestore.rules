@@ -250,6 +250,44 @@ service cloud.firestore { match /databases/{database}/documents {
        && linkedServiceRequest().deliveryFee==request.resource.data.price);
    allow update:if admin()
      || (customer()
+       && resource.data.type=='parcel'
+       && resource.data.userId==request.auth.uid
+       && resource.data.cancelled==false
+       && request.resource.data.cancelled==false
+       && resource.data.statusIndex<3
+       && request.resource.data.statusIndex==resource.data.statusIndex
+       && request.resource.data.driverId==resource.data.driverId
+       && request.resource.data.title is string && request.resource.data.title.size()>=3 && request.resource.data.title.size()<=120
+       && request.resource.data.route is string && request.resource.data.route.size()>=7 && request.resource.data.route.size()<=380
+       && request.resource.data.parcelDetails is map
+       && request.resource.data.parcelDetails.keys().hasOnly(['from','to','recipientName','recipientPhone','notes'])
+       && request.resource.data.parcelDetails.get('from','') is string && request.resource.data.parcelDetails.get('from','').size()>=3 && request.resource.data.parcelDetails.get('from','').size()<=180
+       && request.resource.data.parcelDetails.get('to','') is string && request.resource.data.parcelDetails.get('to','').size()>=3 && request.resource.data.parcelDetails.get('to','').size()<=180
+       && request.resource.data.parcelDetails.get('recipientName','') is string && request.resource.data.parcelDetails.get('recipientName','').size()>=2 && request.resource.data.parcelDetails.get('recipientName','').size()<=80
+       && request.resource.data.parcelDetails.get('recipientPhone','') is string && request.resource.data.parcelDetails.get('recipientPhone','').size()>=8 && request.resource.data.parcelDetails.get('recipientPhone','').size()<=30
+       && request.resource.data.parcelDetails.get('notes','') is string && request.resource.data.parcelDetails.get('notes','').size()<=500
+       && request.resource.data.customerEditedAt is timestamp
+       && request.resource.data.customerEditCount==resource.data.get('customerEditCount',0)+1
+       && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title','route','parcelDetails','customerEditedAt','customerEditCount','updatedAt']))
+     || (customer()
+       && resource.data.type=='serviceDelivery'
+       && resource.data.userId==request.auth.uid
+       && resource.data.serviceRequestId is string
+       && resource.data.serviceRequestId.size()>0
+       && resource.data.cancelled==false
+       && request.resource.data.cancelled==false
+       && resource.data.statusIndex<3
+       && request.resource.data.statusIndex==resource.data.statusIndex
+       && request.resource.data.driverId==resource.data.driverId
+       && request.resource.data.serviceTotal is number
+       && request.resource.data.serviceTotal>=0
+       && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['serviceTotal','updatedAt'])
+       && existsAfter(/databases/$(database)/documents/serviceRequests/$(resource.data.serviceRequestId))
+       && getAfter(/databases/$(database)/documents/serviceRequests/$(resource.data.serviceRequestId)).data.customerId==request.auth.uid
+       && getAfter(/databases/$(database)/documents/serviceRequests/$(resource.data.serviceRequestId)).data.deliveryOrderId==id
+       && getAfter(/databases/$(database)/documents/serviceRequests/$(resource.data.serviceRequestId)).data.status in ['pending','accepted']
+       && getAfter(/databases/$(database)/documents/serviceRequests/$(resource.data.serviceRequestId)).data.totalPrice==request.resource.data.serviceTotal)
+     || (customer()
        && resource.data.userId==request.auth.uid
        && resource.data.cancelled==false
        && request.resource.data.cancelled==true
@@ -454,8 +492,74 @@ service cloud.firestore { match /databases/{database}/documents {
    function providerProfile(){return get(/databases/$(database)/documents/serviceProfiles/$(request.resource.data.providerId)).data;}
    function providerItem(){return providerProfile().items[request.resource.data.itemIndex];}
    function deliveryOrderAfter(){return getAfter(/databases/$(database)/documents/orders/$(request.resource.data.deliveryOrderId)).data;}
+   function cartItems(){return request.resource.data.items;}
+   function cartLine(i){return cartItems()[i];}
+   function catalogLine(i){return providerProfile().items[cartLine(i).itemIndex];}
+   function cartLineValid(i){
+     let line=cartLine(i); let item=catalogLine(i);
+     return line.keys().hasOnly(['itemIndex','itemName','itemUnit','quantity','unitPrice','subtotal','deliveryAvailable','deliveryFee'])
+       && line.itemIndex is int && line.itemIndex>=0 && line.itemIndex<providerProfile().items.size()
+       && line.itemName==item.name
+       && line.itemUnit==item.get('unit','item')
+       && line.unitPrice is number && line.unitPrice>0 && line.unitPrice==item.price
+       && line.quantity is number && line.quantity>0 && line.quantity<=100
+       && ((line.itemUnit in ['kg','liter','meter','hour'])||line.quantity is int)
+       && line.subtotal==line.unitPrice*line.quantity
+       && line.deliveryAvailable==item.get('deliveryAvailable',false)
+       && line.deliveryFee is number && line.deliveryFee>=0
+       && ((!line.deliveryAvailable&&line.deliveryFee==0)||(line.deliveryAvailable&&line.deliveryFee==item.get('deliveryFee',0)));
+   }
+   function cartValid(){
+     let n=cartItems().size();
+     return n>=1&&n<=8&&cartLineValid(0)
+       &&(n<2||cartLineValid(1))&&(n<3||cartLineValid(2))&&(n<4||cartLineValid(3))&&(n<5||cartLineValid(4))
+       &&(n<6||cartLineValid(5))&&(n<7||cartLineValid(6))&&(n<8||cartLineValid(7));
+   }
+   function cartSubtotal(){
+     let n=cartItems().size();
+     return cartLine(0).subtotal+(n>1?cartLine(1).subtotal:0)+(n>2?cartLine(2).subtotal:0)+(n>3?cartLine(3).subtotal:0)
+       +(n>4?cartLine(4).subtotal:0)+(n>5?cartLine(5).subtotal:0)+(n>6?cartLine(6).subtotal:0)+(n>7?cartLine(7).subtotal:0);
+   }
+   function cartAllDeliverable(){
+     let n=cartItems().size();
+     return cartLine(0).deliveryAvailable&&(n<2||cartLine(1).deliveryAvailable)&&(n<3||cartLine(2).deliveryAvailable)&&(n<4||cartLine(3).deliveryAvailable)
+       &&(n<5||cartLine(4).deliveryAvailable)&&(n<6||cartLine(5).deliveryAvailable)&&(n<7||cartLine(6).deliveryAvailable)&&(n<8||cartLine(7).deliveryAvailable);
+   }
+   function cartDeliveryFeeIsMax(value){
+     let n=cartItems().size();
+     return value>=cartLine(0).deliveryFee&&(n<2||value>=cartLine(1).deliveryFee)&&(n<3||value>=cartLine(2).deliveryFee)&&(n<4||value>=cartLine(3).deliveryFee)
+       &&(n<5||value>=cartLine(4).deliveryFee)&&(n<6||value>=cartLine(5).deliveryFee)&&(n<7||value>=cartLine(6).deliveryFee)&&(n<8||value>=cartLine(7).deliveryFee)
+       &&(value==cartLine(0).deliveryFee||(n>1&&value==cartLine(1).deliveryFee)||(n>2&&value==cartLine(2).deliveryFee)||(n>3&&value==cartLine(3).deliveryFee)
+          ||(n>4&&value==cartLine(4).deliveryFee)||(n>5&&value==cartLine(5).deliveryFee)||(n>6&&value==cartLine(6).deliveryFee)||(n>7&&value==cartLine(7).deliveryFee));
+   }
+   function leadMatchesCart(){return request.resource.data.itemCount==cartItems().size()&&request.resource.data.itemIndex==cartLine(0).itemIndex&&request.resource.data.itemName==cartLine(0).itemName&&request.resource.data.itemUnit==cartLine(0).itemUnit&&request.resource.data.quantity==cartLine(0).quantity&&request.resource.data.unitPrice==cartLine(0).unitPrice&&request.resource.data.itemPrice==cartLine(0).unitPrice;}
 
-   // المطاعم تحتفظ بمسارها السابق: العميل يختار التوصيل مع الوجبة قبل موافقة المطعم.
+   // Phase 72: طلب متعدد الأصناف من نفس المطعم.
+   allow create:if customer()
+     && request.resource.data.providerCategory=='restaurant'
+     && request.resource.data.customerId==request.auth.uid
+     && request.resource.data.customerName==userDoc().get('name','')
+     && request.resource.data.providerId is string && request.resource.data.providerId.size()>0
+     && providerProfile().active==true && providerProfile().approvalStatus=='approved'
+     && request.resource.data.providerName==providerProfile().businessName
+     && request.resource.data.providerCity==providerProfile().city
+     && request.resource.data.providerAddress==providerProfile().address
+     && request.resource.data.providerLocation==providerProfile().location
+     && request.resource.data.status=='pending'
+     && request.resource.data.items is list && cartValid() && leadMatchesCart()
+     && request.resource.data.subtotal==cartSubtotal()
+     && request.resource.data.deliveryRequested is bool
+     && request.resource.data.deliveryFee is number && request.resource.data.deliveryFee>=0
+     && ((!request.resource.data.deliveryRequested&&request.resource.data.deliveryFee==0&&request.resource.data.deliveryStatus=='notRequested'&&request.resource.data.customerLocation==null)
+       ||(request.resource.data.deliveryRequested&&cartAllDeliverable()&&cartDeliveryFeeIsMax(request.resource.data.deliveryFee)&&request.resource.data.deliveryStatus=='pendingProvider'&&request.resource.data.customerLocation is map&&request.resource.data.customerLocation.latitude is number&&request.resource.data.customerLocation.latitude>=-90&&request.resource.data.customerLocation.latitude<=90&&request.resource.data.customerLocation.longitude is number&&request.resource.data.customerLocation.longitude>=-180&&request.resource.data.customerLocation.longitude<=180))
+     && request.resource.data.deliveryOrderId==''
+     && request.resource.data.totalPrice==request.resource.data.subtotal+request.resource.data.deliveryFee
+     && request.resource.data.requestText is string && request.resource.data.requestText.size()>=3 && request.resource.data.requestText.size()<=500
+     && request.resource.data.customerAddress is string && request.resource.data.customerAddress.size()>=3 && request.resource.data.customerAddress.size()<=180
+     && request.resource.data.customerPlatformFee==customerOrderFee() && request.resource.data.customerFeeCharged==true && request.resource.data.providerPlatformFee==0 && request.resource.data.providerFeeCharged==false && walletCharged(request.auth.uid,customerOrderFee())
+     && request.resource.data.keys().hasOnly(['customerId','customerName','providerId','providerName','providerCategory','providerCity','providerAddress','providerLocation','items','itemCount','itemIndex','itemName','itemUnit','quantity','unitPrice','itemPrice','subtotal','deliveryRequested','deliveryFee','totalPrice','deliveryStatus','deliveryOrderId','requestText','customerAddress','customerLocation','customerPlatformFee','customerFeeCharged','providerPlatformFee','providerFeeCharged','status','createdAt','updatedAt']);
+
+   // المطاعم تحتفظ بمسارها السابق للتوافق مع الإصدارات القديمة.
    allow create:if customer()
      && request.resource.data.providerCategory=='restaurant'
      && request.resource.data.customerId==request.auth.uid
@@ -486,7 +590,32 @@ service cloud.firestore { match /databases/{database}/documents {
      && request.resource.data.customerPlatformFee==customerOrderFee() && request.resource.data.customerFeeCharged==true && request.resource.data.providerPlatformFee==0 && request.resource.data.providerFeeCharged==false && walletCharged(request.auth.uid,customerOrderFee())
      && request.resource.data.keys().hasOnly(['customerId','customerName','providerId','providerName','providerCategory','providerCity','providerAddress','providerLocation','itemIndex','itemName','itemUnit','quantity','unitPrice','itemPrice','subtotal','deliveryRequested','deliveryFee','totalPrice','deliveryStatus','deliveryOrderId','requestText','customerAddress','customerLocation','customerPlatformFee','customerFeeCharged','providerPlatformFee','providerFeeCharged','status','createdAt','updatedAt']);
 
-   // الخدمات الأخرى: يختار العميل حاجته وسعرها أولًا، ثم يحدد التوصيل بعد موافقة مقدم الخدمة.
+   // Phase 72: طلب متعدد الأصناف من نفس مزود الخدمة.
+   allow create:if customer()
+     && request.resource.data.providerCategory!='restaurant'
+     && request.resource.data.customerId==request.auth.uid
+     && request.resource.data.customerName==userDoc().get('name','')
+     && request.resource.data.providerId is string && request.resource.data.providerId.size()>0
+     && providerProfile().active==true && providerProfile().approvalStatus=='approved'
+     && request.resource.data.providerName==providerProfile().businessName
+     && request.resource.data.providerCity==providerProfile().city
+     && request.resource.data.providerAddress==providerProfile().address
+     && request.resource.data.providerLocation==providerProfile().location
+     && request.resource.data.status=='pending'
+     && request.resource.data.items is list && cartValid() && leadMatchesCart()
+     && request.resource.data.subtotal==cartSubtotal()
+     && request.resource.data.itemDeliveryAvailable==cartAllDeliverable()
+     && request.resource.data.itemDeliveryFee is number && request.resource.data.itemDeliveryFee>=0
+     && ((!request.resource.data.itemDeliveryAvailable&&request.resource.data.itemDeliveryFee==0)||(request.resource.data.itemDeliveryAvailable&&cartDeliveryFeeIsMax(request.resource.data.itemDeliveryFee)))
+     && request.resource.data.deliveryRequested==false && request.resource.data.deliveryFee==0
+     && ((!request.resource.data.itemDeliveryAvailable&&request.resource.data.deliveryStatus=='notAvailable')||(request.resource.data.itemDeliveryAvailable&&request.resource.data.deliveryStatus=='pendingProvider'))
+     && request.resource.data.deliveryOrderId=='' && request.resource.data.totalPrice==request.resource.data.subtotal
+     && request.resource.data.requestText is string && request.resource.data.requestText.size()>=3 && request.resource.data.requestText.size()<=500
+     && request.resource.data.customerAddress=='' && request.resource.data.customerLocation==null
+     && request.resource.data.customerPlatformFee==customerOrderFee() && request.resource.data.customerFeeCharged==true && request.resource.data.providerPlatformFee==0 && request.resource.data.providerFeeCharged==false && walletCharged(request.auth.uid,customerOrderFee())
+     && request.resource.data.keys().hasOnly(['customerId','customerName','providerId','providerName','providerCategory','providerCity','providerAddress','providerLocation','items','itemCount','itemIndex','itemName','itemUnit','quantity','unitPrice','itemPrice','subtotal','itemDeliveryAvailable','itemDeliveryFee','deliveryRequested','deliveryFee','totalPrice','deliveryStatus','deliveryOrderId','requestText','customerAddress','customerLocation','customerPlatformFee','customerFeeCharged','providerPlatformFee','providerFeeCharged','status','createdAt','updatedAt']);
+
+   // الخدمات الأخرى: المسار القديم لصنف واحد للتوافق.
    allow create:if customer()
      && request.resource.data.providerCategory!='restaurant'
      && request.resource.data.customerId==request.auth.uid
@@ -524,6 +653,60 @@ service cloud.firestore { match /databases/{database}/documents {
 
    allow read:if admin()||(customer()&&resource.data.customerId==request.auth.uid)||(serviceProvider()&&resource.data.providerId==request.auth.uid);
    allow update:if admin()
+     || (customer()
+       && resource.data.customerId==request.auth.uid
+       && resource.data.status in ['pending','accepted']
+       && request.resource.data.status==resource.data.status
+       && request.resource.data.items is list && cartValid() && leadMatchesCart()
+       && request.resource.data.subtotal==cartSubtotal()
+       && request.resource.data.deliveryFee==resource.data.deliveryFee
+       && request.resource.data.totalPrice==request.resource.data.subtotal+resource.data.deliveryFee
+       && request.resource.data.requestText is string && request.resource.data.requestText.size()>=3 && request.resource.data.requestText.size()<=500
+       && request.resource.data.customerEditedAt is timestamp
+       && request.resource.data.customerEditCount==resource.data.get('customerEditCount',0)+1
+       && ((resource.data.providerCategory=='restaurant'
+           && (!resource.data.get('deliveryRequested',false)||cartAllDeliverable())
+           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['items','itemCount','itemIndex','itemName','itemUnit','quantity','unitPrice','itemPrice','subtotal','totalPrice','requestText','customerEditedAt','customerEditCount','updatedAt']))
+         || (resource.data.providerCategory!='restaurant'
+           && request.resource.data.itemDeliveryAvailable==cartAllDeliverable()
+           && ((!request.resource.data.itemDeliveryAvailable&&request.resource.data.itemDeliveryFee==0)||(request.resource.data.itemDeliveryAvailable&&cartDeliveryFeeIsMax(request.resource.data.itemDeliveryFee)))
+           && ((resource.data.deliveryOrderId!=''&&request.resource.data.deliveryStatus==resource.data.deliveryStatus)
+             || (resource.data.deliveryOrderId==''&&resource.data.status=='pending'&&request.resource.data.deliveryStatus==(request.resource.data.itemDeliveryAvailable?'pendingProvider':'notAvailable'))
+             || (resource.data.deliveryOrderId==''&&resource.data.status=='accepted'&&request.resource.data.deliveryStatus==(request.resource.data.itemDeliveryAvailable?'awaitingCustomerChoice':'notAvailable')))
+           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['items','itemCount','itemIndex','itemName','itemUnit','quantity','unitPrice','itemPrice','subtotal','itemDeliveryAvailable','itemDeliveryFee','deliveryStatus','totalPrice','requestText','customerEditedAt','customerEditCount','updatedAt'])))
+       && (resource.data.deliveryOrderId==''
+         || (existsAfter(/databases/$(database)/documents/orders/$(resource.data.deliveryOrderId))
+           && getAfter(/databases/$(database)/documents/orders/$(resource.data.deliveryOrderId)).data.type=='serviceDelivery'
+           && getAfter(/databases/$(database)/documents/orders/$(resource.data.deliveryOrderId)).data.serviceRequestId==id
+           && getAfter(/databases/$(database)/documents/orders/$(resource.data.deliveryOrderId)).data.userId==request.auth.uid
+           && getAfter(/databases/$(database)/documents/orders/$(resource.data.deliveryOrderId)).data.cancelled==false
+           && getAfter(/databases/$(database)/documents/orders/$(resource.data.deliveryOrderId)).data.statusIndex<3
+           && getAfter(/databases/$(database)/documents/orders/$(resource.data.deliveryOrderId)).data.serviceTotal==request.resource.data.totalPrice)))
+     || (customer()
+       && resource.data.customerId==request.auth.uid
+       && resource.data.status in ['pending','accepted']
+       && request.resource.data.status==resource.data.status
+       && request.resource.data.quantity is number
+       && request.resource.data.quantity>0
+       && request.resource.data.quantity<=100
+       && ((resource.data.itemUnit in ['kg','liter','meter','hour'])||request.resource.data.quantity is int)
+       && request.resource.data.subtotal==resource.data.unitPrice*request.resource.data.quantity
+       && request.resource.data.deliveryFee==resource.data.deliveryFee
+       && request.resource.data.totalPrice==request.resource.data.subtotal+resource.data.deliveryFee
+       && request.resource.data.requestText is string
+       && request.resource.data.requestText.size()>=3
+       && request.resource.data.requestText.size()<=500
+       && request.resource.data.customerEditedAt is timestamp
+       && request.resource.data.customerEditCount==resource.data.get('customerEditCount',0)+1
+       && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['quantity','subtotal','totalPrice','requestText','customerEditedAt','customerEditCount','updatedAt'])
+       && (resource.data.deliveryOrderId==''
+         || (existsAfter(/databases/$(database)/documents/orders/$(resource.data.deliveryOrderId))
+           && getAfter(/databases/$(database)/documents/orders/$(resource.data.deliveryOrderId)).data.type=='serviceDelivery'
+           && getAfter(/databases/$(database)/documents/orders/$(resource.data.deliveryOrderId)).data.serviceRequestId==id
+           && getAfter(/databases/$(database)/documents/orders/$(resource.data.deliveryOrderId)).data.userId==request.auth.uid
+           && getAfter(/databases/$(database)/documents/orders/$(resource.data.deliveryOrderId)).data.cancelled==false
+           && getAfter(/databases/$(database)/documents/orders/$(resource.data.deliveryOrderId)).data.statusIndex<3
+           && getAfter(/databases/$(database)/documents/orders/$(resource.data.deliveryOrderId)).data.serviceTotal==request.resource.data.totalPrice)))
      || (customer()
        && resource.data.customerId==request.auth.uid
        && resource.data.status=='pending'

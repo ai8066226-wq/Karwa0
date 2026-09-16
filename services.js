@@ -497,6 +497,12 @@ byId("resubmitForm").addEventListener("submit", async event => {
 });
 
 const itemUnitLabels = { item: "قطعة / طلب", meal: "وجبة", person: "نفر", kg: "كيلوغرام", pack: "عبوة / باكيت", liter: "لتر", meter: "متر", hour: "ساعة", day: "يوم" };
+function providerRequestItems(request={}){
+  if(Array.isArray(request.items)&&request.items.length)return request.items;
+  return request.itemName?[{itemName:request.itemName,itemUnit:request.itemUnit||"item",quantity:Number(request.quantity||1),unitPrice:Number(request.unitPrice||request.itemPrice||0),subtotal:Number(request.subtotal||0)}]:[];
+}
+function providerItemsTitle(request={}){const items=providerRequestItems(request);return items.length<=1?(items[0]?.itemName||"طلب خدمة"):`${items[0].itemName} + ${items.length-1} أصناف`;}
+function providerItemsHtml(request={}){return providerRequestItems(request).map(i=>`<div class="request-meta"><span><b>${escapeHtml(i.itemName||"صنف")}</b></span><span>${Number(i.quantity||1).toLocaleString("ar-IQ")} ${escapeHtml(itemUnitLabels[i.itemUnit]||itemUnitLabels.item)}</span><span>${money(i.unitPrice||0)}</span><span>${money(i.subtotal||0)}</span></div>`).join("");}
 
 function normalizedProviderItem(item = {}) {
   const unit = itemUnitLabels[item.unit] ? item.unit : "item";
@@ -574,7 +580,7 @@ byId("pAddItem").addEventListener("click", event => {
 
 function renderPreview() {
   const category = currentProfile?.category || currentApplication?.category || "other";
-  const theme = window.KarwaServiceThemes?.resolve?.({ category, serviceType:currentApplication?.serviceType || "", description:byId("pDescription")?.value || currentProfile?.description || "", items:providerItems }) || { image:"./theme-parcel.webp?v=70", accent:"#087b75", icon:"🧰", key:"parcel" };
+  const theme = window.KarwaServiceThemes?.resolve?.({ category, serviceType:currentApplication?.serviceType || "", description:byId("pDescription")?.value || currentProfile?.description || "", items:providerItems }) || { image:"./theme-parcel.webp?v=71", accent:"#087b75", icon:"🧰", key:"parcel" };
   const cover = byId("previewThemeCover");
   if (cover) { cover.style.backgroundImage = `linear-gradient(180deg,rgba(3,15,24,.02),rgba(3,15,24,.2)),url('${theme.image}')`; cover.style.setProperty("--preview-theme-accent", theme.accent); cover.dataset.theme = theme.key; }
   const themeIcon = byId("previewThemeIcon"); if (themeIcon) themeIcon.textContent = theme.icon;
@@ -648,9 +654,10 @@ function renderProviderRequests(requests) {
         else if (deliveryStatus === "notAvailable") deliveryText = "🏪 التوصيل غير متاح لهذه الخدمة";
         const requestVisualStatus = ["accepted", "completed", "rejected", "cancelled"].includes(status) ? status : "pending";
         return `<article class="request-card request-${requestVisualStatus}">
-          <div class="request-card-head"><div><small>${escapeHtml(request.providerName || "نشاطك")}</small><h3>${escapeHtml(request.itemName || "طلب خدمة")}</h3></div><span class="status ${status === "completed" || status === "accepted" ? "ok" : status === "rejected" || status === "cancelled" ? "bad" : ""}">${escapeHtml(requestStatusLabels[status] || status)}</span></div>
+          <div class="request-card-head"><div><small>${escapeHtml(request.providerName || "نشاطك")}</small><h3>${escapeHtml(providerItemsTitle(request))}</h3></div><span class="status ${status === "completed" || status === "accepted" ? "ok" : status === "rejected" || status === "cancelled" ? "bad" : ""}">${escapeHtml(requestStatusLabels[status] || status)}</span></div>
           <p>${escapeHtml(request.requestText || "بدون تفاصيل إضافية")}</p>
-          <div class="request-meta"><span>العميل: ${escapeHtml(request.customerName || "عميل كروة")}</span><span>الكمية: ${Number(request.quantity || 1).toLocaleString("ar-IQ")} ${escapeHtml(itemUnitLabels[request.itemUnit] || itemUnitLabels.item)}</span><span>سعر الوحدة: ${money(request.unitPrice || request.itemPrice)}</span><span>قيمة الحاجة: ${money(request.subtotal || request.itemPrice)}</span></div>
+          <div class="request-meta"><span>العميل: ${escapeHtml(request.customerName || "عميل كروة")}</span><span>${providerRequestItems(request).length} ${providerRequestItems(request).length===1?"صنف":"أصناف"}</span><span>قيمة الحاجة: ${money(request.subtotal || request.itemPrice)}</span></div>${providerItemsHtml(request)}
+          ${request.customerEditedAt ? `<div class="notice" style="margin-top:10px"><strong>✏️ عدّل العميل الطلب ${Number(request.customerEditCount || 1).toLocaleString("ar-IQ")} مرة</strong><span>هذه هي أحدث كمية وملاحظات معتمدة. يبقى التعديل متاحًا للعميل حتى استلام مندوب التوصيل.</span></div>` : ""}
           <div class="request-meta"><span>${deliveryText}</span></div>
           ${request.pickupOtp && request.deliveryRequested ? `<div class="notice" style="margin-top:10px"><strong>🔐 رمز استلام الكابتن: ${escapeHtml(request.pickupOtp)}</strong><span>أعطِ هذا الرمز للكابتن فقط بعد وصوله فعليًا واستلامه الطلب منك. لا يبدأ التوصيل للعميل بدونه.</span></div>` : ""}
           ${request.providerNote ? `<p class="notice bad" style="margin-top:10px">${escapeHtml(request.providerNote)}</p>` : ""}
@@ -703,7 +710,7 @@ byId("providerRequestsList").addEventListener("click", async event => {
             providerId: currentUser.uid,
             serviceRequestId: request.firestoreId,
             type: "serviceDelivery",
-            title: `توصيل ${request.itemName} من ${request.providerName}`,
+            title: `توصيل ${providerItemsTitle(request)} من ${request.providerName}`,
             route: `${request.providerAddress} ← ${request.customerAddress}`,
             price: deliveryFee,
             serviceTotal: Number(request.totalPrice || 0),

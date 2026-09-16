@@ -110,6 +110,8 @@ const state = {
   ridePrice: 0,
   payment: "نقدًا",
   cart: [],
+  serviceCart: [],
+  serviceEditDraftItems: [],
   restaurants: [],
   restaurantDraftMeals: [],
   restaurantGps: null,
@@ -119,6 +121,8 @@ const state = {
   selectedServiceProfile: null,
   serviceRequests: [],
   serviceDeliveryLocations: {},
+  serviceEditRequestId: null,
+  parcelEditOrderId: null,
   unsubscribeServiceProfiles: null,
   unsubscribeServiceRequests: null,
   orders: [],
@@ -1214,7 +1218,8 @@ async function createOrder(type, title, route, price, options = {}) {
     cancelled: false,
     createdAt: serverTimestamp(),
     createdAtISO,
-    ...(options.foodDetails ? { foodDetails: options.foodDetails } : {})
+    ...(options.foodDetails ? { foodDetails: options.foodDetails } : {}),
+    ...(options.parcelDetails ? { parcelDetails: options.parcelDetails } : {})
   };
 
   const customerFee=fixedPlatformFee("customerOrderFee");
@@ -1320,7 +1325,12 @@ byId("bookParcel").addEventListener("click", async event => {
   const button = event.currentTarget;
   setButtonBusy(button, true, "جاري الطلب…");
   try {
-    await createOrder("parcel", `توصيل غرض إلى ${recipientName}`, `${from} ← ${to}`, price, { payment: "نقدًا", pickupLocation: { ...state.customerLocation } });
+    const parcelNotes = byId("parcelNotes")?.value.trim() || "";
+    await createOrder("parcel", `توصيل غرض إلى ${recipientName}`, `${from} ← ${to}`, price, {
+      payment: "نقدًا",
+      pickupLocation: { ...state.customerLocation },
+      parcelDetails: { from, to, recipientName, recipientPhone, notes: parcelNotes }
+    });
   } catch (error) {
     console.error(error);
     showToast(String(error?.message||"").includes("الرصيد غير كافٍ") ? error.message : "تعذر حفظ طلب التوصيل.");
@@ -1335,7 +1345,7 @@ function restaurantSafeText(value) {
 }
 
 function karwaServiceTheme(input = {}) {
-  return window.KarwaServiceThemes?.resolve?.(input) || { key:"parcel", image:"./theme-parcel.webp?v=70", accent:"#087b75", icon:"🧰" };
+  return window.KarwaServiceThemes?.resolve?.(input) || { key:"parcel", image:"./theme-parcel.webp?v=71", accent:"#087b75", icon:"🧰" };
 }
 function karwaServiceThemeStyle(input = {}) {
   const theme = karwaServiceTheme(input);
@@ -1462,10 +1472,24 @@ byId("addDetailedMeal")?.addEventListener("click",()=>{
   const meal=state.selectedMeal; if(!meal)return; const normalized=normalizedClientItem(meal);
   const quantity=Number(byId("mealQuantity")?.value||0); const spec=itemUnitSpec(normalized.unit);
   if(!quantityIsValid(quantity, normalized.unit)) return showToast(`حدد ${spec.quantityLabel} بشكل صحيح`);
+  if (state.cart.length && state.cart[0].restaurantId !== meal.restaurantId) {
+    if (!confirm("السلة تحتوي أصنافًا من مطعم آخر. هل تريد تفريغها والطلب من هذا المطعم؟")) return;
+    state.cart = [];
+  }
   const subtotal=Math.round(normalized.price*quantity);
-  const wantsDelivery=Boolean(normalized.deliveryAvailable && byId("mealDeliveryRequested")?.checked);
-  state.cart=[{name:meal.name,price:subtotal,unitPrice:normalized.price,subtotal,quantity,description:meal.description||"",unit:normalized.unit,deliveryAvailable:normalized.deliveryAvailable,deliveryFee:normalized.deliveryFee,mealIndex:meal.mealIndex,restaurantId:meal.restaurantId,restaurantName:meal.restaurantName,restaurantAddress:meal.restaurantAddress,restaurantPhone:meal.restaurantPhone,restaurantLocation:meal.restaurantLocation}];
-  if(byId("foodDeliveryRequested")) byId("foodDeliveryRequested").checked=wantsDelivery; renderCart(); byId("mealDetailBackdrop").hidden=true; showToast(`تم اختيار ${formatServiceQuantity(quantity)} ${spec.short} من ${normalized.name}`);
+  const existing=state.cart.find(item=>Number(item.mealIndex)===Number(meal.mealIndex));
+  const line={name:normalized.name,price:subtotal,unitPrice:normalized.price,subtotal,quantity,description:normalized.description||"",unit:normalized.unit,deliveryAvailable:normalized.deliveryAvailable,deliveryFee:normalized.deliveryFee,mealIndex:meal.mealIndex,restaurantId:meal.restaurantId,restaurantName:meal.restaurantName,restaurantAddress:meal.restaurantAddress,restaurantPhone:meal.restaurantPhone,restaurantLocation:meal.restaurantLocation};
+  if(existing) Object.assign(existing,line);
+  else {
+    if(state.cart.length>=MAX_MULTI_ORDER_ITEMS) return showToast(`الحد الأقصى ${MAX_MULTI_ORDER_ITEMS} أصناف في الطلب الواحد`);
+    state.cart.push(line);
+  }
+  const canDeliver=state.cart.every(item=>item.deliveryAvailable===true);
+  if(byId("foodDeliveryRequested")){
+    if(!canDeliver) byId("foodDeliveryRequested").checked=false;
+    else if(state.cart.length===1) byId("foodDeliveryRequested").checked=Boolean(byId("mealDeliveryRequested")?.checked);
+  }
+  renderCart(); byId("mealDetailBackdrop").hidden=true; showToast(`تمت إضافة ${normalized.name} إلى الطلب • ${state.cart.length} صنف`);
 });
 
 const otherServiceCategories = {
@@ -1516,6 +1540,258 @@ function configureQuantityInput(input, unit, reset = false) {
   input.step = String(spec.step);
   input.max = String(spec.max);
   if (reset || !quantityIsValid(input.value, unit)) input.value = String(spec.min);
+}
+
+const MAX_MULTI_ORDER_ITEMS = 8;
+function requestItemsOf(request = {}) {
+  if (Array.isArray(request.items) && request.items.length) {
+    return request.items.map((entry, index) => ({
+      itemIndex: Number(entry.itemIndex ?? index),
+      itemName: String(entry.itemName || entry.name || "صنف"),
+      itemUnit: otherItemUnitLabels[entry.itemUnit || entry.unit] ? (entry.itemUnit || entry.unit) : "item",
+      quantity: Number(entry.quantity || 1),
+      unitPrice: Math.max(0, Number(entry.unitPrice ?? entry.itemPrice ?? entry.price ?? 0)),
+      subtotal: Math.max(0, Number(entry.subtotal ?? 0)),
+      deliveryAvailable: entry.deliveryAvailable === true,
+      deliveryFee: Math.max(0, Number(entry.deliveryFee || 0))
+    }));
+  }
+  if (!request.itemName) return [];
+  return [{
+    itemIndex: Number(request.itemIndex || 0),
+    itemName: String(request.itemName || "صنف"),
+    itemUnit: otherItemUnitLabels[request.itemUnit] ? request.itemUnit : "item",
+    quantity: Number(request.quantity || 1),
+    unitPrice: Math.max(0, Number(request.unitPrice ?? request.itemPrice ?? 0)),
+    subtotal: Math.max(0, Number(request.subtotal ?? ((request.unitPrice || request.itemPrice || 0) * (request.quantity || 1)))),
+    deliveryAvailable: request.itemDeliveryAvailable === true || request.deliveryRequested === true,
+    deliveryFee: Math.max(0, Number(request.itemDeliveryFee || request.deliveryFee || 0))
+  }];
+}
+function orderItemsSubtotal(items = []) { return Math.round(items.reduce((sum, item) => sum + Math.max(0, Number(item.subtotal ?? (Number(item.unitPrice || 0) * Number(item.quantity || 0)))), 0)); }
+function orderItemsDeliverable(items = []) { return items.length > 0 && items.every(item => item.deliveryAvailable === true); }
+function orderItemsDeliveryFee(items = []) { return items.reduce((max, item) => Math.max(max, Math.max(0, Number(item.deliveryFee || 0))), 0); }
+function orderItemsTitle(items = []) {
+  if (!items.length) return "طلب";
+  if (items.length === 1) return items[0].itemName;
+  return `${items[0].itemName} + ${items.length - 1} أصناف`;
+}
+function orderItemsText(items = []) {
+  return items.map(item => `${item.itemName} × ${formatServiceQuantity(item.quantity)} ${itemUnitSpec(item.itemUnit).short}`).join("، ");
+}
+function orderItemsHtml(items = []) {
+  return items.map(item => `<div class="multi-order-line"><span><b>${restaurantSafeText(item.itemName)}</b><small>${formatServiceQuantity(item.quantity)} ${restaurantSafeText(itemUnitSpec(item.itemUnit).short)} × ${formatMoney(item.unitPrice)}</small></span><strong>${formatMoney(item.subtotal)}</strong></div>`).join("");
+}
+
+function parcelOrderParts(order) {
+  const details = order?.parcelDetails || {};
+  const routeParts = String(order?.route || "").split("←").map(x => x.trim());
+  const titleName = String(order?.title || "").replace(/^توصيل غرض إلى\s*/u, "").trim();
+  return {
+    from: String(details.from || routeParts[0] || ""),
+    to: String(details.to || routeParts[1] || ""),
+    recipientName: String(details.recipientName || titleName || ""),
+    recipientPhone: String(details.recipientPhone || ""),
+    notes: String(details.notes || "")
+  };
+}
+
+function canCustomerEditParcelOrder(order) {
+  return !!(order && state.user && order.userId === state.user.uid && order.type === "parcel" && !order.cancelled && Number(order.statusIndex || 0) < 3);
+}
+
+function closeParcelEditModal() {
+  state.parcelEditOrderId = null;
+  byId("parcelEditModal")?.classList.remove("show");
+}
+
+function openParcelEditModal(orderId) {
+  const order = state.orders.find(item => item.firestoreId === orderId);
+  if (!canCustomerEditParcelOrder(order)) return showToast("تم استلام الغرض من مندوب التوصيل؛ لم يعد تعديل الطلب متاحًا.");
+  state.parcelEditOrderId = orderId;
+  const d = parcelOrderParts(order);
+  byId("parcelEditFrom").value = d.from;
+  byId("parcelEditTo").value = d.to;
+  byId("parcelEditRecipientName").value = d.recipientName;
+  byId("parcelEditRecipientPhone").value = d.recipientPhone;
+  byId("parcelEditNotes").value = d.notes;
+  const hint = byId("parcelEditHint");
+  if (hint) hint.textContent = order.driverId ? "المندوب متجه للاستلام. يمكنك تعديل التفاصيل حتى يؤكد استلام الغرض." : "يمكنك تعديل تفاصيل التوصيل حتى يستلم المندوب الغرض فعليًا.";
+  byId("parcelEditModal")?.classList.add("show");
+}
+
+async function saveParcelOrderEdit(button) {
+  const orderId = state.parcelEditOrderId;
+  if (!orderId || !state.user) return;
+  const from = byId("parcelEditFrom").value.trim();
+  const to = byId("parcelEditTo").value.trim();
+  const recipientName = byId("parcelEditRecipientName").value.trim();
+  const recipientPhone = byId("parcelEditRecipientPhone").value.trim();
+  const notes = byId("parcelEditNotes").value.trim();
+  if (from.length < 3 || to.length < 3) return showToast("أدخل عنوان الاستلام والتسليم بوضوح.");
+  if (recipientName.length < 2) return showToast("أدخل اسم المستلم.");
+  if (recipientPhone.replace(/\D/g, "").length < 8) return showToast("أدخل رقم هاتف صحيحًا للمستلم.");
+  if (notes.length > 500) return showToast("الملاحظات يجب ألا تتجاوز 500 حرف.");
+  setButtonBusy(button, true, "جاري حفظ التعديل…");
+  try {
+    await runTransaction(db, async tx => {
+      const ref = doc(db, "orders", orderId);
+      const snap = await tx.get(ref);
+      if (!snap.exists()) throw new Error("ORDER_NOT_FOUND");
+      const fresh = snap.data();
+      if (fresh.userId !== state.user.uid || fresh.type !== "parcel" || fresh.cancelled || Number(fresh.statusIndex || 0) >= 3) throw new Error("EDIT_LOCKED");
+      tx.update(ref, {
+        title: `توصيل غرض إلى ${recipientName}`,
+        route: `${from} ← ${to}`,
+        parcelDetails: { from, to, recipientName, recipientPhone, notes },
+        customerEditedAt: serverTimestamp(),
+        customerEditCount: Number(fresh.customerEditCount || 0) + 1,
+        updatedAt: serverTimestamp()
+      });
+    });
+    closeParcelEditModal();
+    showToast("تم تحديث تفاصيل التوصيل وإبلاغ المندوب بالتغييرات.");
+  } catch (error) {
+    console.error(error);
+    showToast(String(error?.message || "").includes("EDIT_LOCKED") ? "تم استلام الغرض؛ لم يعد التعديل مسموحًا." : "تعذر تعديل طلب التوصيل.");
+  } finally { setButtonBusy(button, false); }
+}
+
+function serviceDeliveryOrderFor(request) {
+  if (!request) return null;
+  return state.orders.find(order =>
+    order.firestoreId === request.deliveryOrderId ||
+    (order.type === "serviceDelivery" && order.serviceRequestId === request.firestoreId)
+  ) || null;
+}
+
+function canCustomerEditServiceRequest(request) {
+  if (!request || !state.user || request.customerId !== state.user.uid) return false;
+  if (!["pending", "accepted"].includes(String(request.status || ""))) return false;
+  const deliveryOrder = serviceDeliveryOrderFor(request);
+  if (!deliveryOrder) return true;
+  if (deliveryOrder.cancelled) return false;
+  return Number(deliveryOrder.statusIndex || 0) < 3;
+}
+
+function serviceEditLockLabel(request) {
+  const order = serviceDeliveryOrderFor(request);
+  if (!order) return "يمكنك تعديل الكمية والملاحظات قبل اكتمال الطلب.";
+  const step = Number(order.statusIndex || 0);
+  if (step >= 3) return "تم استلام الطلب من مندوب التوصيل وأصبحت التعديلات مقفلة.";
+  if (order.driverId) return "المندوب متجه للاستلام. يمكنك التعديل حتى يؤكد استلام الطلب.";
+  return "يمكنك التعديل ما دام الطلب لم يُستلم من مندوب التوصيل.";
+}
+
+function renderServiceEditItems() {
+  const host = byId("serviceEditItems");
+  if (!host) return;
+  const items = state.serviceEditDraftItems || [];
+  host.innerHTML = items.length ? items.map((item,index)=>{
+    const spec=itemUnitSpec(item.itemUnit);
+    return `<div class="service-edit-item"><div><strong>${restaurantSafeText(item.itemName)}</strong><small style="display:block;color:#6b7d8e;margin-top:3px">${formatMoney(item.unitPrice)} / ${restaurantSafeText(spec.label)}</small></div><div class="field"><label>${restaurantSafeText(spec.quantityLabel)}</label><input type="number" inputmode="decimal" data-service-edit-qty="${index}" min="${spec.min}" max="${spec.max}" step="${spec.step}" value="${Number(item.quantity)}"></div><button type="button" data-service-edit-remove="${index}" aria-label="حذف الصنف">×</button></div>`;
+  }).join("") : '<div class="restaurant-empty">يجب أن يحتوي الطلب على صنف واحد على الأقل.</div>';
+  serviceEditPreview();
+}
+
+function serviceEditPreview() {
+  const total = byId("serviceEditTotal");
+  const request = state.serviceRequests.find(item => item.firestoreId === state.serviceEditRequestId);
+  const items = state.serviceEditDraftItems || [];
+  let subtotal=0; let valid=items.length>0;
+  items.forEach(item=>{ if(!quantityIsValid(item.quantity,item.itemUnit)) valid=false; subtotal+=Math.round(Number(item.unitPrice||0)*Number(item.quantity||0)); });
+  if (!total) return;
+  if (!valid) { total.textContent="أدخل كميات صحيحة لكل الأصناف"; return; }
+  const deliveryFee=Math.max(0,Number(request?.deliveryFee||0));
+  total.textContent=`${items.length} ${items.length===1?"صنف":"أصناف"} • ${formatMoney(subtotal+deliveryFee)}${deliveryFee?` (يشمل توصيل ${formatMoney(deliveryFee)})`:""}`;
+}
+
+function closeServiceEditModal() {
+  state.serviceEditRequestId = null;
+  state.serviceEditDraftItems = [];
+  byId("serviceEditModal")?.classList.remove("show");
+}
+
+function openServiceEditModal(requestId) {
+  const request = state.serviceRequests.find(item => item.firestoreId === requestId);
+  if (!request) return showToast("تعذر العثور على الطلب.");
+  if (!canCustomerEditServiceRequest(request)) return showToast("انتهت مهلة تعديل الطلب بعد استلامه من مندوب التوصيل.");
+  state.serviceEditRequestId = requestId;
+  state.serviceEditDraftItems = requestItemsOf(request).map(item=>({...item}));
+  byId("serviceEditTitle").textContent = `تعديل الطلب • ${state.serviceEditDraftItems.length} ${state.serviceEditDraftItems.length===1?"صنف":"أصناف"}`;
+  byId("serviceEditProvider").textContent = `${request.providerName || "مزود الخدمة"} • ${serviceEditLockLabel(request)}`;
+  byId("serviceEditNote").value = String(request.requestText || "");
+  renderServiceEditItems();
+  byId("serviceEditModal")?.classList.add("show");
+}
+
+byId("serviceEditItems")?.addEventListener("input", event => {
+  const input=event.target.closest("[data-service-edit-qty]");
+  if(!input) return;
+  const index=Number(input.dataset.serviceEditQty);
+  if(state.serviceEditDraftItems[index]) state.serviceEditDraftItems[index].quantity=Number(input.value||0);
+  serviceEditPreview();
+});
+byId("serviceEditItems")?.addEventListener("click", event => {
+  const button=event.target.closest("[data-service-edit-remove]");
+  if(!button) return;
+  if(state.serviceEditDraftItems.length<=1) return showToast("يجب أن يبقى صنف واحد على الأقل في الطلب");
+  state.serviceEditDraftItems.splice(Number(button.dataset.serviceEditRemove),1);
+  renderServiceEditItems();
+});
+
+async function saveCustomerServiceEdit(button) {
+  const requestId = state.serviceEditRequestId;
+  const local = state.serviceRequests.find(item => item.firestoreId === requestId);
+  if (!requestId || !local || !state.user) return;
+  const note = String(byId("serviceEditNote")?.value || "").trim();
+  const draft=(state.serviceEditDraftItems||[]).map(item=>({...item,quantity:Number(item.quantity||0)}));
+  if (!draft.length || draft.length>MAX_MULTI_ORDER_ITEMS) return showToast("يجب أن يحتوي الطلب على صنف واحد على الأقل");
+  if (draft.some(item=>!quantityIsValid(item.quantity,item.itemUnit))) return showToast("راجع كميات الأصناف قبل الحفظ");
+  if (note.length < 3 || note.length > 500) return showToast("اكتب ملاحظة طلب واضحة بين 3 و500 حرف.");
+  setButtonBusy(button, true, "جاري حفظ التعديل…");
+  try {
+    await runTransaction(db, async tx => {
+      const requestRef = doc(db, "serviceRequests", requestId);
+      const snap = await tx.get(requestRef);
+      if (!snap.exists()) throw new Error("REQUEST_NOT_FOUND");
+      const fresh = { firestoreId: requestId, ...snap.data() };
+      if (fresh.customerId !== state.user.uid) throw new Error("NOT_OWNER");
+      if (!["pending", "accepted"].includes(String(fresh.status || ""))) throw new Error("EDIT_LOCKED");
+      let deliveryRef = null; let delivery = null;
+      if (fresh.deliveryOrderId) {
+        deliveryRef = doc(db, "orders", fresh.deliveryOrderId);
+        const deliverySnap = await tx.get(deliveryRef);
+        if (!deliverySnap.exists()) throw new Error("DELIVERY_NOT_FOUND");
+        delivery = deliverySnap.data();
+        if (delivery.cancelled || Number(delivery.statusIndex || 0) >= 3) throw new Error("EDIT_LOCKED");
+      }
+      const profileRef=doc(db,"serviceProfiles",fresh.providerId);
+      const profileSnap=await tx.get(profileRef);
+      if(!profileSnap.exists()) throw new Error("PROVIDER_NOT_FOUND");
+      const catalog=Array.isArray(profileSnap.data().items)?profileSnap.data().items:[];
+      const items=draft.map(entry=>{
+        const current=normalizedClientItem(catalog[Number(entry.itemIndex)]);
+        if(!current?.name || current.name!==entry.itemName || current.unit!==entry.itemUnit) throw new Error("ITEM_CHANGED");
+        if(!quantityIsValid(entry.quantity,current.unit)) throw new Error("BAD_QUANTITY");
+        return {itemIndex:Number(entry.itemIndex),itemName:current.name,itemUnit:current.unit,quantity:Number(entry.quantity),unitPrice:current.price,subtotal:Math.round(current.price*Number(entry.quantity)),deliveryAvailable:current.deliveryAvailable===true,deliveryFee:current.deliveryAvailable?Math.max(0,Number(current.deliveryFee||0)):0};
+      });
+      const subtotal=orderItemsSubtotal(items); const lead=items[0];
+      const patch={items,itemCount:items.length,itemIndex:lead.itemIndex,itemName:lead.itemName,itemUnit:lead.itemUnit,quantity:lead.quantity,unitPrice:lead.unitPrice,itemPrice:lead.unitPrice,subtotal,totalPrice:subtotal+Math.max(0,Number(fresh.deliveryFee||0)),requestText:note.slice(0,500),customerEditedAt:serverTimestamp(),customerEditCount:Number(fresh.customerEditCount||0)+1,updatedAt:serverTimestamp()};
+      if(fresh.providerCategory!=="restaurant"){
+        const allDelivery=orderItemsDeliverable(items);
+        patch.itemDeliveryAvailable=allDelivery; patch.itemDeliveryFee=allDelivery?orderItemsDeliveryFee(items):0;
+        if(!fresh.deliveryOrderId && fresh.deliveryStatus!=="awaitingCaptain") patch.deliveryStatus=fresh.status==="accepted"?(allDelivery?"awaitingCustomerChoice":"notAvailable"):(allDelivery?"pendingProvider":"notAvailable");
+      } else if(fresh.deliveryRequested && !orderItemsDeliverable(items)) throw new Error("DELIVERY_ITEM_LOCKED");
+      tx.update(requestRef,patch);
+      if (deliveryRef && delivery) tx.update(deliveryRef, { serviceTotal: patch.totalPrice, title:`توصيل ${orderItemsTitle(items)} من ${fresh.providerName}`, updatedAt: serverTimestamp() });
+    });
+    closeServiceEditModal();
+    showToast("تم تعديل أصناف الطلب وإبلاغ مزود الخدمة بالتغييرات.");
+  } catch (error) {
+    console.error(error); const code=String(error?.message||"");
+    showToast(code.includes("EDIT_LOCKED")?"تم استلام الطلب من مندوب التوصيل؛ لم يعد التعديل مسموحًا.":code.includes("ITEM_CHANGED")?"تغير أحد الأصناف لدى مزود الخدمة؛ أعد فتح الطلب.":"تعذر حفظ التعديل. تأكد أن الطلب لم يُستلم بعد.");
+  } finally { setButtonBusy(button, false); }
 }
 
 function normalizedClientItem(item = {}) {
@@ -1585,6 +1861,21 @@ function renderOtherServices() {
   }).join("");
 }
 
+function renderOtherServiceCart() {
+  const host = byId("otherServiceCart");
+  const profile = state.selectedServiceProfile;
+  const items = state.serviceCart || [];
+  if (!host) return;
+  if (!profile || !items.length) {
+    host.innerHTML = '<div class="multi-service-cart-empty">أضف صنفًا واحدًا أو عدة أصناف من هذا النشاط.</div>';
+    if (byId("bookOtherService")) { byId("bookOtherService").disabled = true; byId("bookOtherService").textContent = "إرسال الطلب إلى النشاط للموافقة"; }
+    return;
+  }
+  const subtotal = orderItemsSubtotal(items);
+  host.innerHTML = items.map((item,index)=>`<div class="multi-service-line"><span><b>${restaurantSafeText(item.itemName)}</b><small>${formatServiceQuantity(item.quantity)} ${restaurantSafeText(itemUnitSpec(item.itemUnit).short)} × ${formatMoney(item.unitPrice)}</small></span><strong>${formatMoney(item.subtotal)}</strong><button type="button" data-remove-service-cart="${index}" aria-label="حذف الصنف">×</button></div>`).join("") + `<div class="multi-service-cart-total"><span>${items.length} ${items.length===1?"صنف":"أصناف"}</span><strong>${formatMoney(subtotal)}</strong></div>`;
+  if (byId("bookOtherService")) { byId("bookOtherService").disabled = false; byId("bookOtherService").textContent = `إرسال ${items.length} ${items.length===1?"صنف":"أصناف"} إلى النشاط`; }
+}
+
 function updateSelectedServicePrice() {
   const select = byId("otherServiceItem");
   const profile = state.selectedServiceProfile;
@@ -1599,7 +1890,6 @@ function updateSelectedServicePrice() {
     byId("selectedServicePrice").textContent = "—";
     byId("otherServiceGrandTotal").textContent = formatMoney(0);
     byId("otherServiceTotalBreakdown").textContent = "—";
-    byId("bookOtherService").disabled = true;
     if (deliveryNote) deliveryNote.innerHTML = "<b>اختيار التوصيل بعد الموافقة</b><small>اختر خدمة أولًا لمعرفة إمكانية التوصيل.</small>";
     return;
   }
@@ -1617,11 +1907,12 @@ function updateSelectedServicePrice() {
   const subtotal = Math.round(item.price * quantity);
   byId("otherServiceTotalBreakdown").textContent = `${formatServiceQuantity(quantity)} ${itemUnitSpec(item.unit).short} × ${formatMoney(item.price)}`;
   byId("otherServiceGrandTotal").textContent = formatMoney(subtotal);
-  byId("bookOtherService").disabled = false;
+  renderOtherServiceCart();
 }
 
 function selectServiceProfile(profile, itemIndex = 0) {
   if (!profile) return;
+  if (state.selectedServiceProfile?.firestoreId !== profile.firestoreId) state.serviceCart = [];
   state.selectedServiceProfile = profile;
   const [, category] = otherServiceCategories[profile.category] || otherServiceCategories.other;
   byId("selectedServiceCategory").textContent = category;
@@ -1637,6 +1928,7 @@ function selectServiceProfile(profile, itemIndex = 0) {
   byId("otherServiceQuantity").value = "1";
   byId("selectedServiceBox").hidden = false;
   updateSelectedServicePrice();
+  renderOtherServiceCart();
   byId("selectedServiceBox").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
@@ -1727,13 +2019,17 @@ function renderMyServiceRequests() {
       : "";
 
     const displayedTotal = isRestaurantRequest || deliveryStatus === "awaitingCaptain" ? Number(request.totalPrice || request.subtotal || 0) : Number(request.subtotal || request.totalPrice || request.itemPrice || 0);
+    const requestItems = requestItemsOf(request);
     return `<article class="my-service-request-card" data-service-request-card="${restaurantSafeText(request.firestoreId)}">
-      <div class="service-request-head"><div><small>${restaurantSafeText(request.itemName || "طلب خدمة")}</small><h3>${restaurantSafeText(request.providerName || "مزود خدمة")}</h3></div><span class="service-request-status ${statusClass}">${statusLabel}</span></div>
+      <div class="service-request-head"><div><small>${restaurantSafeText(orderItemsTitle(requestItems))}</small><h3>${restaurantSafeText(request.providerName || "مزود خدمة")}</h3></div><span class="service-request-status ${statusClass}">${statusLabel}</span></div>
       <p>${restaurantSafeText(request.requestText || "")}</p>
-      <div class="service-request-meta"><span>📍 ${restaurantSafeText(request.providerAddress || "العنوان غير محدد")}</span><span>${Number(request.quantity || 1).toLocaleString("ar-IQ")} ${restaurantSafeText(otherItemUnitLabels[request.itemUnit] || otherItemUnitLabels.item)}</span><span>سعر الوحدة ${formatMoney(request.unitPrice || request.itemPrice)}</span><span>قيمة الطلب ${formatMoney(displayedTotal)}</span>${date ? `<span>${date.toLocaleDateString("ar-IQ")}</span>` : ""}</div>
+      <div class="multi-order-items">${orderItemsHtml(requestItems)}</div>
+      <div class="service-request-meta"><span>📍 ${restaurantSafeText(request.providerAddress || "العنوان غير محدد")}</span><span>${requestItems.length} ${requestItems.length===1?"صنف":"أصناف"}</span><span>قيمة الطلب ${formatMoney(displayedTotal)}</span>${date ? `<span>${date.toLocaleDateString("ar-IQ")}</span>` : ""}</div>
       <div class="service-provider-note">🚚 ${restaurantSafeText(deliveryLabel)}${deliveryStatus === "awaitingCaptain" ? ` • أجرة التوصيل ${formatMoney(request.deliveryFee)}` : ""}</div>
       ${request.providerNote ? `<div class="service-provider-note">ملاحظة المزود: ${restaurantSafeText(request.providerNote)}</div>` : ""}
+      ${request.customerEditedAt ? `<div class="service-provider-note service-edit-note">✏️ تم تعديل الطلب ${Number(request.customerEditCount || 1).toLocaleString("ar-IQ")} مرة — آخر تعديل ${request.customerEditedAt?.toDate?.()?.toLocaleString?.("ar-IQ") || "حديثًا"}</div>` : ""}
       ${choiceBox}
+      ${canCustomerEditServiceRequest(request) ? `<button class="secondary-button service-edit-button" type="button" data-edit-service-request="${restaurantSafeText(request.firestoreId)}">✏️ تعديل الطلب</button>` : (serviceDeliveryOrderFor(request) && Number(serviceDeliveryOrderFor(request).statusIndex || 0) >= 3 ? `<div class="service-edit-locked">🔒 تم استلام الطلب من المندوب — التعديل مقفل</div>` : "")}
       ${(() => {
         const deliveryFinished = !request.deliveryRequested || !request.deliveryOrderId || (deliveryOrder && !deliveryOrder.cancelled && Number(deliveryOrder.statusIndex || 0) >= 4);
         if (request.status !== "completed" || !deliveryFinished) return "";
@@ -1775,9 +2071,38 @@ byId("otherServiceItem")?.addEventListener("change", updateSelectedServicePrice)
 byId("otherServiceQuantity")?.addEventListener("input", updateSelectedServicePrice);
 byId("closeSelectedService")?.addEventListener("click", () => {
   state.selectedServiceProfile = null;
+  state.serviceCart = [];
+  renderOtherServiceCart();
   byId("selectedServiceBox").hidden = true;
 });
 byId("locateSelectedService")?.addEventListener("click", () => focusServiceLocation(state.selectedServiceProfile));
+byId("addOtherServiceItem")?.addEventListener("click", () => {
+  const profile = state.selectedServiceProfile;
+  if (!profile) return showToast("اختر نشاطًا أولًا");
+  const selectedValue = byId("otherServiceItem")?.value ?? "";
+  if (selectedValue === "") return showToast("اختر الخدمة أو المنتج");
+  const itemIndex = Number(selectedValue);
+  const item = normalizedClientItem(profile.items?.[itemIndex]);
+  const quantity = Number(byId("otherServiceQuantity")?.value || 0);
+  if (!quantityIsValid(quantity, item.unit)) return showToast(`أدخل ${itemUnitSpec(item.unit).quantityLabel} بشكل صحيح`);
+  const line = { itemIndex, itemName:item.name, itemUnit:item.unit, quantity, unitPrice:item.price, subtotal:Math.round(item.price*quantity), deliveryAvailable:item.deliveryAvailable===true, deliveryFee:item.deliveryAvailable?Math.max(0,Number(item.deliveryFee||0)):0 };
+  const existing = state.serviceCart.find(entry => Number(entry.itemIndex) === itemIndex);
+  if (existing) Object.assign(existing, line);
+  else {
+    if (state.serviceCart.length >= MAX_MULTI_ORDER_ITEMS) return showToast(`الحد الأقصى ${MAX_MULTI_ORDER_ITEMS} أصناف في الطلب الواحد`);
+    state.serviceCart.push(line);
+  }
+  renderOtherServiceCart();
+  showToast(`تمت إضافة ${item.name} إلى الطلب`);
+});
+
+byId("otherServiceCart")?.addEventListener("click", event => {
+  const button = event.target.closest("[data-remove-service-cart]");
+  if (!button) return;
+  state.serviceCart.splice(Number(button.dataset.removeServiceCart),1);
+  renderOtherServiceCart();
+});
+
 async function createServiceRequestWithCustomerFee(payload){
   const fee=fixedPlatformFee("customerOrderFee");
   const walletPatch=walletDebitPatch({balance:state.balance,bonusBalance:state.bonusBalance,bonusExpiresAt:state.bonusExpiresAt},fee);
@@ -1795,60 +2120,45 @@ byId("bookOtherService")?.addEventListener("click", async event => {
   if (!requireUser()) return;
   const profile = state.selectedServiceProfile;
   if (!profile) return showToast("اختر مزود خدمة أولًا");
-  const selectedValue = byId("otherServiceItem").value;
-  if (selectedValue === "") return showToast("اختر الخدمة التي تحتاجها");
-  const itemIndex = Number(selectedValue);
-  const item = normalizedClientItem(profile.items?.[itemIndex]);
-  const quantity = Number(byId("otherServiceQuantity").value || 0);
-  const requestText = byId("otherServiceRequest").value.trim() || `طلب ${item.name}`;
-  const unitSpec = itemUnitSpec(item.unit);
-  if (!quantityIsValid(quantity, item.unit)) return showToast(`أدخل ${unitSpec.quantityLabel} بشكل صحيح (من ${formatServiceQuantity(unitSpec.min)} إلى ${formatServiceQuantity(unitSpec.max)})`);
-  const unitPrice = Math.max(0, Number(item.price || 0));
-  const subtotal = Math.round(unitPrice * quantity);
+  if (!state.serviceCart.length) return showToast("أضف صنفًا واحدًا على الأقل إلى الطلب");
+  const orderItems=[];
+  for (const chosen of state.serviceCart) {
+    const item=normalizedClientItem(profile.items?.[chosen.itemIndex]);
+    if(!item?.name || item.name!==chosen.itemName) return showToast("تغيرت قائمة النشاط. أعد اختيار الأصناف.");
+    const quantity=Number(chosen.quantity||0);
+    if(!quantityIsValid(quantity,item.unit)) return showToast(`الكمية المختارة لـ ${item.name} لم تعد صالحة`);
+    orderItems.push({itemIndex:Number(chosen.itemIndex),itemName:item.name,itemUnit:item.unit,quantity,unitPrice:item.price,subtotal:Math.round(item.price*quantity),deliveryAvailable:item.deliveryAvailable===true,deliveryFee:item.deliveryAvailable?Math.max(0,Number(item.deliveryFee||0)):0});
+  }
+  const requestText = byId("otherServiceRequest").value.trim() || `طلب: ${orderItemsText(orderItems)}`;
+  const subtotal=orderItemsSubtotal(orderItems);
+  const lead=orderItems[0];
+  const allDelivery=orderItemsDeliverable(orderItems);
+  const itemDeliveryFee=allDelivery?orderItemsDeliveryFee(orderItems):0;
   const button = event.currentTarget;
-  setButtonBusy(button, true, "جاري إرسال الحاجة…");
+  setButtonBusy(button, true, "جاري إرسال الطلب…");
   try {
     await createServiceRequestWithCustomerFee({
-      customerId: state.user.uid,
-      customerName: state.name,
-      providerId: profile.firestoreId,
-      providerName: profile.businessName,
-      providerCategory: profile.category || "other",
-      providerCity: profile.city || "",
-      providerAddress: profile.address || profile.city || "غير محدد",
+      customerId: state.user.uid, customerName: state.name, providerId: profile.firestoreId, providerName: profile.businessName,
+      providerCategory: profile.category || "other", providerCity: profile.city || "", providerAddress: profile.address || profile.city || "غير محدد",
       providerLocation: validServiceLocation(profile.location) ? { ...profile.location } : null,
-      itemIndex,
-      itemName: item.name,
-      itemUnit: item.unit,
-      quantity,
-      unitPrice,
-      itemPrice: unitPrice,
-      subtotal,
-      itemDeliveryAvailable: item.deliveryAvailable === true,
-      itemDeliveryFee: item.deliveryAvailable ? Math.max(0, Number(item.deliveryFee || 0)) : 0,
-      deliveryRequested: false,
-      deliveryFee: 0,
-      totalPrice: subtotal,
-      deliveryStatus: item.deliveryAvailable ? "pendingProvider" : "notAvailable",
-      deliveryOrderId: "",
-      requestText,
-      customerAddress: "",
-      customerLocation: null,
-      status: "pending",
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+      items:orderItems, itemCount:orderItems.length, itemIndex:lead.itemIndex, itemName:lead.itemName, itemUnit:lead.itemUnit, quantity:lead.quantity, unitPrice:lead.unitPrice, itemPrice:lead.unitPrice, subtotal,
+      itemDeliveryAvailable:allDelivery, itemDeliveryFee, deliveryRequested:false, deliveryFee:0, totalPrice:subtotal, deliveryStatus:allDelivery?"pendingProvider":"notAvailable", deliveryOrderId:"",
+      requestText, customerAddress:"", customerLocation:null, status:"pending", createdAt:serverTimestamp(), updatedAt:serverTimestamp()
     });
-    byId("otherServiceRequest").value = "";
-    showToast(`تم إرسال حاجتك إلى ${profile.businessName} بقيمة ${formatMoney(subtotal)}. بعد الموافقة تختار التوصيل إن كان متاحًا.`);
+    state.serviceCart=[]; renderOtherServiceCart(); byId("otherServiceRequest").value="";
+    showToast(`تم إرسال ${orderItems.length} ${orderItems.length===1?"صنف":"أصناف"} إلى ${profile.businessName} بقيمة ${formatMoney(subtotal)}.`);
   } catch (error) {
     console.error(error);
     showToast(String(error?.message||"").includes("الرصيد غير كافٍ") ? error.message : "تعذر إرسال الطلب. تأكد من نشر قواعد Firestore الجديدة.");
-  } finally {
-    setButtonBusy(button, false);
-  }
+  } finally { setButtonBusy(button, false); }
 });
 
 byId("myServiceRequests")?.addEventListener("click", async event => {
+  const editButton = event.target.closest("[data-edit-service-request]");
+  if (editButton) {
+    openServiceEditModal(editButton.dataset.editServiceRequest);
+    return;
+  }
   const ratingButton = event.target.closest("[data-rate-service-request]");
   if (ratingButton) {
     openRatingModal("service", ratingButton.dataset.rateServiceRequest);
@@ -1946,7 +2256,7 @@ byId("myServiceRequests")?.addEventListener("click", async event => {
         providerId: request.providerId,
         serviceRequestId: requestId,
         type: "serviceDelivery",
-        title: `توصيل ${request.itemName} من ${request.providerName}`,
+        title: `توصيل ${orderItemsTitle(requestItemsOf(request))} من ${request.providerName}`,
         route: `${request.providerAddress} ← ${address}`,
         price: deliveryFee,
         serviceTotal: totalPrice,
@@ -2006,6 +2316,13 @@ byId("myServiceRequests")?.addEventListener("click", async event => {
   }
 });
 
+byId("closeServiceEdit")?.addEventListener("click", closeServiceEditModal);
+byId("serviceEditModal")?.addEventListener("click", event => { if (event.target === event.currentTarget) closeServiceEditModal(); });
+byId("serviceEditForm")?.addEventListener("submit", async event => {
+  event.preventDefault();
+  await saveCustomerServiceEdit(byId("saveServiceEdit"));
+});
+
 document.querySelectorAll(".add-food-button").forEach(button => {
   button.addEventListener("click", () => {
     state.cart.push({ name: button.dataset.food, price: Number(button.dataset.price) });
@@ -2015,19 +2332,31 @@ document.querySelectorAll(".add-food-button").forEach(button => {
 });
 
 function renderCart() {
-  const item=state.cart[0];
+  const items=state.cart;
+  const first=items[0];
   const deliveryToggle=byId("foodDeliveryRequested");
-  const wantsDelivery=Boolean(item && item.deliveryAvailable && deliveryToggle?.checked);
-  const subtotal=item ? Number(item.subtotal ?? item.price ?? 0) : 0;
-  const total=item ? subtotal+(wantsDelivery ? Number(item.deliveryFee||0) : 0) : 0;
-  byId("cartBar").classList.toggle("show", Boolean(item));
-  byId("cartCount").textContent = item ? `${item.name} • ${formatServiceQuantity(item.quantity||1)} ${itemUnitSpec(item.unit).short} — ${item.restaurantName}` : "";
-  byId("cartPrice").textContent = item ? `${formatMoney(total)} • ${wantsDelivery ? "مع التوصيل" : "استلام من المطعم"}` : "";
-  if(item && deliveryToggle){ deliveryToggle.disabled=!item.deliveryAvailable; if(!item.deliveryAvailable) deliveryToggle.checked=false; }
-  if(byId("foodDeliveryFeeLabel")) byId("foodDeliveryFeeLabel").textContent = item?.deliveryAvailable ? `أجرة التوصيل ${formatMoney(item.deliveryFee||0)} — ألغِ الاختيار للاستلام من المطعم` : "التوصيل غير متاح لهذه الأكلة — الاستلام من المطعم";
+  const canDeliver=orderItemsDeliverable(items.map(item=>({deliveryAvailable:item.deliveryAvailable})));
+  if(deliveryToggle){ deliveryToggle.disabled=!canDeliver; if(!canDeliver) deliveryToggle.checked=false; }
+  const wantsDelivery=Boolean(first && canDeliver && deliveryToggle?.checked);
+  const subtotal=items.reduce((sum,item)=>sum+Number(item.subtotal??item.price??0),0);
+  const deliveryFee=wantsDelivery ? items.reduce((max,item)=>Math.max(max,Number(item.deliveryFee||0)),0) : 0;
+  const total=subtotal+deliveryFee;
+  byId("cartBar").classList.toggle("show", Boolean(first));
+  byId("cartCount").textContent = first ? `${items.length} ${items.length===1?"صنف":"أصناف"} من ${first.restaurantName}` : "";
+  byId("cartPrice").textContent = first ? `${formatMoney(total)} • ${wantsDelivery ? "مع التوصيل" : "استلام من المطعم"}` : "";
+  const list=byId("foodCartItems");
+  if(list) list.innerHTML=items.map((item,index)=>`<div class="food-cart-line"><span><b>${restaurantSafeText(item.name)}</b><small>${formatServiceQuantity(item.quantity||1)} ${restaurantSafeText(itemUnitSpec(item.unit).short)} × ${formatMoney(item.unitPrice||0)}</small></span><strong>${formatMoney(item.subtotal||0)}</strong><button type="button" data-remove-food-item="${index}" aria-label="حذف الصنف">×</button></div>`).join("");
+  if(byId("foodDeliveryFeeLabel")) byId("foodDeliveryFeeLabel").textContent = first ? (canDeliver ? `أجرة التوصيل للطلب ${formatMoney(items.reduce((max,item)=>Math.max(max,Number(item.deliveryFee||0)),0))} — تدفع مرة واحدة مهما تعددت الأصناف` : "يوجد صنف لا يدعم التوصيل — الطلب متاح للاستلام من المطعم") : "";
   if(byId("foodDeliveryDetails")) byId("foodDeliveryDetails").style.display=wantsDelivery?"contents":"none";
 }
 
+byId("foodCartItems")?.addEventListener("click", event => {
+  const button=event.target.closest("[data-remove-food-item]");
+  if(!button) return;
+  state.cart.splice(Number(button.dataset.removeFoodItem),1);
+  renderCart();
+  showToast(state.cart.length?"تم حذف الصنف من الطلب":"تم تفريغ الطلب");
+});
 
 byId("foodDeliveryRequested")?.addEventListener("change", renderCart);
 byId("useFoodCustomerLocation")?.addEventListener("click",async()=>{
@@ -2042,19 +2371,33 @@ byId("useFoodCustomerLocation")?.addEventListener("click",async()=>{
 });
 
 byId("orderFood").addEventListener("click", async event => {
-  if (!requireUser() || !state.cart.length) return; const item=state.cart[0];
-  const deliveryRequested=Boolean(byId("foodDeliveryRequested")?.checked && item.deliveryAvailable);
-  const address=deliveryRequested ? byId("foodCustomerAddress").value.trim() : "استلام من المطعم"; if(deliveryRequested && address.length<3)return showToast("اكتب عنوان العميل بالتفصيل"); if(deliveryRequested && !validServiceLocation(state.customerLocation))return showToast("حدد موقع العميل GPS قبل إرسال طلب التوصيل");
-  const restaurant=state.restaurants.find(r=>r.firestoreId===item.restaurantId); const profile=state.serviceProfiles.find(p=>p.firestoreId===item.restaurantId && p.category==="restaurant" && p.active===true && p.approvalStatus==="approved"); if(!restaurant||!profile)return showToast("المطعم لم يعد متاحًا أو غير معتمد");
-  const normalized=normalizedClientItem(profile.items?.[item.mealIndex]); if(deliveryRequested && !normalized.deliveryAvailable)return showToast("التوصيل غير متاح لهذه الأكلة؛ اختر الاستلام من المطعم");
-  if(item.unit!==normalized.unit)return showToast("تغيرت وحدة تسعير هذه الأكلة. أعد اختيارها من المطعم.");
-  const quantity=Number(item.quantity||1); if(!quantityIsValid(quantity, normalized.unit))return showToast("الكمية المختارة لم تعد صالحة. أعد اختيار الأكلة.");
-  const subtotal=Math.round(normalized.price*quantity); const deliveryFee=deliveryRequested ? normalized.deliveryFee : 0;
-  const button=event.currentTarget; setButtonBusy(button,true,"جاري الإرسال للمطعم…");
+  if (!requireUser() || !state.cart.length) return;
+  const cart=[...state.cart]; const first=cart[0];
+  if(cart.some(item=>item.restaurantId!==first.restaurantId)) return showToast("يجب أن تكون جميع أصناف الطلب من نفس المطعم");
+  const restaurant=state.restaurants.find(r=>r.firestoreId===first.restaurantId);
+  const profile=state.serviceProfiles.find(p=>p.firestoreId===first.restaurantId && p.category==="restaurant" && p.active===true && p.approvalStatus==="approved");
+  if(!restaurant||!profile)return showToast("المطعم لم يعد متاحًا أو غير معتمد");
+  const orderItems=[];
+  for(const line of cart){
+    const normalized=normalizedClientItem(profile.items?.[line.mealIndex]);
+    if(!normalized?.name || normalized.name!==line.name) return showToast("تغيرت قائمة المطعم. أعد اختيار الأصناف.");
+    if(line.unit!==normalized.unit) return showToast(`تغيرت وحدة تسعير ${line.name}. أعد اختياره.`);
+    const quantity=Number(line.quantity||1); if(!quantityIsValid(quantity,normalized.unit)) return showToast(`الكمية المختارة لـ ${line.name} لم تعد صالحة.`);
+    orderItems.push({itemIndex:Number(line.mealIndex),itemName:normalized.name,itemUnit:normalized.unit,quantity,unitPrice:normalized.price,subtotal:Math.round(normalized.price*quantity),deliveryAvailable:normalized.deliveryAvailable===true,deliveryFee:normalized.deliveryAvailable?Math.max(0,Number(normalized.deliveryFee||0)):0});
+  }
+  const canDeliver=orderItemsDeliverable(orderItems);
+  const deliveryRequested=Boolean(byId("foodDeliveryRequested")?.checked && canDeliver);
+  const address=deliveryRequested ? byId("foodCustomerAddress").value.trim() : "استلام من المطعم";
+  if(deliveryRequested && address.length<3)return showToast("اكتب عنوان العميل بالتفصيل");
+  if(deliveryRequested && !validServiceLocation(state.customerLocation))return showToast("حدد موقع العميل GPS قبل إرسال طلب التوصيل");
+  const subtotal=orderItemsSubtotal(orderItems);
+  const deliveryFee=deliveryRequested ? orderItemsDeliveryFee(orderItems) : 0;
+  const lead=orderItems[0];
+  const button=event.currentTarget; setButtonBusy(button,true,"جاري إرسال الطلب للمطعم…");
   try {
-    await createServiceRequestWithCustomerFee({customerId:state.user.uid,customerName:state.name,providerId:item.restaurantId,providerName:profile.businessName,providerCategory:"restaurant",providerCity:profile.city||"",providerAddress:profile.address,providerLocation:{...profile.location},itemIndex:item.mealIndex,itemName:normalized.name,itemUnit:normalized.unit,quantity,unitPrice:normalized.price,itemPrice:normalized.price,subtotal,deliveryRequested,deliveryFee,totalPrice:subtotal+deliveryFee,deliveryStatus:deliveryRequested ? "pendingProvider" : "notRequested",deliveryOrderId:"",requestText:`طلب طعام: ${normalized.name} • ${formatServiceQuantity(quantity)} ${itemUnitSpec(normalized.unit).short}`,customerAddress:address,customerLocation:deliveryRequested ? {...state.customerLocation} : null,status:"pending",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
-    state.cart=[]; renderCart(); byId("foodCustomerAddress").value=""; byId("foodLocationStatus").textContent="يجب تحديد موقعك قبل إرسال الطلب للمطعم."; showToast(deliveryRequested ? "تم إرسال الطلب للمطعم. بعد موافقته سيصل إلى كابتن التوصيل." : "تم إرسال الطلب للمطعم للاستلام من المطعم دون توصيل.");
-  } catch(error){console.error(error);showToast(String(error?.message||"").includes("الرصيد غير كافٍ") ? error.message : "تعذر إرسال الطلب. تأكد أن بيانات المطعم منشورة من بوابة الخدمات ومعتمدة.");} finally {setButtonBusy(button,false);}
+    await createServiceRequestWithCustomerFee({customerId:state.user.uid,customerName:state.name,providerId:first.restaurantId,providerName:profile.businessName,providerCategory:"restaurant",providerCity:profile.city||"",providerAddress:profile.address,providerLocation:{...profile.location},items:orderItems,itemCount:orderItems.length,itemIndex:lead.itemIndex,itemName:lead.itemName,itemUnit:lead.itemUnit,quantity:lead.quantity,unitPrice:lead.unitPrice,itemPrice:lead.unitPrice,subtotal,deliveryRequested,deliveryFee,totalPrice:subtotal+deliveryFee,deliveryStatus:deliveryRequested ? "pendingProvider" : "notRequested",deliveryOrderId:"",requestText:`طلب طعام: ${orderItemsText(orderItems)}`,customerAddress:address,customerLocation:deliveryRequested ? {...state.customerLocation} : null,status:"pending",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
+    state.cart=[]; renderCart(); byId("foodCustomerAddress").value=""; byId("foodLocationStatus").textContent="يجب تحديد موقعك قبل إرسال طلب التوصيل للمطعم."; showToast(deliveryRequested ? `تم إرسال ${orderItems.length} أصناف للمطعم مع طلب التوصيل.` : `تم إرسال ${orderItems.length} أصناف للمطعم للاستلام.`);
+  } catch(error){console.error(error);showToast(String(error?.message||"").includes("الرصيد غير كافٍ") ? error.message : "تعذر إرسال الطلب. تأكد أن بيانات المطعم منشورة ومعتمدة.");} finally {setButtonBusy(button,false);}
 });
 
 byId("foodFilter")?.addEventListener("click", () => showToast("المطاعم مرتبة حسب وقت التوصيل"));
@@ -2156,6 +2499,16 @@ function renderOrders() {
       if (!order.cancelled && Number(order.statusIndex||0)>=4){ const inv=document.createElement("button"); inv.className="mini-action"; inv.textContent="🧾 الفاتورة"; inv.onclick=()=>printInvoice(order); actions.appendChild(inv); }
       details.appendChild(actions);
     }
+    if (order.type === "parcel") {
+      const actions = document.createElement("div"); actions.className = "order-actions";
+      if (canCustomerEditParcelOrder(order)) {
+        const edit = document.createElement("button"); edit.className = "mini-action"; edit.type = "button"; edit.textContent = "✏️ تعديل التوصيل"; edit.onclick = () => openParcelEditModal(order.firestoreId); actions.appendChild(edit);
+      } else if (!order.cancelled && Number(order.statusIndex || 0) >= 3) {
+        const locked = document.createElement("small"); locked.className = "service-edit-locked"; locked.textContent = "🔒 تم استلام الغرض — التعديل مقفل"; actions.appendChild(locked);
+      }
+      if (order.customerEditedAt) { const edited = document.createElement("small"); edited.className = "service-edit-note"; edited.textContent = `✏️ عُدّل الطلب ${Number(order.customerEditCount || 1).toLocaleString("ar-IQ")} مرة`; actions.appendChild(edited); }
+      if (actions.childNodes.length) details.appendChild(actions);
+    }
     const price = document.createElement("div");
     price.className = "order-price";
     const amount = document.createElement("strong");
@@ -2194,6 +2547,10 @@ function renderOrders() {
   });
   renderMyServiceRequests();
 }
+
+byId("closeParcelEdit")?.addEventListener("click", closeParcelEditModal);
+byId("parcelEditModal")?.addEventListener("click", event => { if (event.target === event.currentTarget) closeParcelEditModal(); });
+byId("parcelEditForm")?.addEventListener("submit", async event => { event.preventDefault(); await saveParcelOrderEdit(byId("saveParcelEdit")); });
 
 const ratingModal = byId("ratingModal");
 const RATING_TAGS = {

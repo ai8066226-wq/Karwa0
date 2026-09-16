@@ -1094,6 +1094,8 @@ function orderCard(order, mode) {
       </div>
       <p class="order-route">${escapeHtml(order.route)}</p>
       ${order.type === "serviceDelivery" ? `<div class="order-meta delivery-addresses"><span>🏪 عنوان النشاط / الاستلام: ${escapeHtml(String(order.route||"").split(" ← ")[0]||"غير محدد")}</span><span>🏠 عنوان العميل: ${escapeHtml(String(order.route||"").split(" ← ")[1]||"غير محدد")}</span></div>` : ""}
+      ${order.type === "parcel" && order.parcelDetails ? `<div class="order-meta delivery-addresses"><span>👤 المستلم: ${escapeHtml(order.parcelDetails.recipientName || "غير محدد")}</span><span>☎️ ${escapeHtml(order.parcelDetails.recipientPhone || "غير محدد")}</span>${order.parcelDetails.notes ? `<span>📝 ${escapeHtml(order.parcelDetails.notes)}</span>` : ""}</div>` : ""}
+      ${order.customerEditedAt ? `<div class="notice" style="margin-top:8px"><strong>✏️ عدّل العميل تفاصيل الطلب</strong><span>اعتمد العناوين والملاحظات الظاهرة حاليًا؛ هذه أحدث نسخة.</span></div>` : ""}
       <div class="order-bottom">
         <div class="order-meta"><span>${escapeHtml(order.id)}</span><span>${escapeHtml(order.payment || "نقدًا")}</span>${mode === "available" ? `<span>🗓️ ${escapeHtml(formatOrderCreatedAt(order))}</span>` : ""}${mode === "available" && Number.isFinite(distanceToOrder(order)) ? `<span>يبعد ${distanceToOrder(order).toFixed(1)} كم</span>` : ""}</div>
         ${order.distanceKm ? `<div class="order-meta"><span>المشوار ${Number(order.distanceKm).toFixed(1)} كم</span><span>≈ ${Math.round(Number(order.durationMin||0))} دقيقة</span><span>صافي الكابتن ${money(order.driverEarnings)}</span></div>` : ""}

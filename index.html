@@ -2457,9 +2457,11 @@ body.customer-map-mode #home>.welcome::after { display: none; }
   #authModal .role-entry-card { transition: none; }
 }
 </style>
-  <link rel="stylesheet" href="./native-notifications.css?v=70">
+  <link rel="stylesheet" href="./native-notifications.css?v=71">
 
 <style id="phase67-service-theme-css">
+
+.service-edit-button{margin-top:10px;width:100%;border-color:#8ccfc8!important;background:linear-gradient(135deg,#f3fbfa,#e8f7f5)!important;color:#07645f!important;font-weight:850}.service-edit-note{border-color:#b7ded9!important;background:#f2fbf9!important;color:#075e5a!important}.service-edit-locked{margin-top:10px;padding:10px 12px;border:1px solid #e4e7eb;border-radius:12px;background:#f7f8fa;color:#69798f;font-size:10px;font-weight:750}.service-edit-modal{text-align:right}.service-edit-summary{margin:10px 0;padding:12px 14px;border:1px solid #cfe4e1;border-radius:14px;background:linear-gradient(135deg,#f4fbfa,#fff)}.service-edit-summary strong,.service-edit-summary small{display:block}.service-edit-summary strong{color:#087b75;font-size:14px}.service-edit-summary small{margin-top:5px;color:#68798d;font-size:10px;line-height:1.6}.service-edit-total{margin-top:8px;padding:10px;border-radius:12px;background:#0b4f70;color:#fff;font-weight:850;text-align:center}.service-edit-modal textarea,.parcel-edit-modal textarea{width:100%;min-height:100px;resize:vertical;padding:12px;border:1px solid #d5dfe8;border-radius:13px;font:inherit;background:#fff}.service-edit-modal input[type=number],.parcel-edit-modal input{width:100%;min-height:44px;padding:10px 12px;border:1px solid #d5dfe8;border-radius:13px;font:inherit;background:#fff}.parcel-edit-modal{text-align:right}.parcel-edit-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.parcel-edit-grid .field{margin:0}@media(max-width:560px){.parcel-edit-grid{grid-template-columns:1fr}}
 .meal-quantity-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px 14px;align-items:center;padding:13px 14px;border:1px solid rgba(11,79,112,.13);border-radius:17px;background:linear-gradient(135deg,rgba(11,79,112,.055),rgba(8,123,117,.035));margin:12px 0}.meal-quantity-card label{font-weight:850;color:#0b3b55;display:block}.meal-quantity-card small{display:block;margin-top:3px;color:#667784}.meal-quantity-card>strong{grid-column:1/-1;padding-top:9px;border-top:1px dashed rgba(11,79,112,.15);color:#087b75;font-size:15px}.meal-quantity-stepper{display:flex;align-items:center;border:1px solid rgba(11,79,112,.18);border-radius:14px;overflow:hidden;background:#fff}.meal-quantity-stepper button{width:40px;height:40px;border:0;background:#eef7f7;color:#075e5a;font-size:22px;font-weight:900}.meal-quantity-stepper input{width:74px;height:40px;border:0;text-align:center;font-weight:850;color:#0c3044;background:#fff}.meal-quantity-stepper input:focus{outline:2px solid rgba(8,123,117,.18);outline-offset:-2px}
 /* Phase 67 — ثيمات الأنشطة التلقائية. الصور نفسها بلا أسماء أو نصوص. */
 .restaurant-card{transition:transform .2s ease,box-shadow .2s ease}.restaurant-card:hover{transform:translateY(-2px);box-shadow:0 18px 38px rgba(15,23,42,.11)}
@@ -2471,6 +2473,8 @@ body.customer-map-mode #home>.welcome::after { display: none; }
 .other-service-theme-icon{position:absolute;right:10px;bottom:10px;z-index:1;width:39px;height:39px;display:grid;place-items:center;border-radius:13px;color:#fff;background:var(--karwa-service-accent,#087b75);border:1px solid rgba(255,255,255,.5);box-shadow:0 8px 18px rgba(0,0,0,.2);font-size:19px}
 .other-service-copy{padding:15px}.other-service-copy>small{color:var(--karwa-service-accent,#087b75)}
 @media(max-width:620px){.restaurant-card-head{min-height:142px}.other-service-card{grid-template-columns:1fr}.other-service-theme{min-height:150px}.other-service-copy{padding:14px}.other-service-theme-icon{width:43px;height:43px;font-size:21px}}
+
+    .food-cart-items{display:grid;gap:6px;margin-top:8px;max-height:160px;overflow:auto}.food-cart-line{display:grid;grid-template-columns:minmax(0,1fr) auto 28px;gap:8px;align-items:center;padding:7px 8px;border:1px solid #dce8e7;border-radius:11px;background:#fff;color:#183247}.food-cart-line span{display:grid;gap:2px}.food-cart-line b{font-size:11px}.food-cart-line small{font-size:9px!important;color:#6b7d8e}.food-cart-line strong{font-size:10px}.food-cart-line button{width:26px;height:26px;border:0;border-radius:8px;background:#fff0f2;color:#b4233b;font-size:18px;cursor:pointer}.multi-service-cart{display:grid;gap:7px;margin:10px 0}.multi-service-cart-empty{padding:12px;border:1px dashed #b9c9d4;border-radius:12px;color:#6d7d8f;text-align:center;font-size:11px}.multi-service-line{display:grid;grid-template-columns:minmax(0,1fr) auto 30px;gap:8px;align-items:center;padding:10px;border:1px solid #d8e8e5;border-radius:12px;background:#fff}.multi-service-line span{display:grid;gap:3px}.multi-service-line b{font-size:12px}.multi-service-line small{color:#6b7d8e;font-size:10px}.multi-service-line strong{font-size:11px;color:#087b75}.multi-service-line button{width:28px;height:28px;border:0;border-radius:8px;background:#fff0f2;color:#b4233b;font-size:18px}.multi-service-cart-total{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 12px;border-radius:12px;background:#0f5f78;color:#fff}.multi-order-items{display:grid;gap:5px;margin:8px 0}.multi-order-line{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 9px;border-radius:9px;background:#f7fafc}.multi-order-line span{display:grid;gap:2px}.multi-order-line b{font-size:10px}.multi-order-line small{font-size:9px;color:#708094}.multi-order-line strong{font-size:10px;color:#087b75;white-space:nowrap}.service-edit-items{display:grid;gap:9px;margin:12px 0}.service-edit-item{display:grid;grid-template-columns:minmax(0,1fr) 110px 34px;gap:8px;align-items:end;padding:10px;border:1px solid #dce6ed;border-radius:12px;background:#f8fafc}.service-edit-item .field{margin:0}.service-edit-item strong{font-size:12px;align-self:center}.service-edit-item button{width:34px;height:38px;border:0;border-radius:9px;background:#fff0f2;color:#b4233b;font-size:18px}@media(max-width:560px){.service-edit-item{grid-template-columns:1fr 96px 32px}}
 </style>
 </head>
 
@@ -2724,6 +2728,7 @@ body.customer-map-mode #home>.welcome::after { display: none; }
                   <div class="food-checkout-copy">
                     <strong id="cartCount"></strong>
                     <small id="cartPrice"></small>
+                    <div class="food-cart-items" id="foodCartItems"></div>
                   </div>
                   <div class="food-delivery-fields">
                     <label class="customer-delivery-choice" id="foodDeliveryChoice"><input id="foodDeliveryRequested" type="checkbox" checked><span><b>أريد توصيل الطلب</b><small id="foodDeliveryFeeLabel">يمكنك إلغاء الاختيار والاستلام من المطعم</small></span></label>
@@ -2751,8 +2756,10 @@ body.customer-map-mode #home>.welcome::after { display: none; }
                     <div class="post-approval-delivery-note" id="selectedServiceDeliveryNote"><b>اختيار التوصيل بعد الموافقة</b><small>بعد موافقة النشاط سيظهر لك خيار التوصيل أو الاستلام.</small></div>
                   </div>
                   <div class="field"><label for="otherServiceRequest">تفاصيل الحاجة</label><textarea id="otherServiceRequest" maxlength="500" placeholder="اكتب ما تحتاجه بوضوح قبل إرسال الطلب"></textarea></div>
-                  <div class="service-total-box"><span><small>قيمة الخدمة قبل التوصيل</small><b id="otherServiceTotalBreakdown">—</b></span><strong id="otherServiceGrandTotal">0 د.ع</strong></div>
-                  <button class="primary-button" id="bookOtherService" type="button" style="width:100%">إرسال الحاجة إلى النشاط للموافقة</button>
+                  <div class="service-total-box"><span><small>الصنف المحدد</small><b id="otherServiceTotalBreakdown">—</b></span><strong id="otherServiceGrandTotal">0 د.ع</strong></div>
+                  <button class="secondary-button service-add-to-cart" id="addOtherServiceItem" type="button" style="width:100%">＋ إضافة هذا الصنف إلى الطلب</button>
+                  <div class="multi-service-cart" id="otherServiceCart"><div class="multi-service-cart-empty">أضف صنفًا واحدًا أو عدة أصناف من هذا النشاط.</div></div>
+                  <button class="primary-button" id="bookOtherService" type="button" style="width:100%" disabled>إرسال الطلب إلى النشاط للموافقة</button>
                 </section>
 
                 <div class="panel-heading" style="margin-top:20px"><div><h3>طلباتي من الخدمات</h3><small>تابع قبول مزود الخدمة وحالة التنفيذ</small></div></div>
@@ -2988,6 +2995,39 @@ body.customer-map-mode #home>.welcome::after { display: none; }
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+
+
+  <div class="modal-backdrop" id="parcelEditModal" role="dialog" aria-modal="true" aria-labelledby="parcelEditTitle">
+    <div class="modal parcel-edit-modal">
+      <h2 id="parcelEditTitle">تعديل طلب التوصيل</h2>
+      <p id="parcelEditHint">يمكنك تعديل التفاصيل حتى يستلم المندوب الغرض فعليًا.</p>
+      <form id="parcelEditForm">
+        <div class="parcel-edit-grid">
+          <div class="field"><label for="parcelEditFrom">عنوان الاستلام</label><input id="parcelEditFrom" maxlength="180" required></div>
+          <div class="field"><label for="parcelEditTo">عنوان التسليم</label><input id="parcelEditTo" maxlength="180" required></div>
+          <div class="field"><label for="parcelEditRecipientName">اسم المستلم</label><input id="parcelEditRecipientName" maxlength="80" required></div>
+          <div class="field"><label for="parcelEditRecipientPhone">هاتف المستلم</label><input id="parcelEditRecipientPhone" inputmode="tel" maxlength="30" required></div>
+        </div>
+        <div class="field"><label for="parcelEditNotes">ملاحظات للمندوب</label><textarea id="parcelEditNotes" maxlength="500" placeholder="وصف الغرض أو تعليمات الوصول"></textarea></div>
+        <div class="service-edit-summary"><strong>الأجرة لا تتغير</strong><small>يمكن تعديل العناوين وبيانات المستلم والملاحظات فقط. بعد تأكيد استلام الغرض من المندوب تُقفل التعديلات نهائيًا.</small></div>
+        <div class="modal-actions"><button class="secondary-button" id="closeParcelEdit" type="button">إلغاء</button><button class="primary-button" id="saveParcelEdit" type="submit">حفظ التعديل</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="serviceEditModal" role="dialog" aria-modal="true" aria-labelledby="serviceEditTitle">
+    <div class="modal service-edit-modal">
+      <h2 id="serviceEditTitle">تعديل الطلب</h2>
+      <p id="serviceEditProvider">يمكنك تعديل الطلب قبل أن يستلمه مندوب التوصيل.</p>
+      <form id="serviceEditForm">
+        <div class="service-edit-items" id="serviceEditItems"></div>
+        <div class="field"><label for="serviceEditNote">تفاصيل وملاحظات الطلب</label><textarea id="serviceEditNote" maxlength="500" required placeholder="اكتب تفاصيل الطلب أو أي تعديل مطلوب"></textarea></div>
+        <div class="service-edit-summary"><strong>الإجمالي بعد التعديل</strong><small>لن تتغير أجرة التوصيل الحالية، ويُحدّث مزود الخدمة فور الحفظ.</small><div class="service-edit-total" id="serviceEditTotal">—</div></div>
+        <div class="modal-actions"><button class="secondary-button" id="closeServiceEdit" type="button">إلغاء</button><button class="primary-button" id="saveServiceEdit" type="submit">حفظ التعديل</button></div>
+      </form>
+    </div>
+  </div>
+
   <div class="modal-backdrop" id="ratingModal" role="dialog" aria-modal="true" aria-labelledby="ratingTitle">
     <div class="modal rating-modal">
       <h2 id="ratingTitle">قيّم تجربتك</h2>
@@ -3094,11 +3134,11 @@ body.customer-map-mode #home>.welcome::after { display: none; }
   <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
   <script>try{if(window.maplibregl&&maplibregl.setRTLTextPlugin&&(!maplibregl.getRTLTextPluginStatus||maplibregl.getRTLTextPluginStatus()==="unavailable")){maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",true).catch(()=>{});}}catch(e){}</script>
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
-  <script src="./precise-location.js?v=70"></script>
-  <script src="./native-notifications.js?v=70"></script>
-  <script src="./service-themes.js?v=70"></script>
-  <script type="module" src="./app.js?v=70"></script>
-  <script src="./pwa.js?v=70"></script>
+  <script src="./precise-location.js?v=71"></script>
+  <script src="./native-notifications.js?v=71"></script>
+  <script src="./service-themes.js?v=71"></script>
+  <script type="module" src="./app.js?v=71"></script>
+  <script src="./pwa.js?v=71"></script>
 
 <script id="phase20-map-first-js">
 window.addEventListener("DOMContentLoaded",()=>{
