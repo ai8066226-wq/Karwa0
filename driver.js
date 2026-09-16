@@ -1,5 +1,4 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
-import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-functions.js";
 import {
   browserLocalPersistence,
   getAuth,
@@ -24,7 +23,8 @@ import {
   updateDoc,
   increment,
   arrayUnion,
-  where
+  where,
+  writeBatch
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -39,9 +39,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig, "karwa-driver-portal");
 const auth = getAuth(app);
 const db = getFirestore(app);
-const functions = getFunctions(app);
-const acceptOrderSecure = httpsCallable(functions, "acceptOrder");
-const advanceTripSecure = httpsCallable(functions, "advanceTrip");
 
 async function registerDriverPushToken(user){
   if(!user)return false;let token="";try{token=String(window.KarwaNative?.getPushToken?.()||"").trim()}catch{}if(!token)return false;
@@ -54,8 +51,8 @@ async function requestDriverDevicePermission(){try{if(window.KarwaNative?.reques
 window.addEventListener("karwa-native-push-received",event=>{const x=event.detail||{};addDriverNotification({id:`native:${x.tag||Date.now()}:${x.title||"karwa"}`,type:x.type==="wallet"?"wallet":x.type==="driver"||x.type==="order"?"order":"system",title:x.title||"كروة",message:x.body||"لديك تحديث جديد",target:x.route?.includes("driver")?"available":"",device:false})});
 
 
-function callableErrorKey(error) {
-  const code = String(error?.code || "").replace(/^functions\//, "").toLowerCase();
+function firestoreErrorKey(error) {
+  const code = String(error?.code || "").toLowerCase();
   const message = String(error?.message || "").toUpperCase();
   const details = typeof error?.details === "string" ? error.details.toUpperCase() : String(error?.details?.message || error?.details?.code || "").toUpperCase();
   const haystack = `${message} ${details}`;
@@ -63,8 +60,8 @@ function callableErrorKey(error) {
   return { code, named: known.find(key => haystack.includes(key)), raw: haystack };
 }
 
-function driverCallableMessage(error, action = "تنفيذ العملية") {
-  const e = callableErrorKey(error);
+function driverFirestoreMessage(error, action = "تنفيذ العملية") {
+  const e = firestoreErrorKey(error);
   if (e.named === "ORDER_TAKEN" || e.code === "already-exists") return "سبق أن قبل كابتن آخر هذا الطلب.";
   if (e.named === "NOT_IN_DISPATCH_ROUND") return "هذا الطلب مخصص مؤقتًا لكباتن أقرب. انتظر انتهاء جولة التوزيع ثم حاول مجددًا.";
   if (e.named === "DRIVER_NOT_AVAILABLE") return "الخادم يعتبر حسابك غير متاح. فعّل الاتصال وتأكد أن حساب الكابتن مفعل وغير محظور.";
@@ -74,9 +71,9 @@ function driverCallableMessage(error, action = "تنفيذ العملية") {
   if (e.named === "INVALID_TRANSITION") return "لا يمكن نقل الرحلة إلى الحالة التالية من حالتها الحالية.";
   if (e.named === "OTP_INVALID") return "رمز التحقق غير صحيح.";
   if (e.code === "unauthenticated") return "انتهت جلسة تسجيل الدخول. سجّل الدخول من جديد.";
-  if (e.code === "not-found" || e.raw.includes("NOT FOUND") || e.raw.includes("404")) return "خدمة الكابتن الخلفية غير منشورة. انشر Firebase Functions ثم أعد المحاولة.";
+  if (e.code === "not-found") return "تعذر العثور على بيانات الطلب أو حساب الكابتن.";
   if (e.code === "unavailable" || e.code === "deadline-exceeded" || e.raw.includes("NETWORK") || !navigator.onLine) return "تعذر الاتصال بخادم كروة. تحقق من الإنترنت ثم أعد المحاولة.";
-  if (e.code === "internal" || e.code === "unknown") return `حدث خطأ في Cloud Functions أثناء ${action}. راجع سجل الوظائف في Firebase.`;
+  if (e.code === "internal" || e.code === "unknown") return `حدث خطأ أثناء ${action}. حاول مجددًا وتحقق من اتصال Firebase.`;
   return `تعذر ${action}. ${error?.message ? String(error.message).replace(/^FirebaseError:\s*/i, "") : "تحقق من إعدادات Firebase."}`;
 }
 
@@ -253,12 +250,19 @@ function renderDriverWallet(){
   if(byId("driverTopupCardHolder"))byId("driverTopupCardHolder").textContent=driverPricingSettings.topupCardHolder||"إدارة كروة";
   renderDriverTopupRequests();
 }
+function driverHasPendingTopup(){return state.topupRequests.some(x=>(x.status||"pending")==="pending");}
+function updateDriverTopupFormState(){
+  const pending=driverHasPendingTopup();
+  [byId("driverTopupAmount"),byId("driverTopupReference"),byId("driverTopupSubmit")].forEach(el=>{if(el)el.disabled=pending;});
+  const submit=byId("driverTopupSubmit");if(submit)submit.textContent=pending?"طلب الشحن قيد المراجعة":"إرسال طلب الشحن";
+}
 function renderDriverTopupRequests(){
   const box=byId("driverTopupRequestsList");if(!box)return;
-  if(!state.user){box.innerHTML='<p class="muted">سجّل الدخول لعرض طلبات الشحن.</p>';return;}
-  if(!state.topupRequests.length){box.innerHTML='<p class="muted">لا توجد طلبات شحن بعد.</p>';return;}
-  const labels={pending:"بانتظار المراجعة",approved:"تم الاعتماد",rejected:"مرفوض"};
+  if(!state.user){box.innerHTML='<p class="muted">سجّل الدخول لعرض طلبات الشحن.</p>';updateDriverTopupFormState();return;}
+  if(!state.topupRequests.length){box.innerHTML='<p class="muted">لا توجد طلبات شحن بعد.</p>';updateDriverTopupFormState();return;}
+  const labels={pending:"بانتظار المراجعة",approved:"تم الاعتماد",rejected:"مرفوض",cancelled:"ملغي"};
   box.innerHTML=state.topupRequests.map(x=>`<div class="unified-topup-row"><div><strong>${money(x.amount)}</strong><small>${escapeHtml(x.transferReference||"بدون مرجع")}</small></div><span class="unified-topup-status ${escapeHtml(x.status||"pending")}">${labels[x.status]||escapeHtml(x.status||"pending")}</span></div>`).join("");
+  updateDriverTopupFormState();
 }
 function subscribeDriverTopups(user){
   state.topupUnsubscribe?.();
@@ -351,7 +355,7 @@ function renderDriverNotifications(){
     return;
   }
   const icons={order:"🚕",trip:"↗",warning:"!",wallet:"💳",system:"✓"};
-  list.innerHTML=state.notifications.map(item=>`<button type="button" class="driver-notification-item ${escapeHtml(item.type)} ${item.read?"":"unread"}" data-driver-notification-id="${escapeHtml(item.id)}"><span class="driver-notification-icon" aria-hidden="true">${icons[item.type]||icons.system}</span><span class="driver-notification-copy"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.message)}</span><time datetime="${new Date(item.createdAt).toISOString()}">${escapeHtml(driverNotificationTime(item.createdAt))}</time></span><i class="driver-notification-dot" aria-hidden="true"></i></button>`).join("");
+  list.innerHTML=state.notifications.map(item=>`<article class="driver-notification-item ${escapeHtml(item.type)} ${item.read?"":"unread"}" data-driver-notification-id="${escapeHtml(item.id)}" tabindex="0" role="button"><span class="driver-notification-icon" aria-hidden="true">${icons[item.type]||icons.system}</span><span class="driver-notification-copy"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.message)}</span><time datetime="${new Date(item.createdAt).toISOString()}">${escapeHtml(driverNotificationTime(item.createdAt))}</time></span><button type="button" class="driver-notification-delete" data-driver-notification-delete="${escapeHtml(item.id)}" aria-label="حذف الإشعار">🗑</button><i class="driver-notification-dot" aria-hidden="true"></i></article>`).join("");
 }
 function showDriverDeviceNotification(title,message){
   if(!state.deviceNotificationsEnabled)return;
@@ -372,6 +376,11 @@ function markDriverNotificationRead(id){
   const item=state.notifications.find(notification=>notification.id===id);if(!item||item.read)return item;
   item.read=true;saveDriverNotifications();renderDriverNotifications();return item;
 }
+function deleteDriverNotification(id){
+  const before=state.notifications.length;state.notifications=state.notifications.filter(item=>item.id!==id);
+  if(state.notifications.length!==before){saveDriverNotifications();renderDriverNotifications();return true;}return false;
+}
+function clearDriverNotifications(){state.notifications=[];saveDriverNotifications();renderDriverNotifications();try{window.KarwaNative?.clearNotifications?.()}catch{}}
 function updateDriverNotificationSetting(){
   const control=byId("driverNotificationSetting");
   const message=byId("driverNotificationPermission");
@@ -952,7 +961,13 @@ byId("driverNotificationsMarkAll").addEventListener("click", () => {
   state.notifications.forEach(item => { item.read = true; });
   saveDriverNotifications();renderDriverNotifications();toast("تم تحديد جميع الإشعارات كمقروءة");
 });
+byId("driverNotificationsClear").addEventListener("click", () => {
+  if(!state.notifications.length)return toast("لا توجد إشعارات لحذفها");
+  if(confirm("حذف جميع إشعارات الكابتن المحفوظة؟")){clearDriverNotifications();toast("تم حذف جميع الإشعارات");}
+});
 byId("driverNotificationsList").addEventListener("click", event => {
+  const deleteButton=event.target.closest("[data-driver-notification-delete]");
+  if(deleteButton){event.stopPropagation();if(deleteDriverNotification(deleteButton.dataset.driverNotificationDelete))toast("تم حذف الإشعار");return;}
   const button=event.target.closest("[data-driver-notification-id]");if(!button)return;
   const item=markDriverNotificationRead(button.dataset.driverNotificationId);if(!item)return;
   setDriverNotificationsOpen(false,false);
@@ -1230,7 +1245,7 @@ function orderCard(order, mode) {
       ${order.type === "parcel" && order.parcelDetails ? `<div class="order-meta delivery-addresses"><span>👤 المستلم: ${escapeHtml(order.parcelDetails.recipientName || "غير محدد")}</span><span>☎️ ${escapeHtml(order.parcelDetails.recipientPhone || "غير محدد")}</span>${order.parcelDetails.notes ? `<span>📝 ${escapeHtml(order.parcelDetails.notes)}</span>` : ""}</div>` : ""}
       ${order.customerEditedAt ? `<div class="notice" style="margin-top:8px"><strong>✏️ عدّل العميل تفاصيل الطلب</strong><span>اعتمد العناوين والملاحظات الظاهرة حاليًا؛ هذه أحدث نسخة.</span></div>` : ""}
       <div class="order-bottom">
-        <div class="order-meta"><span>${escapeHtml(order.id)}</span><span>${escapeHtml(order.payment || "نقدًا")}</span>${mode === "available" ? `<span>🗓️ ${escapeHtml(formatOrderCreatedAt(order))}</span>` : ""}${mode === "available" && Number.isFinite(distanceToOrder(order)) ? `<span>يبعد ${distanceToOrder(order).toFixed(1)} كم</span>` : ""}</div>
+        <div class="order-meta"><span>${escapeHtml(order.id)}</span><span>👤 ${escapeHtml(order.customerName || "عميل كروة")}</span><span>${escapeHtml(order.payment || "نقدًا")}</span>${mode === "available" ? `<span>🗓️ ${escapeHtml(formatOrderCreatedAt(order))}</span>` : ""}${mode === "available" && Number.isFinite(distanceToOrder(order)) ? `<span>يبعد ${distanceToOrder(order).toFixed(1)} كم</span>` : ""}</div>
         ${order.distanceKm ? `<div class="order-meta"><span>المشوار ${Number(order.distanceKm).toFixed(1)} كم</span><span>≈ ${Math.round(Number(order.durationMin||0))} دقيقة</span><span>صافي الكابتن ${money(order.driverEarnings)}</span></div>` : ""}
         <span class="order-price">${money(order.price)}</span>
       </div>
@@ -1352,7 +1367,7 @@ function openDriverDashboard() {
       const previousOrders = new Map(state.orders.map(order => [order.firestoreId, order]));
       if (ordersSnapshotReady && state.driverData?.online) {
         const freshOrders = incoming.filter(o => !knownOrderIds.has(o.firestoreId) && orderMeetsDriverDispatchConditions(o));
-        freshOrders.forEach(fresh => addDriverNotification({id:`new-order:${fresh.firestoreId}`,type:"order",title:fresh.type==="ride"?"طلب تكسي جديد":"طلب توصيل جديد",message:`${fresh.title||"لديك طلب متاح"}${fresh.route?` • ${fresh.route}`:""}`,target:"available"}));
+        freshOrders.forEach(fresh => {const customer=String(fresh.customerName||"العميل").trim();addDriverNotification({id:`new-order:${fresh.firestoreId}`,type:"order",title:fresh.type==="ride"?`طلب تكسي من ${customer}`:`طلب توصيل من ${customer}`,message:`${fresh.title||"لديك طلب متاح"}${fresh.route?` • ${fresh.route}`:""}`,target:"available"});});
         if(freshOrders.length)toast(freshOrders.length===1?(freshOrders[0].type==="ride"?"طلب تكسي جديد متاح":"طلب توصيل جديد متاح"):`لديك ${freshOrders.length} طلبات جديدة متاحة`);
       }
       if(ordersSnapshotReady){
@@ -1532,7 +1547,7 @@ document.addEventListener("click", async event => {
     }
   } catch (error) {
     console.error(error);
-    toast(error.message === "OFFLINE" ? "فعّل حالة الاتصال أولًا" : error.message === "PICKUP_OTP_REQUIRED" ? "يجب إدخال رمز الاستلام من المطعم أو صاحب الخدمة" : error.message === "PICKUP_OTP_INVALID" ? "رمز الاستلام غير صحيح" : error.message === "OTP_REQUIRED" ? "يجب إدخال الرمز" : error.message === "OTP_INVALID" ? "الرمز غير صحيح" : error.message === "ORDER_TAKEN" ? "سبق أن قبل كابتن آخر هذا الطلب" : error.message === "ORDER_NOT_FOUND" ? "الطلب غير موجود" : error.message === "ORDER_NOT_AVAILABLE" ? "الطلب لم يعد متاحًا" : error.message === "DRIVER_BUSY" ? "لديك رحلة نشطة بالفعل، أكملها أولًا" : error.message === "DRIVER_PROFILE_MISSING" ? "ملف الكابتن غير موجود. أعد تفعيل الحساب من الإدارة" : error.message === "DRIVER_BLOCKED" ? "الحساب موقوف من الإدارة" : error.message === "DELIVERY_DRIVER_ONLY" ? "هذا الطلب مخصص لكابتن مسجل في خدمة التوصيل" : error.message === "TAXI_DRIVER_ONLY" ? "هذا الطلب مخصص لكابتن تكسي مسجل لخدمة الركوب" : error.message === "OUTSIDE_DRIVER_AREA" ? "هذا الطلب خارج نطاق المدينة المسجلة لحسابك" : error.message === "LOCATION_REQUIRED" ? "يجب تفعيل GPS وتحديد موقعك الحالي قبل قبول أي طلب" : error.message === "OUTSIDE_REQUEST_RADIUS" ? `هذا الطلب أصبح خارج نطاق ${DRIVER_REQUEST_RADIUS_KM} كم من موقعك الحالي` : error.message === "INSUFFICIENT_WALLET" ? `رصيدك غير كافٍ. يلزم ${driverOperationFee(state.orders.find(item=>item.firestoreId===button.dataset.id)||"parcel").toLocaleString("ar-IQ")} د.ع لقبول هذا الطلب. اشحن المحفظة أولًا.` : error.message === "USER_PROFILE_MISSING" ? "ملف المحفظة غير موجود. أعد تسجيل الدخول." : driverCallableMessage(error, button.dataset.action === "accept" ? "قبول الطلب" : "تحديث حالة الرحلة"));
+    toast(error.message === "OFFLINE" ? "فعّل حالة الاتصال أولًا" : error.message === "PICKUP_OTP_REQUIRED" ? "يجب إدخال رمز الاستلام من المطعم أو صاحب الخدمة" : error.message === "PICKUP_OTP_INVALID" ? "رمز الاستلام غير صحيح" : error.message === "OTP_REQUIRED" ? "يجب إدخال الرمز" : error.message === "OTP_INVALID" ? "الرمز غير صحيح" : error.message === "ORDER_TAKEN" ? "سبق أن قبل كابتن آخر هذا الطلب" : error.message === "ORDER_NOT_FOUND" ? "الطلب غير موجود" : error.message === "ORDER_NOT_AVAILABLE" ? "الطلب لم يعد متاحًا" : error.message === "DRIVER_BUSY" ? "لديك رحلة نشطة بالفعل، أكملها أولًا" : error.message === "DRIVER_PROFILE_MISSING" ? "ملف الكابتن غير موجود. أعد تفعيل الحساب من الإدارة" : error.message === "DRIVER_BLOCKED" ? "الحساب موقوف من الإدارة" : error.message === "DELIVERY_DRIVER_ONLY" ? "هذا الطلب مخصص لكابتن مسجل في خدمة التوصيل" : error.message === "TAXI_DRIVER_ONLY" ? "هذا الطلب مخصص لكابتن تكسي مسجل لخدمة الركوب" : error.message === "OUTSIDE_DRIVER_AREA" ? "هذا الطلب خارج نطاق المدينة المسجلة لحسابك" : error.message === "LOCATION_REQUIRED" ? "يجب تفعيل GPS وتحديد موقعك الحالي قبل قبول أي طلب" : error.message === "OUTSIDE_REQUEST_RADIUS" ? `هذا الطلب أصبح خارج نطاق ${DRIVER_REQUEST_RADIUS_KM} كم من موقعك الحالي` : error.message === "INSUFFICIENT_WALLET" ? `رصيدك غير كافٍ. يلزم ${driverOperationFee(state.orders.find(item=>item.firestoreId===button.dataset.id)||"parcel").toLocaleString("ar-IQ")} د.ع لقبول هذا الطلب. اشحن المحفظة أولًا.` : error.message === "USER_PROFILE_MISSING" ? "ملف المحفظة غير موجود. أعد تسجيل الدخول." : driverFirestoreMessage(error, button.dataset.action === "accept" ? "قبول الطلب" : "تحديث حالة الرحلة"));
   } finally {
     busy(button, false);
   }
@@ -1544,8 +1559,9 @@ byId("driverTopupForm")?.addEventListener("submit",async event=>{
   const transferReference=byId("driverTopupReference")?.value.trim()||"";
   if(!Number.isFinite(amount)||amount<1000||amount>1000000)return toast("أدخل مبلغًا بين 1,000 و1,000,000 د.ع");
   if(transferReference.length<3)return toast("اكتب مرجع التحويل");
+  if(driverHasPendingTopup())return toast("لديك طلب شحن قيد المراجعة. لا يمكن إرسال طلب آخر حتى تعتمد الإدارة الطلب أو ترفضه.");
   const button=event.submitter||byId("driverTopupSubmit");busy(button,true,"جاري الإرسال…");
-  try{await addDoc(collection(db,"topupRequests"),{userId:state.user.uid,customerName:state.userData?.name||state.user.displayName||"كابتن",email:state.user.email||"",amount,transferReference:transferReference.slice(0,80),method:"mastercard_local",accountType:"captain",accountRole:state.userData?.role||"driver",status:"pending",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});event.currentTarget.reset();toast("تم إرسال طلب الشحن إلى الإدارة");}catch(error){console.error(error);toast("تعذر إرسال طلب الشحن");}finally{busy(button,false);}
+  try{const requestRef=doc(collection(db,"topupRequests"));const batch=writeBatch(db);batch.set(requestRef,{userId:state.user.uid,customerName:state.userData?.name||state.user.displayName||"كابتن",email:state.user.email||"",amount,transferReference:transferReference.slice(0,80),method:"mastercard_local",accountType:"captain",accountRole:state.userData?.role||"driver",status:"pending",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});batch.set(doc(db,"topupLocks",state.user.uid),{userId:state.user.uid,requestId:requestRef.id,status:"pending",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});await batch.commit();state.topupRequests=[{firestoreId:requestRef.id,userId:state.user.uid,amount,transferReference,status:"pending",createdAt:null},...state.topupRequests.filter(x=>x.firestoreId!==requestRef.id)];renderDriverTopupRequests();event.currentTarget.reset();toast("تم إرسال طلب الشحن مرة واحدة. انتظر قرار الإدارة قبل طلب جديد.");}catch(error){console.error(error);toast(error?.code==="permission-denied"?"يوجد طلب شحن قيد المراجعة بالفعل أو لم تُنشر قواعد Phase 78 بعد.":"تعذر إرسال طلب الشحن");}finally{busy(button,false);updateDriverTopupFormState();}
 });
 
 onAuthStateChanged(auth, user => {
@@ -1616,10 +1632,21 @@ window.addEventListener("beforeunload", () => {
 });
 
 // Phase 11 — mutual reputation and safety
-const driverRateCustomerSecure=httpsCallable(functions,"driverRateCustomer");
-const createDriverSafetyEvent=httpsCallable(functions,"createSafetyEvent");
-window.karwaRateCustomer=async(orderId)=>{const score=Number(prompt("قيّم الراكب من 1 إلى 5:","5"));if(!score||score<1||score>5)return;try{await driverRateCustomerSecure({orderId,score});toast("تم تقييم الراكب");}catch(e){console.error(e);toast("تعذر حفظ التقييم أو تم تقييم الرحلة سابقًا");}};
-window.karwaDriverSOS=async(orderId)=>{if(!confirm("إرسال تنبيه سلامة عاجل للإدارة؟"))return;try{await createDriverSafetyEvent({orderId,kind:"driver_sos",latitude:state.lastPosition?.latitude||null,longitude:state.lastPosition?.longitude||null,note:"SOS من الكابتن"});toast("تم إرسال تنبيه السلامة");}catch(e){console.error(e);toast("تعذر إرسال التنبيه");}};
+window.karwaRateCustomer=async(orderId)=>{
+  const score=Number(prompt("قيّم الراكب من 1 إلى 5:","5"));if(!score||score<1||score>5||!state.user)return;
+  try{
+    const order=state.orders.find(item=>item.firestoreId===orderId);if(!order||!order.userId)throw new Error("ORDER_NOT_FOUND");
+    await setDoc(doc(db,"customerRatings",orderId),{orderId,customerId:order.userId,driverId:state.user.uid,score:Math.round(score),createdAt:serverTimestamp()});
+    toast("تم تقييم الراكب");
+  }catch(e){console.error(e);toast("تعذر حفظ التقييم أو تم تقييم الرحلة سابقًا");}
+};
+window.karwaDriverSOS=async(orderId)=>{
+  if(!state.user||!confirm("إرسال تنبيه سلامة عاجل للإدارة؟"))return;
+  try{
+    await addDoc(collection(db,"safetyEvents"),{orderId,reportedBy:state.user.uid,reporterRole:"driver",kind:"driver_sos",latitude:state.lastPosition?.latitude??null,longitude:state.lastPosition?.longitude??null,note:"SOS من الكابتن",createdAt:serverTimestamp()});
+    toast("تم إرسال تنبيه السلامة");
+  }catch(e){console.error(e);toast("تعذر إرسال التنبيه");}
+};
 
 // Phase 61 — road alerts + two-driver verification directly with Firestore (no Cloud Function for this feature)
 const communityLayers={reports:new Map(),reportData:new Map(),landmarks:new Map(),landmarkData:[],started:false,proximity:new Map(),activePrompt:null,myVerificationRounds:new Map()};

@@ -1,0 +1,12 @@
+Karwa Phase 78 / 2.2.9
+
+هذه النسخة لا تحتوي Cloud Functions.
+انشر فقط:
+1) Firestore Rules
+2) Firebase Hosting
+
+الأوامر:
+firebase deploy --only firestore:rules
+firebase deploy --only hosting
+
+ملاحظة: Push التلقائي عند إغلاق التطبيق بالكامل غير متوفر دون مرسل خادمي لـ FCM.

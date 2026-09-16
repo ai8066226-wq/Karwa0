@@ -112,12 +112,19 @@ function renderServiceWallet(){
   }
   renderServiceTopupRequests();
 }
+function serviceHasPendingTopup(){return serviceTopupRequests.some(x=>(x.status||"pending")==="pending");}
+function updateServiceTopupFormState(){
+  const pending=serviceHasPendingTopup();
+  [byId("serviceTopupAmount"),byId("serviceTopupReference"),byId("serviceTopupSubmit")].forEach(el=>{if(el)el.disabled=pending;});
+  const submit=byId("serviceTopupSubmit");if(submit)submit.textContent=pending?"طلب الشحن قيد المراجعة":"إرسال طلب الشحن";
+}
 function renderServiceTopupRequests(){
   const box=byId("serviceTopupRequestsList");if(!box)return;
-  if(!currentUser){box.innerHTML='<p class="muted">سجّل الدخول لعرض طلبات الشحن.</p>';return;}
-  if(!serviceTopupRequests.length){box.innerHTML='<p class="muted">لا توجد طلبات شحن بعد.</p>';return;}
-  const labels={pending:"بانتظار المراجعة",approved:"تم الاعتماد",rejected:"مرفوض"};
+  if(!currentUser){box.innerHTML='<p class="muted">سجّل الدخول لعرض طلبات الشحن.</p>';updateServiceTopupFormState();return;}
+  if(!serviceTopupRequests.length){box.innerHTML='<p class="muted">لا توجد طلبات شحن بعد.</p>';updateServiceTopupFormState();return;}
+  const labels={pending:"بانتظار المراجعة",approved:"تم الاعتماد",rejected:"مرفوض",cancelled:"ملغي"};
   box.innerHTML=serviceTopupRequests.map(x=>`<div class="unified-topup-row"><div><strong>${Number(x.amount||0).toLocaleString("ar-IQ")} د.ع</strong><small>${escapeHtml(x.transferReference||"بدون مرجع")}</small></div><span class="unified-topup-status ${escapeHtml(x.status||"pending")}">${labels[x.status]||escapeHtml(x.status||"pending")}</span></div>`).join("");
+  updateServiceTopupFormState();
 }
 function subscribeServiceTopups(user){
   topupUnsubscribe?.();
@@ -717,6 +724,7 @@ byId("providerRequestsList").addEventListener("click", async event => {
           batch.set(orderRef, {
             id: "KW-D" + String(Date.now()).slice(-6),
             userId: request.customerId,
+            customerName: request.customerName || "عميل كروة",
             providerId: currentUser.uid,
             serviceRequestId: request.firestoreId,
             type: "serviceDelivery",
@@ -937,8 +945,9 @@ byId("serviceTopupForm")?.addEventListener("submit",async event=>{
   const transferReference=byId("serviceTopupReference")?.value.trim()||"";
   if(!Number.isFinite(amount)||amount<1000||amount>1000000)return toast("أدخل مبلغًا بين 1,000 و1,000,000 د.ع");
   if(transferReference.length<3)return toast("اكتب مرجع التحويل");
+  if(serviceHasPendingTopup())return toast("لديك طلب شحن قيد المراجعة. لا يمكن إرسال طلب آخر حتى تعتمد الإدارة الطلب أو ترفضه.");
   const button=event.submitter||byId("serviceTopupSubmit");setBusy(button,true,"جاري الإرسال…");
-  try{const ref=doc(collection(db,"topupRequests"));await setDoc(ref,{userId:currentUser.uid,customerName:currentUserData?.name||currentUser.displayName||"مزود خدمة",email:currentUser.email||"",amount,transferReference:transferReference.slice(0,80),method:"mastercard_local",accountType:"service",accountRole:currentUserData?.role||"serviceProvider",status:"pending",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});event.currentTarget.reset();toast("تم إرسال طلب الشحن إلى الإدارة");}catch(error){console.error(error);toast("تعذر إرسال طلب الشحن");}finally{setBusy(button,false);}
+  try{const requestRef=doc(collection(db,"topupRequests"));const batch=writeBatch(db);batch.set(requestRef,{userId:currentUser.uid,customerName:currentUserData?.name||currentUser.displayName||"مزود خدمة",email:currentUser.email||"",amount,transferReference:transferReference.slice(0,80),method:"mastercard_local",accountType:"service",accountRole:currentUserData?.role||"serviceProvider",status:"pending",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});batch.set(doc(db,"topupLocks",currentUser.uid),{userId:currentUser.uid,requestId:requestRef.id,status:"pending",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});await batch.commit();serviceTopupRequests=[{firestoreId:requestRef.id,userId:currentUser.uid,amount,transferReference,status:"pending",createdAt:null},...serviceTopupRequests.filter(x=>x.firestoreId!==requestRef.id)];renderServiceTopupRequests();event.currentTarget.reset();toast("تم إرسال طلب الشحن مرة واحدة. انتظر قرار الإدارة قبل طلب جديد.");}catch(error){console.error(error);toast(error?.code==="permission-denied"?"يوجد طلب شحن قيد المراجعة بالفعل أو لم تُنشر قواعد Phase 78 بعد.":"تعذر إرسال طلب الشحن");}finally{setBusy(button,false);updateServiceTopupFormState();}
 });
 
 function clearRoleContent() {

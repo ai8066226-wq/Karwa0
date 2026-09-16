@@ -375,17 +375,21 @@ function driverCard(driver) {
     </article>`;
 }
 function renderDrivers() {
-  const sorted = [...state.drivers].sort((a, b) => {
+  const term=String(byId("driverSearchInput")?.value||"").trim().toLocaleLowerCase("ar");
+  const filteredDrivers=term?state.drivers.filter(driver=>[driver.name,driver.phone,driver.email,driver.city,driver.plate,driver.vehicleType,captainServiceLabel(driver)].some(value=>String(value||"").toLocaleLowerCase("ar").includes(term))):state.drivers;
+  const sorted = [...filteredDrivers].sort((a, b) => {
     if (a.blocked === true && b.blocked !== true) return -1;
     if (b.blocked === true && a.blocked !== true) return 1;
     const completedDiff = driverTripSummary(b.firestoreId).completed - driverTripSummary(a.firestoreId).completed;
     if (completedDiff) return completedDiff;
     return String(a.name || "").localeCompare(String(b.name || ""), "ar");
   });
+  if(byId("driverSearchCount"))byId("driverSearchCount").textContent=term?`${sorted.length} من ${state.drivers.length}`:`${state.drivers.length} كابتن`;
   byId("driversList").innerHTML = sorted.length
     ? sorted.map(driverCard).join("")
-    : `<div class="empty"><span>🚕</span>لا يوجد كباتن معتمدون بعد.</div>`;
+    : `<div class="empty"><span>🔎</span>${term?"لا يوجد كابتن مطابق لعبارة البحث.":"لا يوجد كباتن معتمدون بعد."}</div>`;
 }
+byId("driverSearchInput")?.addEventListener("input",renderDrivers);
 
 function renderRatings() {
   const all = [...state.ratings];
@@ -430,7 +434,7 @@ function applicationCard(application) {
   const status = application.status || "pending";
   const labels = { pending: "قيد المراجعة", approved: "مقبول", rejected: "مرفوض" };
   const complete = application.profileComplete !== false;
-  const actions = status === "pending" ? `<div class="order-actions"><button class="primary" data-action="approve" data-id="${application.firestoreId}" ${complete ? "" : 'disabled title="بانتظار إكمال بيانات الكابتن"'}>${complete ? "قبول وتفعيل" : "بانتظار إكمال البيانات"}</button><button class="danger" data-action="reject" data-id="${application.firestoreId}">رفض</button></div>` : "";
+  const actions = status === "pending" ? `<div class="order-actions"><button class="primary" data-action="approve" data-id="${application.firestoreId}" ${complete ? "" : 'disabled title="بانتظار إكمال بيانات الكابتن"'}>${complete ? "قبول وتفعيل" : "بانتظار إكمال البيانات"}</button><button class="danger" data-action="reject" data-id="${application.firestoreId}">رفض / إلغاء</button></div>` : "";
   return `<article class="order-card"><div class="order-top"><h3>${captainServiceIcon(application)} ${escapeHtml(application.name)}</h3><span class="status-chip ${status}">${labels[status] || escapeHtml(status)}</span></div><p class="order-route">${escapeHtml(application.city)} • ${escapeHtml(application.vehicleType)} • ${escapeHtml(application.plate)}</p><div class="order-meta"><span>الخدمة: <b>${captainServiceLabel(application)}</b></span></div>${!isBikeVehicle(application) ? `<div class="order-meta"><span>السيارة: ${escapeHtml(application.vehicleMake || "-")} ${escapeHtml(application.vehicleModel || "")}</span><span>الحالة: ${escapeHtml(application.vehicleCondition || "غير محددة")}</span></div>` : `<div class="order-meta"><span>دراجة — توصيل أغراض وطعام فقط</span></div>`}<div class="order-meta"><span>${escapeHtml(application.phone)}</span><span>${escapeHtml(application.email)}</span></div>${actions}</article>`;
 }
 function renderApplications() {
@@ -772,15 +776,18 @@ document.addEventListener("click", async event => {
         const userRef=doc(db,"users",request.userId);
         const userSnap=await transaction.get(userRef);
         if(!userSnap.exists())throw new Error("USER_NOT_FOUND");
+        const lockRef=doc(db,"topupLocks",request.userId);
+        const lockSnap=await transaction.get(lockRef);
         const currentBalance=Number(userSnap.data().balance||0);
         transaction.update(userRef,{balance:currentBalance+amount,updatedAt:serverTimestamp()});
         transaction.update(requestRef,{status:"approved",creditedAmount:amount,reviewedBy:state.user.uid,reviewedAt:serverTimestamp(),updatedAt:serverTimestamp()});
+        if(lockSnap.exists()&&lockSnap.data().requestId===id)transaction.delete(lockRef);
       });
       toast("تم اعتماد الشحن وإضافة نفس المبلغ إلى الرصيد المشحون");
     } else if (button.dataset.action === "reject-topup") {
       const note=prompt("سبب الرفض:","تعذر مطابقة التحويل")?.trim(); if(!note)return;
-      await updateDoc(doc(db,"topupRequests",id),{status:"rejected",reviewNote:note.slice(0,200),reviewedBy:state.user.uid,reviewedAt:serverTimestamp(),updatedAt:serverTimestamp()});
-      toast("تم رفض طلب الشحن");
+      await runTransaction(db,async transaction=>{const requestRef=doc(db,"topupRequests",id);const snap=await transaction.get(requestRef);if(!snap.exists())throw new Error("TOPUP_NOT_FOUND");const request=snap.data();if((request.status||"pending")!=="pending")throw new Error("TOPUP_ALREADY_REVIEWED");const lockRef=doc(db,"topupLocks",request.userId);const lockSnap=await transaction.get(lockRef);transaction.update(requestRef,{status:"rejected",reviewNote:note.slice(0,200),reviewedBy:state.user.uid,reviewedAt:serverTimestamp(),updatedAt:serverTimestamp()});if(lockSnap.exists()&&lockSnap.data().requestId===id)transaction.delete(lockRef);});
+      toast("تم رفض / إلغاء طلب الشحن ويمكن للمستخدم إرسال طلب جديد");
     } else if (button.dataset.action === "approve-service") {
       const legacy = button.dataset.source === "legacy";
       const application = legacy

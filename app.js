@@ -1,5 +1,4 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
-import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-functions.js";
 import {
   browserLocalPersistence,
   createUserWithEmailAndPassword,
@@ -39,10 +38,6 @@ const firebaseConfig = {
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
-const functions = getFunctions(firebaseApp);
-const createRideOrderSecure = httpsCallable(functions, "createRideOrderV2");
-const quoteRideSecure = httpsCallable(functions, "quoteRide");
-const cancelOrderSecure = httpsCallable(functions, "cancelOrderV2");
 
 async function registerNativePushToken(user) {
   if (!user) return false;
@@ -55,8 +50,8 @@ async function registerNativePushToken(user) {
 window.addEventListener("karwa-native-push-token", () => { if (auth.currentUser) registerNativePushToken(auth.currentUser); });
 
 
-function callableErrorKey(error) {
-  const code = String(error?.code || "").replace(/^functions\//, "").toLowerCase();
+function firestoreErrorKey(error) {
+  const code = String(error?.code || "").toLowerCase();
   const message = String(error?.message || "").toUpperCase();
   const details = typeof error?.details === "string" ? error.details.toUpperCase() : String(error?.details?.message || error?.details?.code || "").toUpperCase();
   const haystack = `${message} ${details}`;
@@ -65,16 +60,16 @@ function callableErrorKey(error) {
   return { code, named, raw: haystack };
 }
 
-function customerCallableMessage(error, action = "تنفيذ العملية") {
-  const e = callableErrorKey(error);
+function customerFirestoreMessage(error, action = "تنفيذ العملية") {
+  const e = firestoreErrorKey(error);
   if (e.named === "OUTSIDE_SERVICE_AREA") return "نقطة الانطلاق أو الوجهة خارج نطاق خدمة كروة الحالي.";
   if (e.named === "AUTH_REQUIRED" || e.code === "unauthenticated") return "انتهت جلسة تسجيل الدخول. سجّل الدخول مرة أخرى ثم أعد المحاولة.";
   if (e.named === "CUSTOMER_ONLY" || e.code === "permission-denied") return "هذا الحساب غير مخوّل لإنشاء طلب راكب. تحقق من نوع الحساب وصلاحياته.";
   if (e.named === "INVALID_ROUTE" || e.code === "invalid-argument") return "تعذر اعتماد المسار. أعد تحديد الانطلاق والوجهة وانتظر حساب المسافة والوقت.";
-  if (e.code === "not-found" || e.raw.includes("NOT FOUND") || e.raw.includes("404")) return "خدمة الحجز الخلفية غير منشورة. انشر Firebase Functions ثم أعد المحاولة.";
+  if (e.code === "not-found") return "تعذر العثور على البيانات المطلوبة. حدّث الطلب وحاول مجددًا.";
   if (e.code === "unavailable" || e.code === "deadline-exceeded" || e.raw.includes("NETWORK") || !navigator.onLine) return "تعذر الوصول إلى خادم كروة. تحقق من الإنترنت ثم أعد المحاولة.";
-  if (e.code === "failed-precondition") return `تعذر ${action} بسبب شرط في الخادم. راجع إعدادات مناطق الخدمة وبيانات الحساب.`;
-  if (e.code === "internal" || e.code === "unknown") return `حدث خطأ في خدمة كروة أثناء ${action}. افتح سجل Cloud Functions لمعرفة السبب.`;
+  if (e.code === "failed-precondition") return `تعذر ${action} بسبب شرط في قاعدة البيانات. راجع بيانات الحساب والطلب.`;
+  if (e.code === "internal" || e.code === "unknown") return `حدث خطأ أثناء ${action}. حاول مجددًا وتحقق من اتصال Firebase.`;
   return `تعذر ${action}. ${error?.message ? "التفاصيل: " + String(error.message).replace(/^FirebaseError:\s*/i, "") : "تحقق من إعدادات Firebase."}`;
 }
 
@@ -832,13 +827,20 @@ function renderTopupDestination(){
 function subscribeToAppSettings(){
   onSnapshot(doc(db,"appSettings","pricing"),snap=>{state.appSettings=snap.exists()?snap.data():{};calculateRidePrice();renderReferralCard();renderTopupDestination();},error=>console.warn("تعذر تحميل إعدادات التسعير",error));
 }
+function customerHasPendingTopup(){return state.topupRequests.some(x=>(x.status||"pending")==="pending");}
+function updateCustomerTopupFormState(){
+  const pending=customerHasPendingTopup();
+  [byId("topupAmount"),byId("topupReference"),byId("submitTopup")].forEach(el=>{if(el)el.disabled=pending;});
+  const submit=byId("submitTopup");if(submit)submit.textContent=pending?"يوجد طلب شحن قيد المراجعة":"إرسال طلب الشحن";
+}
 function renderTopupRequests(){
   const box=byId("topupRequestsList"); if(!box)return;
-  if(!state.user){box.innerHTML='<p class="muted">سجّل الدخول لعرض طلبات الشحن.</p>';return;}
-  if(!state.topupRequests.length){box.innerHTML='<p class="muted">لا توجد طلبات شحن بعد.</p>';return;}
-  const labels={pending:"قيد المراجعة",approved:"تمت الإضافة",rejected:"مرفوض"};
+  if(!state.user){box.innerHTML='<p class="muted">سجّل الدخول لعرض طلبات الشحن.</p>';updateCustomerTopupFormState();return;}
+  if(!state.topupRequests.length){box.innerHTML='<p class="muted">لا توجد طلبات شحن بعد.</p>';updateCustomerTopupFormState();return;}
+  const labels={pending:"قيد المراجعة",approved:"تمت الإضافة",rejected:"مرفوض",cancelled:"ملغي"};
   const safe=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   box.innerHTML=state.topupRequests.map(x=>`<div class="topup-history-row"><div><strong>${formatMoney(x.amount)}</strong><small>${safe(x.transferReference||"بدون مرجع")}</small></div><span class="topup-status ${safe(x.status||"pending")}">${labels[x.status]||safe(x.status)}</span></div>`).join("");
+  updateCustomerTopupFormState();
 }
 function subscribeToTopups(user){
   if(state.unsubscribeTopups)state.unsubscribeTopups();
@@ -1250,6 +1252,7 @@ async function createOrder(type, title, route, price, options = {}) {
   const order = {
     id: "KW-" + String(Date.now()).slice(-6),
     userId: state.user.uid,
+    customerName: state.name || state.user.displayName || "عميل كروة",
     type,
     requiredDriverService: type === "ride" ? "taxi" : (["parcel", "food", "serviceDelivery"].includes(type) ? "delivery" : ""),
     title,
@@ -1361,7 +1364,7 @@ byId("bookRide").addEventListener("click", async event => {
     state.appliedCoupon=null; if(byId("couponCode"))byId("couponCode").value="";
   } catch (error) {
     console.error(error);
-    showToast(customerCallableMessage(error, "تأكيد الحجز"));
+    showToast(customerFirestoreMessage(error, "تأكيد الحجز"));
   } finally {
     setButtonBusy(button, false);
   }
@@ -2317,6 +2320,7 @@ byId("myServiceRequests")?.addEventListener("click", async event => {
       batch.set(orderRef, {
         id: "KW-D" + String(Date.now()).slice(-6),
         userId: state.user.uid,
+        customerName: request.customerName || state.name || state.user.displayName || "عميل كروة",
         providerId: request.providerId,
         serviceRequestId: requestId,
         type: "serviceDelivery",
@@ -2814,9 +2818,15 @@ byId("topupForm")?.addEventListener("submit",async event=>{
   const transferReference=byId("topupReference")?.value.trim()||"";
   if(!Number.isFinite(amount)||amount<1000||amount>1000000)return showToast("أدخل مبلغًا بين 1,000 و1,000,000 د.ع");
   if(transferReference.length<3)return showToast("اكتب رقم/مرجع التحويل أو آخر أرقام العملية");
+  if(customerHasPendingTopup())return showToast("لديك طلب شحن قيد المراجعة. انتظر اعتماد الإدارة أو رفضها قبل إرسال طلب جديد.");
   const button=event.submitter||byId("submitTopup"); setButtonBusy(button,true,"جارٍ إرسال الطلب…");
-  try{await addDoc(collection(db,"topupRequests"),{userId:state.user.uid,customerName:state.name,email:state.user.email||"",amount,transferReference:transferReference.slice(0,80),method:"mastercard_local",accountType:"customer",accountRole:state.role||"customer",status:"pending",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});event.currentTarget.reset();showToast("تم إرسال طلب الشحن. سيضاف نفس المبلغ بعد موافقة الإدارة.");}
-  catch(error){console.error(error);showToast("تعذر إرسال طلب الشحن");}finally{setButtonBusy(button,false);}
+  try{
+    const requestRef=doc(collection(db,"topupRequests"));
+    const batch=writeBatch(db);
+    batch.set(requestRef,{userId:state.user.uid,customerName:state.name,email:state.user.email||"",amount,transferReference:transferReference.slice(0,80),method:"mastercard_local",accountType:"customer",accountRole:state.role||"customer",status:"pending",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
+    batch.set(doc(db,"topupLocks",state.user.uid),{userId:state.user.uid,requestId:requestRef.id,status:"pending",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
+    await batch.commit();state.topupRequests=[{firestoreId:requestRef.id,userId:state.user.uid,amount,transferReference,status:"pending",createdAt:null},...state.topupRequests.filter(x=>x.firestoreId!==requestRef.id)];renderTopupRequests();event.currentTarget.reset();showToast("تم إرسال طلب الشحن مرة واحدة. لا يمكن إرسال طلب جديد حتى تراجعه الإدارة.");
+  }catch(error){console.error(error);showToast(error?.code==="permission-denied"?"يوجد طلب شحن قيد المراجعة بالفعل أو لم تُنشر قواعد Phase 78 بعد.":"تعذر إرسال طلب الشحن");}finally{setButtonBusy(button,false);updateCustomerTopupFormState();}
 });
 byId("shareReferral")?.addEventListener("click",async()=>{
   if(!requireUser())return; const code=state.referralCode||await ensureReferralCode(state.user);
@@ -3310,10 +3320,30 @@ onAuthStateChanged(auth, async user => {
 });
 
 // Phase 11 — passenger safety center
-const createSafetyEventSecure=httpsCallable(functions,"createSafetyEvent");
-const createTripShareSecure=httpsCallable(functions,"createTripShare");
-byId("shareTrip")?.addEventListener("click",async()=>{if(!state.activeOrder?.firestoreId)return showToast("لا توجد رحلة نشطة");try{const r=await createTripShareSecure({orderId:state.activeOrder.firestoreId});const text=`كروة — مشاركة رحلة ${state.activeOrder.id}\nرمز مشاركة آمن: ${r.data.token}\nصالح لمدة 6 ساعات.`;if(navigator.share)await navigator.share({title:"مشاركة رحلة كروة",text});else await navigator.clipboard.writeText(text);showToast("تم تجهيز مشاركة الرحلة");}catch(e){console.error(e);showToast("تعذر إنشاء مشاركة آمنة");}});
-byId("sosTrip")?.addEventListener("click",async()=>{if(!state.activeOrder?.firestoreId||!confirm("إرسال تنبيه سلامة عاجل للإدارة لهذه الرحلة؟"))return;const send=async pos=>{try{await createSafetyEventSecure({orderId:state.activeOrder.firestoreId,kind:"sos",latitude:pos?.coords?.latitude||null,longitude:pos?.coords?.longitude||null,note:"SOS من الراكب"});showToast("تم إرسال تنبيه السلامة للإدارة");}catch(e){console.error(e);showToast("تعذر إرسال التنبيه");}};navigator.geolocation?navigator.geolocation.getCurrentPosition(send,()=>send(null),{timeout:5000}):send(null);});
+function karwaShareToken(){
+  try{return crypto.randomUUID().replace(/-/g,"").slice(0,24)}catch{}
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2,14)}`.slice(0,24);
+}
+byId("shareTrip")?.addEventListener("click",async()=>{
+  if(!state.activeOrder?.firestoreId||!state.user)return showToast("لا توجد رحلة نشطة");
+  try{
+    const token=karwaShareToken();
+    await setDoc(doc(db,"tripShares",token),{token,orderId:state.activeOrder.firestoreId,customerId:state.user.uid,createdAt:serverTimestamp(),expiresAtMs:Date.now()+6*60*60*1000});
+    const text=`كروة — مشاركة رحلة ${state.activeOrder.id}\nرمز مشاركة آمن: ${token}\nصالح لمدة 6 ساعات.`;
+    if(navigator.share)await navigator.share({title:"مشاركة رحلة كروة",text});else await navigator.clipboard.writeText(text);
+    showToast("تم تجهيز مشاركة الرحلة");
+  }catch(e){console.error(e);showToast("تعذر إنشاء مشاركة آمنة");}
+});
+byId("sosTrip")?.addEventListener("click",async()=>{
+  if(!state.activeOrder?.firestoreId||!state.user||!confirm("إرسال تنبيه سلامة عاجل للإدارة لهذه الرحلة؟"))return;
+  const send=async pos=>{
+    try{
+      await addDoc(collection(db,"safetyEvents"),{orderId:state.activeOrder.firestoreId,reportedBy:state.user.uid,reporterRole:"customer",kind:"sos",latitude:pos?.coords?.latitude??null,longitude:pos?.coords?.longitude??null,note:"SOS من الراكب",createdAt:serverTimestamp()});
+      showToast("تم إرسال تنبيه السلامة للإدارة");
+    }catch(e){console.error(e);showToast("تعذر إرسال التنبيه");}
+  };
+  navigator.geolocation?navigator.geolocation.getCurrentPosition(send,()=>send(null),{timeout:5000}):send(null);
+});
 
 // Phase 19 — verified community traffic + shared landmarks
 const customerCommunity={reports:new Map(),landmarks:new Map(),landmarkData:[],started:false};

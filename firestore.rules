@@ -395,6 +395,7 @@ service cloud.firestore { match /databases/{database}/documents {
  match /appSettings/{id}{allow read:if true;allow create,update,delete:if admin();}
  match /topupRequests/{id}{
    function validAccountType(){return (role()=='customer'&&request.resource.data.accountType=='customer')||((role()=='driver'||role()=='driverApplicant')&&request.resource.data.accountType=='captain')||((role()=='serviceProvider'||role()=='serviceApplicant')&&request.resource.data.accountType=='service');}
+   function ownsMatchingTopupLock(){return getAfter(/databases/$(database)/documents/topupLocks/$(request.auth.uid)).data.get('requestId','')==id&&getAfter(/databases/$(database)/documents/topupLocks/$(request.auth.uid)).data.get('status','')=='pending';}
    allow create:if signed()
      && validAccountType()
      && request.resource.data.keys().hasOnly(['userId','customerName','email','amount','transferReference','method','accountType','accountRole','status','createdAt','updatedAt'])
@@ -405,9 +406,23 @@ service cloud.firestore { match /databases/{database}/documents {
      && request.resource.data.transferReference is string && request.resource.data.transferReference.size()>=3 && request.resource.data.transferReference.size()<=80
      && request.resource.data.accountRole==role()
      && request.resource.data.method=='mastercard_local'
-     && request.resource.data.status=='pending';
+     && request.resource.data.status=='pending'
+     && ownsMatchingTopupLock();
    allow read:if admin()||(signed()&&resource.data.userId==request.auth.uid);
    allow update,delete:if admin();
+ }
+ match /topupLocks/{uid}{
+   allow read:if admin()||own(uid);
+   allow create:if own(uid)
+     && !exists(/databases/$(database)/documents/topupLocks/$(uid))
+     && request.resource.data.keys().hasOnly(['userId','requestId','status','createdAt','updatedAt'])
+     && request.resource.data.userId==uid
+     && request.resource.data.requestId is string && request.resource.data.requestId.size()>0
+     && request.resource.data.status=='pending'
+     && getAfter(/databases/$(database)/documents/topupRequests/$(request.resource.data.requestId)).data.get('userId','')==uid
+     && getAfter(/databases/$(database)/documents/topupRequests/$(request.resource.data.requestId)).data.get('status','')=='pending';
+   allow update:if false;
+   allow delete:if admin();
  }
  match /referralCodes/{code}{
    allow read:if signed();
@@ -442,7 +457,21 @@ service cloud.firestore { match /databases/{database}/documents {
  match /notificationQueue/{id}{allow read:if admin();allow write:if false;}
  match /authChallenges/{id}{allow read,write:if false;}
  match /authRateLimits/{id}{allow read,write:if false;}
- match /safetyEvents/{id}{allow read:if admin()||(signed()&&(resource.data.reportedBy==request.auth.uid));allow write:if false;}
+ match /safetyEvents/{id}{
+   function safetyOrder(){return get(/databases/$(database)/documents/orders/$(request.resource.data.orderId)).data;}
+   function validSafetyPoint(){return (request.resource.data.latitude==null&&request.resource.data.longitude==null)||(request.resource.data.latitude is number&&request.resource.data.latitude>=-90&&request.resource.data.latitude<=90&&request.resource.data.longitude is number&&request.resource.data.longitude>=-180&&request.resource.data.longitude<=180);}
+   allow read:if admin()||(signed()&&(resource.data.reportedBy==request.auth.uid));
+   allow create:if signed()
+     && request.resource.data.keys().hasOnly(['orderId','reportedBy','reporterRole','kind','latitude','longitude','note','createdAt'])
+     && request.resource.data.reportedBy==request.auth.uid
+     && request.resource.data.reporterRole in ['customer','driver']
+     && request.resource.data.kind in ['sos','driver_sos']
+     && request.resource.data.note is string && request.resource.data.note.size()<=300
+     && request.resource.data.createdAt==request.time
+     && validSafetyPoint()
+     && ((request.resource.data.reporterRole=='customer'&&safetyOrder().userId==request.auth.uid)||(request.resource.data.reporterRole=='driver'&&safetyOrder().driverId==request.auth.uid));
+   allow update,delete:if admin();
+ }
 
  match /serviceApplications/{uid}{
    function validApplication(data){return data.userId==uid
@@ -949,8 +978,35 @@ service cloud.firestore { match /databases/{database}/documents {
    allow create:if signed()&&request.resource.data.createdBy==request.auth.uid;
    allow update,delete:if admin()||(signed()&&resource.data.createdBy==request.auth.uid);
  }
- match /tripShares/{id}{allow read,write:if false;}
- match /customerRatings/{id}{allow read:if admin()||(signed()&&(resource.data.customerId==request.auth.uid||resource.data.driverId==request.auth.uid));allow write:if false;}
+ match /tripShares/{id}{
+   function sharedOrder(){return get(/databases/$(database)/documents/orders/$(request.resource.data.orderId)).data;}
+   allow create:if customer()
+     && request.resource.data.keys().hasOnly(['token','orderId','customerId','createdAt','expiresAtMs'])
+     && request.resource.data.token==id
+     && request.resource.data.customerId==request.auth.uid
+     && request.resource.data.createdAt==request.time
+     && request.resource.data.expiresAtMs is int
+     && sharedOrder().userId==request.auth.uid;
+   allow read:if admin()||(signed()&&resource.data.customerId==request.auth.uid);
+   allow update:if false;
+   allow delete:if admin()||(signed()&&resource.data.customerId==request.auth.uid);
+ }
+ match /customerRatings/{id}{
+   function ratedOrder(){return get(/databases/$(database)/documents/orders/$(id)).data;}
+   allow read:if admin()||(signed()&&(resource.data.customerId==request.auth.uid||resource.data.driverId==request.auth.uid));
+   allow create:if driver()
+     && request.resource.data.keys().hasOnly(['orderId','customerId','driverId','score','createdAt'])
+     && request.resource.data.orderId==id
+     && request.resource.data.driverId==request.auth.uid
+     && request.resource.data.customerId==ratedOrder().userId
+     && ratedOrder().driverId==request.auth.uid
+     && ratedOrder().get('cancelled',false)==false
+     && ratedOrder().statusIndex>=4
+     && request.resource.data.score is int && request.resource.data.score>=1 && request.resource.data.score<=5
+     && request.resource.data.createdAt==request.time;
+   allow update:if false;
+   allow delete:if admin();
+ }
  match /ratings/{id}{
    function orderForRating(){return get(/databases/$(database)/documents/orders/$(request.resource.data.referenceId)).data;}
    function serviceForRating(){return get(/databases/$(database)/documents/serviceRequests/$(request.resource.data.referenceId)).data;}

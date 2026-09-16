@@ -26,7 +26,7 @@
     document.getElementById('karwaNotificationClose').onclick=close;
     scrim.onclick=close;
     document.getElementById('karwaNotificationReadAll').onclick=()=>{items=items.map(x=>({...x,read:true}));save();render()};
-    document.getElementById('karwaNotificationClear').onclick=()=>{items=[];save();render()};
+    document.getElementById('karwaNotificationClear').onclick=()=>{items=[];save();render();try{window.KarwaNative?.clearNotifications?.()}catch{}};
     document.getElementById('karwaNotificationPermissionButton').onclick=()=>requestPermission(true);
     (existing||document.getElementById('karwaNotificationFab')).addEventListener('click',event=>{event.preventDefault();event.stopImmediatePropagation();open()},{capture:true});
     render();
@@ -38,7 +38,8 @@
     ['karwaHeaderNotificationBadge','karwaFabNotificationBadge'].forEach(id=>{const b=document.getElementById(id);if(!b)return;b.hidden=!unread;b.textContent=unread>99?'99+':String(unread)});
     const s=document.getElementById('karwaNotificationSummary');if(s)s.textContent=unread?`${unread.toLocaleString('ar-IQ')} إشعار غير مقروء`:'لا توجد إشعارات غير مقروءة';
     if(!items.length){list.innerHTML='<div class="kn-empty"><div style="font-size:30px;margin-bottom:8px">🔔</div><strong>لا توجد إشعارات بعد</strong><div style="margin-top:5px">ستظهر هنا تحديثات الطلبات والشحن والخدمات.</div></div>';return}
-    list.innerHTML=items.map(x=>`<article class="kn-item ${x.read?'':'unread'}" data-kn-id="${esc(x.id)}"><div class="kn-item-title">${esc(x.title)}</div><div class="kn-item-body">${esc(x.body)}</div><div class="kn-item-meta"><span class="kn-type">${esc(typeLabel(x.type))}</span><time>${new Date(x.at).toLocaleString('ar-IQ',{dateStyle:'short',timeStyle:'short'})}</time></div></article>`).join('');
+    list.innerHTML=items.map(x=>`<article class="kn-item ${x.read?'':'unread'}" data-kn-id="${esc(x.id)}"><button type="button" class="kn-delete" data-kn-delete="${esc(x.id)}" aria-label="حذف الإشعار">🗑</button><div class="kn-item-title">${esc(x.title)}</div><div class="kn-item-body">${esc(x.body)}</div><div class="kn-item-meta"><span class="kn-type">${esc(typeLabel(x.type))}</span><time>${new Date(x.at).toLocaleString('ar-IQ',{dateStyle:'short',timeStyle:'short'})}</time></div></article>`).join('');
+    list.querySelectorAll('[data-kn-delete]').forEach(btn=>btn.onclick=event=>{event.stopPropagation();const id=btn.dataset.knDelete;items=items.filter(x=>x.id!==id);save();render()});
     list.querySelectorAll('[data-kn-id]').forEach(el=>el.onclick=()=>{const id=el.dataset.knId;const item=items.find(x=>x.id===id);items=items.map(x=>x.id===id?{...x,read:true}:x);save();render();if(item?.route)navigate(item.route)});
   }
   function open(){ensureUi();document.getElementById('karwaNotificationDrawer')?.classList.add('open');document.getElementById('karwaNotificationScrim')?.classList.add('open');document.getElementById('karwaNotificationDrawer')?.setAttribute('aria-hidden','false');items=items.map(x=>({...x,read:true}));save();render();updatePermissionCard()}
