@@ -129,6 +129,37 @@ function authMessage(error) {
   return messages[error.code] || "تعذر تسجيل الدخول.";
 }
 
+function activationUid(application, fallbackId = "") {
+  return String(application?.userId || fallbackId || "").trim();
+}
+
+function activationUserPayload(application, role) {
+  const name = String(application?.ownerName || application?.name || application?.businessName || "مستخدم كروة").trim() || "مستخدم كروة";
+  const email = String(application?.email || "").trim();
+  return {
+    name,
+    email,
+    role,
+    balance: 0,
+    bonusBalance: 0,
+    bonusExpiresAt: null,
+    welcomeBonusGranted: false,
+    welcomeBonusEvaluated: true,
+    notifications: true,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+}
+
+function activationErrorMessage(error) {
+  const code = String(error?.code || "");
+  const message = String(error?.message || "");
+  if (code.includes("permission-denied")) return "رفض Firestore عملية التفعيل. انشر قواعد Phase 79 الجديدة ثم أعد المحاولة.";
+  if (code.includes("invalid-argument") || /undefined|unsupported field/i.test(message)) return "بيانات طلب التسجيل قديمة أو ناقصة. تم دعمها في Phase 79؛ حدّث الصفحة وأعد المحاولة.";
+  if (/NOT_FOUND|MISSING_UID/.test(message)) return "تعذر العثور على حساب الطلب أو UID الخاص به.";
+  return `تعذر تنفيذ العملية${code ? ` (${code})` : ""}. راجع سجل المتصفح للتفاصيل.`;
+}
+
 function showView(name) {
   byId("authView").classList.toggle("hidden", name !== "auth");
   byId("deniedView").classList.toggle("hidden", name !== "denied");
@@ -794,13 +825,16 @@ document.addEventListener("click", async event => {
         ? state.applications.find(item => item.firestoreId === id && normalizeCaptainServiceType(item) === "other")
         : state.serviceApplications.find(item => item.firestoreId === id);
       if (!application) throw new Error("NOT_FOUND");
-      const existingProfile = state.serviceProfiles.find(item => item.firestoreId === id || item.ownerId === id);
-      const restaurant = state.restaurants.find(item => item.firestoreId === id || item.ownerId === id);
-      const category = application.category || existingProfile?.category || (restaurant ? "restaurant" : "other");
-      const businessName = application.businessName || existingProfile?.businessName || restaurant?.name || application.name || "مزود خدمة";
-      const ownerName = application.ownerName || application.name || "";
-      const phone = application.phone || existingProfile?.phone || restaurant?.phone || "";
-      const address = application.address || existingProfile?.address || restaurant?.address || "";
+      const accountUid = activationUid(application, id);
+      if (!accountUid) throw new Error("MISSING_UID");
+      const existingUser = state.users.find(item => item.firestoreId === accountUid);
+      const existingProfile = state.serviceProfiles.find(item => item.firestoreId === accountUid || item.ownerId === accountUid);
+      const restaurant = state.restaurants.find(item => item.firestoreId === accountUid || item.ownerId === accountUid);
+      const category = String(application.category || existingProfile?.category || (restaurant ? "restaurant" : "other")).trim() || "other";
+      const businessName = String(application.businessName || existingProfile?.businessName || restaurant?.name || application.name || "مزود خدمة").trim() || "مزود خدمة";
+      const ownerName = String(application.ownerName || application.name || existingUser?.name || "مزود خدمة").trim() || "مزود خدمة";
+      const phone = String(application.phone || existingProfile?.phone || restaurant?.phone || "").trim();
+      const address = String(application.address || existingProfile?.address || restaurant?.address || "").trim();
       const location = application.location || existingProfile?.location || restaurant?.location || null;
       if (!Number.isFinite(Number(location?.latitude)) || !Number.isFinite(Number(location?.longitude))) {
         toast("لا يمكن اعتماد النشاط قبل أن يحدد مزود الخدمة موقع GPS.");
@@ -815,17 +849,19 @@ document.addEventListener("click", async event => {
         reviewedAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
-      batch.set(doc(db, "users", id), { role: "serviceProvider", updatedAt: serverTimestamp() }, { merge: true });
-      batch.set(doc(db, "serviceProfiles", id), {
-        ownerId: id,
+      batch.set(doc(db, "users", accountUid), existingUser
+        ? { role: "serviceProvider", updatedAt: serverTimestamp() }
+        : activationUserPayload(application, "serviceProvider"), { merge: true });
+      batch.set(doc(db, "serviceProfiles", accountUid), {
+        ownerId: accountUid,
         ownerName,
         businessName,
         category,
         phone,
-        city: application.city || existingProfile?.city || "",
+        city: String(application.city || existingProfile?.city || "").trim(),
         address,
-        description: application.description || existingProfile?.description || "",
-        location,
+        description: String(application.description || existingProfile?.description || "").trim(),
+        location: { latitude: Number(location.latitude), longitude: Number(location.longitude) },
         items,
         active: false,
         publishFeePaid: Boolean(existingProfile?.publishFeePaid),
@@ -837,7 +873,7 @@ document.addEventListener("click", async event => {
       }, { merge: true });
       if (category === "restaurant") {
         const restaurantPayload = {
-          ownerId: id,
+          ownerId: accountUid,
           name: businessName,
           phone,
           address,
@@ -846,13 +882,13 @@ document.addEventListener("click", async event => {
           approvalStatus: "approved",
           approvedBy: state.user.uid,
           approvedAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
+          updatedAt: serverTimestamp(),
+          location: { latitude: Number(location.latitude), longitude: Number(location.longitude) }
         };
-        if (location) restaurantPayload.location = location;
-        batch.set(doc(db, "restaurants", id), restaurantPayload, { merge: true });
+        batch.set(doc(db, "restaurants", accountUid), restaurantPayload, { merge: true });
       }
       await batch.commit();
-      toast("تم قبول مزود الخدمة وفتح لوحته الخاصة");
+      toast(existingUser ? "تم قبول مزود الخدمة وفتح لوحته الخاصة" : "تم قبول مزود الخدمة وإصلاح ملف المستخدم القديم تلقائيًا");
     } else if (button.dataset.action === "reject-service") {
       const note = prompt("سبب الرفض أو البيانات المطلوب تعديلها:", "يرجى استكمال بيانات النشاط")?.trim();
       if (!note) return;
@@ -883,11 +919,20 @@ document.addEventListener("click", async event => {
     } else if (button.dataset.action === "approve") {
       const application = state.applications.find(item => item.firestoreId === id);
       if (!application) throw new Error("NOT_FOUND");
+      const accountUid = activationUid(application, id);
+      if (!accountUid) throw new Error("MISSING_UID");
+      const existingUser = state.users.find(item => item.firestoreId === accountUid);
       const normalizedServiceType = normalizeCaptainServiceType(application);
       if (!["taxi", "delivery"].includes(normalizedServiceType)) {
         toast("نوع خدمة الكابتن غير صالح للاعتماد. اختر تكسي أو توصيل.");
         return;
       }
+      const captainName = String(application.name || existingUser?.name || "كابتن كروة").trim() || "كابتن كروة";
+      const captainEmail = String(application.email || existingUser?.email || "").trim();
+      const captainPhone = String(application.phone || "").trim();
+      const vehicleType = String(application.vehicleType || "").trim();
+      const plate = String(application.plate || "").trim();
+      const city = String(application.city || "").trim();
       // الدراجة تُعامل دائمًا كتوصيل، كما يتم توحيد أي قيمة قديمة مثل «توصيل أغراض وطعام» إلى delivery.
       const batch = writeBatch(db);
       batch.update(doc(db, "driverApplications", id), {
@@ -897,20 +942,19 @@ document.addEventListener("click", async event => {
         reviewedAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
-      batch.set(doc(db, "users", id), {
-        role: "driver",
-        updatedAt: serverTimestamp()
-      }, { merge: true });
-      batch.set(doc(db, "drivers", id), {
-        userId: id, name: application.name, email: application.email, phone: application.phone,
-        serviceType: normalizedServiceType, vehicleType: application.vehicleType,
-        vehicleMake: application.vehicleMake || "", vehicleModel: application.vehicleModel || "",
-        vehicleCondition: application.vehicleCondition || "", plate: application.plate, city: application.city,
+      batch.set(doc(db, "users", accountUid), existingUser
+        ? { role: "driver", updatedAt: serverTimestamp() }
+        : activationUserPayload({ ...application, name: captainName, email: captainEmail }, "driver"), { merge: true });
+      batch.set(doc(db, "drivers", accountUid), {
+        userId: accountUid, name: captainName, email: captainEmail, phone: captainPhone,
+        serviceType: normalizedServiceType, vehicleType,
+        vehicleMake: String(application.vehicleMake || "").trim(), vehicleModel: String(application.vehicleModel || "").trim(),
+        vehicleCondition: String(application.vehicleCondition || "").trim(), plate, city,
         online: false, blocked: false, warningCount: 0, warningMessage: "",
         approvedAt: serverTimestamp(), updatedAt: serverTimestamp()
       }, { merge: true });
       await batch.commit();
-      toast("تم قبول الكابتن وتفعيل حسابه");
+      toast(existingUser ? "تم قبول الكابتن وتفعيل حسابه" : "تم قبول الكابتن وإصلاح ملف المستخدم القديم تلقائيًا");
     } else if (button.dataset.action === "reject") {
       const note = prompt("سبب الرفض أو المطلوب تعديله:", "يرجى مراجعة بيانات المركبة")?.trim();
       if (!note) return;
@@ -974,8 +1018,8 @@ document.addEventListener("click", async event => {
       toast("تم إلغاء الطلب وتسجيل السبب وهوية المدير");
     }
   } catch (error) {
-    console.error(error);
-    toast("تعذر تنفيذ العملية. تحقق من قواعد Firestore.");
+    console.error("Admin operation failed", { action: button.dataset.action, id, code: error?.code, message: error?.message, error });
+    toast(activationErrorMessage(error));
   } finally {
     busy(button, false);
   }

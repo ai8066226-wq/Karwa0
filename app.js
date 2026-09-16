@@ -2504,13 +2504,16 @@ function renderTracking() {
   byId("paymentTripStatus").textContent = order.paymentStatus === "paid" ? "مكتمل" : "يُسوّى عند الإكمال";
   byId("progressBar").style.width = `${((statusIndex + 1) / orderStatuses.length) * 100}%`;
   const completed = statusIndex >= orderStatuses.length - 1;
+  const cancellationLockedAfterCode = order.type === "ride" && statusIndex >= 3;
   byId("advanceOrder").disabled = true;
   byId("advanceOrder").textContent = completed ? "تم إكمال الطلب" : "تحديث مباشر من الكابتن";
-  byId("cancelOrder").style.display = completed ? "none" : "block";
+  byId("cancelOrder").style.display = (completed || cancellationLockedAfterCode) ? "none" : "block";
 }
 
 byId("cancelOrder").addEventListener("click", async event => {
-  if (!state.activeOrder?.firestoreId || !confirm("هل تريد إلغاء الطلب؟")) return;
+  if (!state.activeOrder?.firestoreId) return;
+  if (state.activeOrder.type === "ride" && Number(state.activeOrder.statusIndex || 0) >= 3) { showToast("لا يمكن إلغاء الرحلة بعد قراءة الكابتن لرمز بدء الرحلة."); return; }
+  if (!confirm("هل تريد إلغاء الطلب؟")) return;
   const reason = requestCancellationReason("الطلب");
   if (!reason) return;
   const button = event.currentTarget;
@@ -2826,7 +2829,7 @@ byId("topupForm")?.addEventListener("submit",async event=>{
     batch.set(requestRef,{userId:state.user.uid,customerName:state.name,email:state.user.email||"",amount,transferReference:transferReference.slice(0,80),method:"mastercard_local",accountType:"customer",accountRole:state.role||"customer",status:"pending",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
     batch.set(doc(db,"topupLocks",state.user.uid),{userId:state.user.uid,requestId:requestRef.id,status:"pending",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
     await batch.commit();state.topupRequests=[{firestoreId:requestRef.id,userId:state.user.uid,amount,transferReference,status:"pending",createdAt:null},...state.topupRequests.filter(x=>x.firestoreId!==requestRef.id)];renderTopupRequests();event.currentTarget.reset();showToast("تم إرسال طلب الشحن مرة واحدة. لا يمكن إرسال طلب جديد حتى تراجعه الإدارة.");
-  }catch(error){console.error(error);showToast(error?.code==="permission-denied"?"يوجد طلب شحن قيد المراجعة بالفعل أو لم تُنشر قواعد Phase 78 بعد.":"تعذر إرسال طلب الشحن");}finally{setButtonBusy(button,false);updateCustomerTopupFormState();}
+  }catch(error){console.error(error);showToast(error?.code==="permission-denied"?"يوجد طلب شحن قيد المراجعة بالفعل أو لم تُنشر قواعد Phase 79 بعد.":"تعذر إرسال طلب الشحن");}finally{setButtonBusy(button,false);updateCustomerTopupFormState();}
 });
 byId("shareReferral")?.addEventListener("click",async()=>{
   if(!requireUser())return; const code=state.referralCode||await ensureReferralCode(state.user);

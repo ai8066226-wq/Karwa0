@@ -218,6 +218,11 @@ const state = {
   routeLine: null,
   lastRouteAt: 0,
   lastRoutePoint: null,
+  routeNavigation: null,
+  routeProgressIndex: 0,
+  navigationOrderId: null,
+  announcedTurnKeys: new Set(),
+  mapDrivingActive: false,
   restaurantGps: null,
   restaurantMeals: [],
   directRegistration: new URLSearchParams(window.location.search).get("mode") === "register"
@@ -468,24 +473,32 @@ function setDriverMarkerStyle(style){
   toast(safe==="arrow"?"تم اختيار السهم لمؤشر القيادة":safe==="bike"?"تم اختيار الدراجة لمؤشر القيادة":"تم اختيار السيارة لمؤشر القيادة");
 }
 function applyDriverCamera(point, heading){
-  if(!state.map||!state.autoFollow)return;
+  if(!state.map)return;
   const driving=Boolean(activeDrivingOrder());
-  byId("driverView")?.classList.toggle("driving-navigation-active",driving);
-  const zoom=driving?17:15;
+  const view=byId("driverView"),mapEl=byId("driverMap");
+  if(state.mapDrivingActive!==driving){
+    state.mapDrivingActive=driving;
+    view?.classList.toggle("driving-navigation-active",driving);
+    window.requestAnimationFrame(()=>{try{state.map?.invalidateSize({pan:false})}catch{}});
+  }else view?.classList.toggle("driving-navigation-active",driving);
+  const normalized=normalizeHeading(heading);
+  if(mapEl)mapEl.style.setProperty("--driver-map-bearing",driving&&normalized!==null?`${-normalized}deg`:"0deg");
+  if(!state.autoFollow)return;
+  const zoom=driving?16:15;
   if(driving&&Number.isFinite(heading)){
     try{
       const p=state.map.project(window.L.latLng(point),zoom),size=state.map.getSize();
-      const lead=Math.max(75,Math.min(145,size.y*.18)),rad=normalizeHeading(heading)*Math.PI/180;
+      const lead=Math.max(72,Math.min(138,size.y*.105)),rad=normalized*Math.PI/180;
       const ahead=window.L.point(p.x+Math.sin(rad)*lead,p.y-Math.cos(rad)*lead);
-      state.map.setView(state.map.unproject(ahead,zoom),zoom,{animate:true,duration:.55,easeLinearity:.25});
-    }catch(_){state.map.setView(point,zoom,{animate:true,duration:.45});}
-  }else state.map.setView(point,zoom,{animate:true,duration:.45});
+      state.map.setView(state.map.unproject(ahead,zoom),zoom,{animate:true,duration:.42,easeLinearity:.22});
+    }catch(_){state.map.setView(point,zoom,{animate:true,duration:.4});}
+  }else state.map.setView(point,zoom,{animate:true,duration:.4});
 }
 function updateDriverHeadingHud(heading,speed){
-  const active=Boolean(activeDrivingOrder());
-  const badge=byId("driverDrivingModeBadge");if(badge)badge.classList.toggle("active",active);
-  const h=byId("driverHeadingText");if(h)h.textContent=Number.isFinite(heading)?`${compassLabel(heading)} • ${Math.round(normalizeHeading(heading))}°`:"بانتظار اتجاه الحركة";
-  const s=byId("driverSpeedText");if(s)s.textContent=Number.isFinite(Number(speed))?`${Math.max(0,Math.round(Number(speed)*3.6))} كم/س`:"— كم/س";
+  const s=byId("driverSpeedText");
+  if(s)s.textContent=Number.isFinite(Number(speed))?String(Math.max(0,Math.round(Number(speed)*3.6))):"0";
+  const bubble=byId("driverSpeedBubble");
+  if(bubble){const kmh=Number.isFinite(Number(speed))?Math.max(0,Math.round(Number(speed)*3.6)):0;bubble.setAttribute("aria-label",`سرعة الكابتن ${kmh} كيلومتر في الساعة`);}
 }
 
 function initializeDriverMap() {
@@ -586,7 +599,64 @@ function setLocationStatus(text, mode = "pending") {
 }
 
 function decodeValhallaShape(encoded){let index=0,lat=0,lng=0,out=[];while(index<encoded.length){let b,shift=0,result=0;do{b=encoded.charCodeAt(index++)-63;result|=(b&31)<<shift;shift+=5;}while(b>=32);lat+=(result&1)?~(result>>1):(result>>1);shift=0;result=0;do{b=encoded.charCodeAt(index++)-63;result|=(b&31)<<shift;shift+=5;}while(b>=32);lng+=(result&1)?~(result>>1):(result>>1);out.push([lat/1e6,lng/1e6]);}return out;}
-function turnIcon(m){const t=String(m?.type??"");if([9,10,11,12,13].includes(Number(t)))return "↪️";if([14,15,16,17,18].includes(Number(t)))return "↩️";if([26,27].includes(Number(t)))return "🔄";if([4,5,6].includes(Number(t)))return "➡️";if([7,8].includes(Number(t)))return "⬅️";return "⬆️";}
+function turnIcon(m){const t=Number(m?.type??0);if([9,10,11,12,18,20,23].includes(t))return "↪️";if([13,14,15,16,19,21,24].includes(t))return "↩️";if([26,27].includes(t))return "🔄";if([7,8,17,22,25].includes(t))return "⬆️";return "⬆️";}
+function isGuidanceManeuver(m){const t=Number(m?.type??0);return [7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27].includes(t);}
+function maneuverArabicPhrase(m){
+  const t=Number(m?.type??0),street=String(m?.street_names?.[0]||m?.streetName||"").trim();
+  let phrase="استمر إلى الأمام";
+  if(t===9)phrase="اتجه قليلًا إلى اليمين";else if(t===10)phrase="انعطف يمينًا";else if(t===11)phrase="انعطف يمينًا بشكل حاد";
+  else if(t===12)phrase="قم بدوران للخلف جهة اليمين";else if(t===13)phrase="قم بدوران للخلف جهة اليسار";
+  else if(t===14)phrase="انعطف يسارًا بشكل حاد";else if(t===15)phrase="انعطف يسارًا";else if(t===16)phrase="اتجه قليلًا إلى اليسار";
+  else if(t===17)phrase="استمر مباشرة على المسار";else if([18,20].includes(t))phrase="خذ المخرج جهة اليمين";else if([19,21].includes(t))phrase="خذ المخرج جهة اليسار";
+  else if(t===22)phrase="ابقَ على المسار مباشرة";else if(t===23)phrase="ابقَ جهة اليمين";else if(t===24)phrase="ابقَ جهة اليسار";else if(t===25)phrase="اندمج مع الطريق";
+  else if(t===26)phrase="ادخل الدوار";else if(t===27)phrase="اخرج من الدوار";
+  return street&&![12,13,25,26,27].includes(t)?`${phrase} نحو ${street}`:phrase;
+}
+function maneuverPan(type){const t=Number(type||0);if([9,10,11,12,18,20,23].includes(t))return .78;if([13,14,15,16,19,21,24].includes(t))return -.78;return 0;}
+function playDriverTurnCue(type){
+  try{
+    const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;
+    const ctx=playDriverTurnCue.ctx||(playDriverTurnCue.ctx=new AC());if(ctx.state==="suspended")ctx.resume().catch(()=>{});
+    const pan=maneuverPan(type),panner=ctx.createStereoPanner?ctx.createStereoPanner():null;if(panner)panner.pan.value=pan;
+    const gain=ctx.createGain();gain.gain.setValueAtTime(.0001,ctx.currentTime);gain.gain.exponentialRampToValueAtTime(.12,ctx.currentTime+.025);gain.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+.32);
+    const osc=ctx.createOscillator();osc.type="sine";osc.frequency.setValueAtTime(pan>0?880:pan<0?620:760,ctx.currentTime);osc.frequency.linearRampToValueAtTime(pan>0?1060:pan<0?520:900,ctx.currentTime+.28);
+    if(panner){osc.connect(gain);gain.connect(panner);panner.connect(ctx.destination);}else{osc.connect(gain);gain.connect(ctx.destination);}osc.start();osc.stop(ctx.currentTime+.34);
+  }catch(_){}
+}
+function speakDriverNavigation(text,type){
+  if(!text)return;playDriverTurnCue(type);
+  try{if(window.KarwaNative?.speakNavigation){const nativeSpoken=window.KarwaNative.speakNavigation(text);if(nativeSpoken!==false)return;}}catch(_){}
+  try{if("speechSynthesis" in window){const u=new SpeechSynthesisUtterance(text);u.lang="ar-IQ";u.rate=1.03;u.pitch=1;u.volume=1;window.speechSynthesis.cancel();window.setTimeout(()=>window.speechSynthesis.speak(u),160);}}catch(_){}
+}
+function nearestRouteIndex(coords,point,from=0){
+  if(!Array.isArray(coords)||!coords.length||!point)return 0;let best=Math.max(0,Math.min(coords.length-1,Number(from)||0)),bestKm=Infinity;
+  const start=Math.max(0,best-10),end=Math.min(coords.length-1,best+180);for(let i=start;i<=end;i++){const c={latitude:Number(coords[i][0]),longitude:Number(coords[i][1])},d=haversine(point,c);if(d<bestKm){bestKm=d;best=i;}}
+  if(bestKm>.18){for(let i=0;i<coords.length;i+=3){const c={latitude:Number(coords[i][0]),longitude:Number(coords[i][1])},d=haversine(point,c);if(d<bestKm){bestKm=d;best=i;}}}
+  return best;
+}
+function routeDistanceMeters(coords,fromIndex,toIndex,current){
+  if(!coords?.length)return Infinity;const from=Math.max(0,Math.min(coords.length-1,fromIndex)),to=Math.max(from,Math.min(coords.length-1,toIndex));let km=0;
+  if(current)km+=haversine(current,{latitude:Number(coords[from][0]),longitude:Number(coords[from][1])});
+  for(let i=from;i<to;i++)km+=haversine({latitude:Number(coords[i][0]),longitude:Number(coords[i][1])},{latitude:Number(coords[i+1][0]),longitude:Number(coords[i+1][1])});
+  return km*1000;
+}
+function maneuverKey(orderId,m,coords){const i=Math.max(0,Math.min((coords?.length||1)-1,Number(m?.begin_shape_index||0))),c=coords?.[i]||[0,0],instruction=String(m?.instruction||m?.street_names?.[0]||"").replace(/\s+/g," ").trim().slice(0,80);return `${orderId}|${Number(m?.type||0)}|${Number(c[0]).toFixed(4)},${Number(c[1]).toFixed(4)}|${instruction}`;}
+function nextGuidanceManeuver(current){
+  const nav=state.routeNavigation;if(!nav?.coords?.length||!nav?.maneuvers?.length)return null;
+  const index=nearestRouteIndex(nav.coords,current,state.routeProgressIndex);state.routeProgressIndex=Math.max(state.routeProgressIndex,index);
+  const maneuver=nav.maneuvers.find(m=>isGuidanceManeuver(m)&&Number(m.begin_shape_index||0)>state.routeProgressIndex);if(!maneuver)return null;
+  const meters=routeDistanceMeters(nav.coords,state.routeProgressIndex,Number(maneuver.begin_shape_index||0),current);return {maneuver,meters};
+}
+function evaluateTurnAnnouncement(current){
+  const active=activeDrivingOrder(),nav=state.routeNavigation;if(!active||!nav||nav.orderId!==active.firestoreId)return;
+  const next=nextGuidanceManeuver(current);if(!next)return;
+  const {maneuver,meters}=next,rounded=Math.max(10,Math.round(meters/10)*10);byId("nextTurnText")&&(byId("nextTurnText").textContent=`${rounded} م • ${maneuver.instruction||maneuverArabicPhrase(maneuver)}`);byId("nextTurnIcon")&&(byId("nextTurnIcon").textContent=turnIcon(maneuver));
+  if(meters>112||meters<12)return;const key=maneuverKey(active.firestoreId,maneuver,nav.coords);if(state.announcedTurnKeys.has(key))return;
+  state.announcedTurnKeys.add(key);if(state.announcedTurnKeys.size>80){const first=state.announcedTurnKeys.values().next().value;state.announcedTurnKeys.delete(first);}speakDriverNavigation(`بعد مئة متر، ${maneuverArabicPhrase(maneuver)}`,maneuver.type);
+}
+function osrmManeuverType(step){const mod=String(step?.maneuver?.modifier||"").toLowerCase(),type=String(step?.maneuver?.type||"").toLowerCase();if(type==="roundabout"||type==="rotary")return 26;if(type==="exit roundabout"||type==="exit rotary")return 27;if(type==="merge")return 25;if(mod==="sharp right")return 11;if(mod==="right")return 10;if(mod==="slight right")return 9;if(mod==="uturn")return 12;if(mod==="sharp left")return 14;if(mod==="left")return 15;if(mod==="slight left")return 16;if(mod==="straight")return 22;return 8;}
+function osrmManeuvers(route,coords){const out=[];for(const leg of route?.legs||[])for(const step of leg.steps||[]){const loc=step?.maneuver?.location;if(!Array.isArray(loc)||loc.length<2)continue;const point={latitude:Number(loc[1]),longitude:Number(loc[0])};const idx=nearestRouteIndex(coords,point,0);const type=osrmManeuverType(step);out.push({type,begin_shape_index:idx,end_shape_index:idx,street_names:step.name?[String(step.name)]:[],instruction:maneuverArabicPhrase({type,street_names:step.name?[String(step.name)]:[]})});}return out;}
+
 async function valhallaNavigate(a,b){const body={locations:[{lat:a.latitude,lon:a.longitude},{lat:Number(b.latitude),lon:Number(b.longitude)}],costing:"auto",units:"kilometers",language:"ar-IQ",directions_options:{units:"kilometers",language:"ar-IQ"},alternates:1};const r=await fetch("https://valhalla1.openstreetmap.de/route",{method:"POST",headers:{"Content-Type":"application/json","X-Client-Id":"karwa0.app"},body:JSON.stringify(body),signal:AbortSignal.timeout(5500)});if(!r.ok)throw new Error("VALHALLA");const x=await r.json(),leg=x.trip?.legs?.[0],sum=x.trip?.summary;if(!leg||!sum)throw 0;return{coords:decodeValhallaShape(leg.shape),km:Number(sum.length||0),mins:Number(sum.time||0)/60,maneuvers:leg.maneuvers||[]};}
 function haversine(a,b){const R=6371,r=v=>v*Math.PI/180,dl=r(b.latitude-a.latitude),dn=r(b.longitude-a.longitude);const x=Math.sin(dl/2)**2+Math.cos(r(a.latitude))*Math.cos(r(b.latitude))*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(x));}
 
@@ -689,15 +759,18 @@ async function releaseDriverLockForCompletedOrder(){
 async function drawPickupRoute(force=false) {
   if (!state.map) return;
   const activeOrder=state.orders.find(order=>order.driverId===state.user?.uid&&!order.cancelled&&Number(order.statusIndex||0)<4);
-  const st=Number(activeOrder?.statusIndex||0),target=st>=3?activeOrder?.destinationLocation:activeOrder?.pickupLocation;if(!target)return;
+  if(!activeOrder){state.routeNavigation=null;state.navigationOrderId=null;state.routeProgressIndex=0;return;}
+  if(state.navigationOrderId!==activeOrder.firestoreId){state.navigationOrderId=activeOrder.firestoreId;state.announcedTurnKeys.clear();state.routeProgressIndex=0;state.routeNavigation=null;}
+  const st=Number(activeOrder.statusIndex||0),target=st>=3?activeOrder.destinationLocation:activeOrder.pickupLocation;if(!target)return;
   const targetPoint=[Number(target.latitude),Number(target.longitude)];if(state.pickupMarker)state.pickupMarker.setLatLng(targetPoint);else state.pickupMarker=window.L.marker(targetPoint,{icon:mapIcon("pickup")}).addTo(state.map);state.pickupMarker.bindPopup(st>=3?"عنوان العميل":(activeOrder?.type==="serviceDelivery"?"عنوان النشاط / الاستلام":"موقع العميل"));
-  if(!state.driverMarker)return;const pos=state.driverMarker.getLatLng(),now=Date.now(),current={latitude:pos.lat,longitude:pos.lng};const moved=state.lastRoutePoint?haversine(current,state.lastRoutePoint):Infinity;if(!force&&now-state.lastRouteAt<5000&&moved<.03)return;state.lastRouteAt=now;state.lastRoutePoint=current;
+  if(!state.driverMarker)return;const pos=state.driverMarker.getLatLng(),now=Date.now(),current={latitude:pos.lat,longitude:pos.lng};const moved=state.lastRoutePoint?haversine(current,state.lastRoutePoint):Infinity;if(!force&&now-state.lastRouteAt<5000&&moved<.03){evaluateTurnAnnouncement(current);return;}state.lastRouteAt=now;state.lastRoutePoint=current;
   let coords=[[pos.lat,pos.lng],targetPoint],km=haversine(current,target)*1.28,mins=km/28*60,provider="تقدير",maneuvers=[];
-  try{const vr=await valhallaNavigate(current,target);coords=vr.coords;km=vr.km;mins=vr.mins;maneuvers=vr.maneuvers;provider="Valhalla";}catch(e){try{const u=`https://router.project-osrm.org/route/v1/driving/${pos.lng},${pos.lat};${target.longitude},${target.latitude}?overview=full&geometries=geojson`;const r=await fetch(u,{signal:AbortSignal.timeout(4500)}),x=await r.json(),route=x.routes?.[0];if(!route)throw 0;coords=route.geometry.coordinates.map(([lng,lat])=>[lat,lng]);km=route.distance/1000;mins=route.duration/60;provider="OSRM";}catch(_){}}
+  try{const vr=await valhallaNavigate(current,target);coords=vr.coords;km=vr.km;mins=vr.mins;maneuvers=vr.maneuvers;provider="Valhalla";}catch(e){try{const u=`https://router.project-osrm.org/route/v1/driving/${pos.lng},${pos.lat};${target.longitude},${target.latitude}?overview=full&steps=true&geometries=geojson`;const r=await fetch(u,{signal:AbortSignal.timeout(4500)}),x=await r.json(),route=x.routes?.[0];if(!route)throw 0;coords=route.geometry.coordinates.map(([lng,lat])=>[lat,lng]);km=route.distance/1000;mins=route.duration/60;maneuvers=osrmManeuvers(route,coords);provider="OSRM";}catch(_){} }
+  state.routeNavigation={orderId:activeOrder.firestoreId,coords,maneuvers,updatedAt:Date.now()};state.routeProgressIndex=0;
   if(state.routeLine)state.routeLine.setLatLngs(coords);else state.routeLine=window.L.polyline(coords,{color:"#087b75",weight:8,opacity:.95,lineCap:"round"}).addTo(state.map);
   byId("driverEta").textContent=`${Math.max(1,Math.round(mins))} دقيقة`;byId("driverRemaining").textContent=km<1?`${Math.max(1,Math.round(km*1000))} م`:`${km.toFixed(1)} كم`;byId("driverNavTarget").textContent=st>=3?"إلى الوجهة":"إلى الراكب";byId("driverRouteProvider").textContent=provider;
-  const m=maneuvers.find(x=>Number(x.length||0)>.02)||maneuvers[0];byId("nextTurnText").textContent=m?.instruction||m?.verbal_transition_alert_instruction||"استمر على المسار المحدد";byId("nextTurnIcon").textContent=turnIcon(m);
-  byId("offRouteAlert").classList.add("hidden");if(force)state.map.fitBounds(state.routeLine.getBounds(),{padding:[40,40],maxZoom:17});
+  const m=maneuvers.find(x=>isGuidanceManeuver(x))||maneuvers[0];byId("nextTurnText").textContent=m?.instruction||m?.verbal_transition_alert_instruction||"استمر على المسار المحدد";byId("nextTurnIcon").textContent=turnIcon(m);
+  byId("offRouteAlert").classList.add("hidden");evaluateTurnAnnouncement(current);if(force)state.map.setView([pos.lat,pos.lng],16,{animate:true,duration:.38});
 }
 
 async function getDriverPrecisePosition(options = {}) {
@@ -734,6 +807,7 @@ function showOwnPosition(position) {
   setDriverMarkerVisual(state.driverMarker, heading, state.markerStyle);
   applyDriverCamera(point, heading);
   updateDriverHeadingHud(heading, position.coords.speed);
+  evaluateTurnAnnouncement({latitude,longitude});
   const acc=Math.round(position.coords.accuracy||0);
   const excellent=acc>0&&acc<=15, precise=acc>0&&acc<=30;
   setLocationStatus(excellent?"GPS ممتاز":(precise?"GPS دقيق":"GPS مقبول"), "approved");
@@ -1561,7 +1635,7 @@ byId("driverTopupForm")?.addEventListener("submit",async event=>{
   if(transferReference.length<3)return toast("اكتب مرجع التحويل");
   if(driverHasPendingTopup())return toast("لديك طلب شحن قيد المراجعة. لا يمكن إرسال طلب آخر حتى تعتمد الإدارة الطلب أو ترفضه.");
   const button=event.submitter||byId("driverTopupSubmit");busy(button,true,"جاري الإرسال…");
-  try{const requestRef=doc(collection(db,"topupRequests"));const batch=writeBatch(db);batch.set(requestRef,{userId:state.user.uid,customerName:state.userData?.name||state.user.displayName||"كابتن",email:state.user.email||"",amount,transferReference:transferReference.slice(0,80),method:"mastercard_local",accountType:"captain",accountRole:state.userData?.role||"driver",status:"pending",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});batch.set(doc(db,"topupLocks",state.user.uid),{userId:state.user.uid,requestId:requestRef.id,status:"pending",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});await batch.commit();state.topupRequests=[{firestoreId:requestRef.id,userId:state.user.uid,amount,transferReference,status:"pending",createdAt:null},...state.topupRequests.filter(x=>x.firestoreId!==requestRef.id)];renderDriverTopupRequests();event.currentTarget.reset();toast("تم إرسال طلب الشحن مرة واحدة. انتظر قرار الإدارة قبل طلب جديد.");}catch(error){console.error(error);toast(error?.code==="permission-denied"?"يوجد طلب شحن قيد المراجعة بالفعل أو لم تُنشر قواعد Phase 78 بعد.":"تعذر إرسال طلب الشحن");}finally{busy(button,false);updateDriverTopupFormState();}
+  try{const requestRef=doc(collection(db,"topupRequests"));const batch=writeBatch(db);batch.set(requestRef,{userId:state.user.uid,customerName:state.userData?.name||state.user.displayName||"كابتن",email:state.user.email||"",amount,transferReference:transferReference.slice(0,80),method:"mastercard_local",accountType:"captain",accountRole:state.userData?.role||"driver",status:"pending",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});batch.set(doc(db,"topupLocks",state.user.uid),{userId:state.user.uid,requestId:requestRef.id,status:"pending",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});await batch.commit();state.topupRequests=[{firestoreId:requestRef.id,userId:state.user.uid,amount,transferReference,status:"pending",createdAt:null},...state.topupRequests.filter(x=>x.firestoreId!==requestRef.id)];renderDriverTopupRequests();event.currentTarget.reset();toast("تم إرسال طلب الشحن مرة واحدة. انتظر قرار الإدارة قبل طلب جديد.");}catch(error){console.error(error);toast(error?.code==="permission-denied"?"يوجد طلب شحن قيد المراجعة بالفعل أو لم تُنشر قواعد Phase 79 بعد.":"تعذر إرسال طلب الشحن");}finally{busy(button,false);updateDriverTopupFormState();}
 });
 
 onAuthStateChanged(auth, user => {

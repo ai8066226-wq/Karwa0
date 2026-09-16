@@ -1,12 +1,9 @@
-Karwa Phase 78 / 2.2.9
+Karwa Phase 80 / 2.3.1
 
 هذه النسخة لا تحتوي Cloud Functions.
-انشر فقط:
-1) Firestore Rules
-2) Firebase Hosting
 
-الأوامر:
-firebase deploy --only firestore:rules
-firebase deploy --only hosting
+مهم جدًا لإصلاح زر قبول وتفعيل:
+1) firebase deploy --only firestore:rules
+2) firebase deploy --only hosting
 
-ملاحظة: Push التلقائي عند إغلاق التطبيق بالكامل غير متوفر دون مرسل خادمي لـ FCM.
+يجب نشر firestore.rules الجديدة قبل تجربة التفعيل، لأنها تسمح للإدارة باستعادة ملف users المفقود للطلبات القديمة بشكل مقيد وآمن.

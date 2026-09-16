@@ -49,11 +49,17 @@ service cloud.firestore { match /databases/{database}/documents {
  function walletCharged(uid,amount){let before=get(/databases/$(database)/documents/users/$(uid)).data;let after=getAfter(/databases/$(database)/documents/users/$(uid)).data;return amount==0||(walletValue(before)>=amount&&walletValue(after)==walletValue(before)-amount&&after.get('balance',0)>=0&&after.get('bonusBalance',0)>=0);}
  function validSignupWallet(data){let b=data.get('bonusBalance',0);return data.balance==0&&data.get('welcomeBonusEvaluated',false)==true&&(signupBonusEnabled()?(b==signupBonusAmount()&&b>=0&&((b==0&&data.get('bonusExpiresAt',null)==null)||(b>0&&data.bonusExpiresAt is timestamp&&data.bonusExpiresAt>request.time&&data.bonusExpiresAt<=request.time+duration.value(signupBonusHours(),'h')))&&data.get('welcomeBonusGranted',false)==(b>0)):(b==0&&data.get('welcomeBonusGranted',false)==false));}
  function walletDecreaseOnly(){return request.resource.data.get('balance',0) is number&&request.resource.data.get('bonusBalance',0) is number&&request.resource.data.get('balance',0)>=0&&request.resource.data.get('bonusBalance',0)>=0&&request.resource.data.get('balance',0)<=resource.data.get('balance',0)&&request.resource.data.get('bonusBalance',0)<=resource.data.get('bonusBalance',0)&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['balance','bonusBalance','updatedAt']);}
+ function validAdminActivationUser(data){return admin()
+   && data.role in ['driver','serviceProvider']
+   && data.balance is number && data.balance>=0
+   && data.get('bonusBalance',0) is number && data.get('bonusBalance',0)>=0
+   && data.get('notifications',true) is bool;}
  match /users/{uid}{
-   allow create:if own(uid)
+   allow create:if (own(uid)
      && (request.resource.data.role=='customer'||request.resource.data.role=='driverApplicant'||request.resource.data.role=='serviceApplicant')
      && request.resource.data.balance is number
-     && validSignupWallet(request.resource.data);
+     && validSignupWallet(request.resource.data))
+     || validAdminActivationUser(request.resource.data);
    allow read:if own(uid)||admin();
    allow update:if admin()||(own(uid)&&(
      (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','email','notifications','savedAddresses','updatedAt']))
@@ -303,6 +309,7 @@ service cloud.firestore { match /databases/{database}/documents {
      || (customer()
        && resource.data.userId==request.auth.uid
        && resource.data.cancelled==false
+       && (resource.data.type!='ride' || resource.data.statusIndex<3)
        && request.resource.data.cancelled==true
        && request.resource.data.cancelledBy=='customer'
        && request.resource.data.cancelledByRole=='customer'
@@ -343,8 +350,8 @@ service cloud.firestore { match /databases/{database}/documents {
            || (resource.data.type in ['parcel','food','serviceDelivery'] && currentDriver().get('serviceType','')=='delivery' && currentDriver().get('vehicleType','') in ['اقتصادي','تكسي','عائلي','دراجة'] && (resource.data.type!='serviceDelivery' || currentDriver().get('city','')==resource.data.get('serviceCity',''))))
          && driverNearPickup10Km()
          && currentDriver().get('activeOrderId','')=='' && getAfter(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.activeOrderId==id)
-       || (resource.data.driverId==request.auth.uid && request.resource.data.driverId==request.auth.uid && request.resource.data.statusIndex==resource.data.statusIndex+1 && request.resource.data.statusIndex<=4 && !(resource.data.type=='serviceDelivery'&&resource.data.statusIndex==2) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['statusIndex','arrivedAt','startedAt','completedAt','paymentStatus','updatedAt']))
-       || (resource.data.driverId==request.auth.uid && request.resource.data.driverId==request.auth.uid && resource.data.type=='serviceDelivery' && resource.data.statusIndex==2 && request.resource.data.statusIndex==3 && pickupOtpMatches() && request.resource.data.pickupVerifiedAt is timestamp && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['statusIndex','startedAt','pickupVerificationCode','pickupVerifiedAt','updatedAt']))
+       || (resource.data.driverId==request.auth.uid && request.resource.data.driverId==request.auth.uid && resource.data.cancelled==false && request.resource.data.cancelled==false && request.resource.data.statusIndex==resource.data.statusIndex+1 && request.resource.data.statusIndex<=4 && !(resource.data.type=='serviceDelivery'&&resource.data.statusIndex==2) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['statusIndex','arrivedAt','startedAt','completedAt','paymentStatus','updatedAt']))
+       || (resource.data.driverId==request.auth.uid && request.resource.data.driverId==request.auth.uid && resource.data.cancelled==false && request.resource.data.cancelled==false && resource.data.type=='serviceDelivery' && resource.data.statusIndex==2 && request.resource.data.statusIndex==3 && pickupOtpMatches() && request.resource.data.pickupVerifiedAt is timestamp && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['statusIndex','startedAt','pickupVerificationCode','pickupVerifiedAt','updatedAt']))
        || (resource.data.driverId==request.auth.uid
          && request.resource.data.driverId==request.auth.uid
          && resource.data.cancelled==false
