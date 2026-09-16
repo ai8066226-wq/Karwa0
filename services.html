@@ -93,9 +93,9 @@
     @media(max-width:430px){.account>span{display:none}.metrics{grid-template-columns:1fr 1fr}.metric{padding-right:49px}.metric small{font-size:9px}.metric strong{font-size:15px}.form-grid,.summary{grid-template-columns:1fr}.field.full{grid-column:auto}.auth-card h2{font-size:26px}.catalog>.card-head{padding:14px}.request-card-head{gap:7px}.request-meta span{width:100%;border-radius:10px}.unified-topup-grid{grid-template-columns:1fr}}
     @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.button,.service-quick-nav a{transition:none}}
   </style>
-  <link rel="stylesheet" href="./native-notifications.css?v=66">
+  <link rel="stylesheet" href="./native-notifications.css?v=67">
 
-<style id="phase66-provider-theme-css">
+<style id="phase67-provider-theme-css">
 .preview-panel{padding:0!important;background:#fff!important;overflow:hidden}.preview-panel:after{display:none!important}.preview-theme-cover{position:relative;min-height:178px;background:#10233f center/cover no-repeat;margin:0 0 17px}.preview-theme-cover:before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(2,17,26,.01),rgba(2,17,26,.4))}.preview-theme-icon{position:absolute;right:16px;bottom:14px;z-index:1;width:48px;height:48px;display:grid;place-items:center;border-radius:15px;color:#fff;background:var(--preview-theme-accent,#087b75);border:1px solid rgba(255,255,255,.58);box-shadow:0 10px 25px rgba(0,0,0,.22);font-size:23px}.preview-panel>.preview-category,.preview-panel>h3,.preview-panel>p,.preview-panel>.catalog-list{margin-right:20px;margin-left:20px}.preview-panel>.catalog-list{margin-bottom:20px}.preview-panel>h3{font-size:21px}
 </style>
 </head>
@@ -165,11 +165,11 @@
       <section class="card card-body"><div class="card-head"><div><h2>إدارة ملف الخدمة</h2><p class="muted">احرص على إبقاء بيانات التواصل والخدمات محدثة.</p></div><span class="status ok">محمي ومعتمد</span></div>
         <form id="providerForm"><div class="form-grid"><div class="field"><label for="pBusinessName">اسم النشاط</label><input id="pBusinessName" maxlength="80" required></div><div class="field"><label for="pCategory">تصنيف الخدمة</label><input id="pCategory" disabled></div><div class="field"><label for="pPhone">رقم الهاتف</label><input id="pPhone" inputmode="tel" maxlength="20" required></div><div class="field"><label for="pCity">المدينة</label><input id="pCity" maxlength="50" required></div><div class="field full"><label for="pAddress">العنوان</label><input id="pAddress" maxlength="160" required></div><div class="field full"><label for="pDescription">وصف النشاط</label><textarea id="pDescription" maxlength="500"></textarea></div><div class="field full"><label>الموقع الجغرافي</label><button class="button secondary" id="pGpsBtn" type="button">📍 تحديث موقعي الحالي</button><small id="pGpsStatus">لم يتم تحديد الموقع</small></div><div class="field full"><div class="toggle-row"><div><b>إظهار النشاط للعملاء</b><small style="display:block;margin-top:4px">يمكنك إيقاف الظهور مؤقتًا دون فقدان بياناتك.</small></div><label class="toggle"><input id="pActive" type="checkbox" checked><span></span></label></div></div></div>
           <div class="catalog">
-            <div class="card-head"><div><h3>الخدمات أو المنتجات</h3><p class="muted">أضف التفاصيل وسعر الوحدة، وحدد هل هي بالكيلو أو بالنفر أو بالقطعة.</p></div><span class="status ok" id="pItemCount">0 عنصر</span></div>
+            <div class="card-head"><div><h3>الخدمات أو المنتجات</h3><p class="muted">أضف التفاصيل وسعر الوحدة المناسبة: قطعة، وجبة، نفر، وزن، لتر، عبوة، متر، ساعة أو يوم.</p></div><span class="status ok" id="pItemCount">0 عنصر</span></div>
             <div class="catalog-editor advanced-catalog-editor">
               <input id="pItemName" maxlength="80" placeholder="اسم الوجبة أو الخدمة">
               <input id="pItemPrice" type="number" min="1" step="250" placeholder="سعر الوحدة">
-              <select id="pItemUnit" aria-label="وحدة التسعير"><option value="item">بالقطعة / الطلب</option><option value="kg">بالكيلوغرام</option><option value="person">بالنفر</option></select>
+              <select id="pItemUnit" aria-label="وحدة التسعير"><option value="item">بالقطعة / الطلب</option><option value="meal">بالوجبة</option><option value="person">بالنفر</option><option value="kg">بالكيلوغرام</option><option value="pack">بالعبوة / الباكيت</option><option value="liter">باللتر</option><option value="meter">بالمتر</option><option value="hour">بالساعة</option><option value="day">باليوم</option></select>
               <textarea id="pItemDescription" maxlength="300" placeholder="تفاصيل الوجبة أو الخدمة"></textarea>
               <div class="delivery-editor"><label><input id="pDeliveryAvailable" type="checkbox"> التوصيل متاح</label><input id="pDeliveryFee" type="number" min="0" step="250" value="0" placeholder="أجرة التوصيل" disabled></div>
               <button class="button secondary" id="pAddItem" type="button">＋ إضافة وحفظ العنصر</button>
@@ -186,10 +186,10 @@
 
   <section class="shell hidden" id="deniedView"><div class="card auth-card" style="max-width:520px;margin:8vh auto;text-align:center"><div style="font-size:44px">🔐</div><h1>هذه البوابة مخصصة لمزودي الخدمات</h1><p class="muted" id="deniedText">نوع الحساب الحالي لا يملك صلاحية فتح هذه الصفحة.</p><button class="button danger wide" id="deniedLogout" type="button">تسجيل الخروج</button></div></section>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="./precise-location.js?v=66"></script>
-  <script src="./native-notifications.js?v=66"></script>
-  <script src="./service-themes.js?v=66"></script>
-  <script type="module" src="./services.js?v=66"></script>
-  <script src="./pwa.js?v=66"></script>
+  <script src="./precise-location.js?v=67"></script>
+  <script src="./native-notifications.js?v=67"></script>
+  <script src="./service-themes.js?v=67"></script>
+  <script type="module" src="./services.js?v=67"></script>
+  <script src="./pwa.js?v=67"></script>
 </body>
 </html>

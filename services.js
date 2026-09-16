@@ -475,7 +475,7 @@ byId("resubmitForm").addEventListener("submit", async event => {
   }
 });
 
-const itemUnitLabels = { item: "قطعة / طلب", kg: "كيلوغرام", person: "نفر" };
+const itemUnitLabels = { item: "قطعة / طلب", meal: "وجبة", person: "نفر", kg: "كيلوغرام", pack: "عبوة / باكيت", liter: "لتر", meter: "متر", hour: "ساعة", day: "يوم" };
 
 function normalizedProviderItem(item = {}) {
   const unit = itemUnitLabels[item.unit] ? item.unit : "item";
@@ -553,7 +553,7 @@ byId("pAddItem").addEventListener("click", event => {
 
 function renderPreview() {
   const category = currentProfile?.category || currentApplication?.category || "other";
-  const theme = window.KarwaServiceThemes?.resolve?.({ category, serviceType:currentApplication?.serviceType || "", description:byId("pDescription")?.value || currentProfile?.description || "", items:providerItems }) || { image:"./theme-parcel.webp?v=66", accent:"#087b75", icon:"🧰", key:"parcel" };
+  const theme = window.KarwaServiceThemes?.resolve?.({ category, serviceType:currentApplication?.serviceType || "", description:byId("pDescription")?.value || currentProfile?.description || "", items:providerItems }) || { image:"./theme-parcel.webp?v=67", accent:"#087b75", icon:"🧰", key:"parcel" };
   const cover = byId("previewThemeCover");
   if (cover) { cover.style.backgroundImage = `linear-gradient(180deg,rgba(3,15,24,.02),rgba(3,15,24,.2)),url('${theme.image}')`; cover.style.setProperty("--preview-theme-accent", theme.accent); cover.dataset.theme = theme.key; }
   const themeIcon = byId("previewThemeIcon"); if (themeIcon) themeIcon.textContent = theme.icon;

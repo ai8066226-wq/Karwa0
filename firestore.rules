@@ -361,7 +361,7 @@ service cloud.firestore { match /databases/{database}/documents {
      && request.resource.data.unitPrice is number && request.resource.data.unitPrice>0 && request.resource.data.unitPrice==providerItem().price
      && request.resource.data.itemPrice==request.resource.data.unitPrice
      && request.resource.data.quantity is number && request.resource.data.quantity>0 && request.resource.data.quantity<=100
-     && (request.resource.data.itemUnit=='kg'||request.resource.data.quantity is int)
+     && ((request.resource.data.itemUnit in ['kg','liter','meter','hour'])||request.resource.data.quantity is int)
      && request.resource.data.subtotal==request.resource.data.unitPrice*request.resource.data.quantity
      && request.resource.data.deliveryRequested is bool
      && request.resource.data.deliveryFee is number && request.resource.data.deliveryFee>=0
@@ -392,7 +392,7 @@ service cloud.firestore { match /databases/{database}/documents {
      && request.resource.data.unitPrice is number && request.resource.data.unitPrice>0 && request.resource.data.unitPrice==providerItem().price
      && request.resource.data.itemPrice==request.resource.data.unitPrice
      && request.resource.data.quantity is number && request.resource.data.quantity>0 && request.resource.data.quantity<=100
-     && (request.resource.data.itemUnit=='kg'||request.resource.data.quantity is int)
+     && ((request.resource.data.itemUnit in ['kg','liter','meter','hour'])||request.resource.data.quantity is int)
      && request.resource.data.subtotal==request.resource.data.unitPrice*request.resource.data.quantity
      && request.resource.data.itemDeliveryAvailable is bool
      && request.resource.data.itemDeliveryAvailable==providerItem().get('deliveryAvailable',false)

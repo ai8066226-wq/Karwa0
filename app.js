@@ -1181,7 +1181,7 @@ function restaurantSafeText(value) {
 }
 
 function karwaServiceTheme(input = {}) {
-  return window.KarwaServiceThemes?.resolve?.(input) || { key:"parcel", image:"./theme-parcel.webp?v=66", accent:"#087b75", icon:"🧰" };
+  return window.KarwaServiceThemes?.resolve?.(input) || { key:"parcel", image:"./theme-parcel.webp?v=67", accent:"#087b75", icon:"🧰" };
 }
 function karwaServiceThemeStyle(input = {}) {
   const theme = karwaServiceTheme(input);
@@ -1226,12 +1226,17 @@ function renderRestaurants() {
     byId("mealDetailTitle").textContent = meal.name;
     const normalizedMeal = normalizedClientItem(meal); byId("mealDetailIcon").textContent = "🍽️";
     byId("mealDetailDescription").textContent = normalizedMeal.description || "لا توجد تفاصيل إضافية لهذه الوجبة.";
-    byId("mealDetailPrice").textContent = formatMoney(normalizedMeal.price);
+    const mealSpec = itemUnitSpec(normalizedMeal.unit);
+    byId("mealDetailPrice").textContent = `${formatMoney(normalizedMeal.price)} / ${mealSpec.label}`;
+    configureQuantityInput(byId("mealQuantity"), normalizedMeal.unit, true);
+    if (byId("mealQuantityLabel")) byId("mealQuantityLabel").textContent = mealSpec.quantityLabel;
+    if (byId("mealQuantityHint")) byId("mealQuantityHint").textContent = `سعر الوحدة ${formatMoney(normalizedMeal.price)} لكل ${mealSpec.label}`;
     const choice=byId("mealDeliveryChoice"), toggle=byId("mealDeliveryRequested"), hint=byId("mealDeliveryChoiceHint");
     if(choice) choice.hidden=!normalizedMeal.deliveryAvailable;
     if(toggle){toggle.disabled=!normalizedMeal.deliveryAvailable; toggle.checked=false;}
     if(hint) hint.textContent=normalizedMeal.deliveryAvailable ? `التوصيل متاح مقابل ${formatMoney(normalizedMeal.deliveryFee)}، أو يمكنك الاستلام من المطعم` : "هذه الوجبة للاستلام من المطعم فقط";
-    byId("addDetailedMeal").disabled = false; byId("addDetailedMeal").textContent = "اختيار هذه الأكلة"; byId("mealDetailBackdrop").hidden = false;
+    updateMealQuantityTotal();
+    byId("addDetailedMeal").disabled = false; byId("addDetailedMeal").textContent = "إضافة الطلب بالكمية المحددة"; byId("mealDetailBackdrop").hidden = false;
   }));
 }
 function subscribeRestaurants() {
@@ -1273,10 +1278,40 @@ byId("publishRestaurant")?.addEventListener("click", async event => {
   } catch(error) { console.error(error); showToast("تعذر نشر المطعم. تأكد من نشر قواعد Firestore الجديدة."); }
   finally { setButtonBusy(button,false); }
 });
+function updateMealQuantityTotal(){
+  const meal = state.selectedMeal;
+  const input = byId("mealQuantity");
+  const totalEl = byId("mealQuantityTotal");
+  if (!meal || !input || !totalEl) return;
+  const normalized = normalizedClientItem(meal);
+  const spec = itemUnitSpec(normalized.unit);
+  const quantity = Number(input.value || 0);
+  const valid = quantityIsValid(quantity, normalized.unit);
+  const subtotal = valid ? Math.round(normalized.price * quantity) : 0;
+  const delivery = Boolean(normalized.deliveryAvailable && byId("mealDeliveryRequested")?.checked) ? normalized.deliveryFee : 0;
+  totalEl.textContent = valid ? `${formatServiceQuantity(quantity)} ${spec.short} = ${formatMoney(subtotal)}${delivery ? ` • مع التوصيل ${formatMoney(subtotal + delivery)}` : ""}` : `أدخل ${spec.quantityLabel} بشكل صحيح`;
+}
+function changeMealQuantity(direction){
+  const meal = state.selectedMeal; const input = byId("mealQuantity"); if(!meal || !input) return;
+  const normalized = normalizedClientItem(meal); const spec = itemUnitSpec(normalized.unit);
+  const current = quantityIsValid(input.value, normalized.unit) ? Number(input.value) : spec.min;
+  const next = Math.min(spec.max, Math.max(spec.min, Math.round(((current + direction * spec.step) / spec.step)) * spec.step));
+  input.value = String(Number(next.toFixed(2))); updateMealQuantityTotal();
+}
+byId("mealQuantity")?.addEventListener("input", updateMealQuantityTotal);
+byId("mealDeliveryRequested")?.addEventListener("change", updateMealQuantityTotal);
+byId("mealQuantityMinus")?.addEventListener("click",()=>changeMealQuantity(-1));
+byId("mealQuantityPlus")?.addEventListener("click",()=>changeMealQuantity(1));
 byId("closeMealDetail")?.addEventListener("click",()=>byId("mealDetailBackdrop").hidden=true);
 byId("mealDetailBackdrop")?.addEventListener("click",event=>{if(event.target===event.currentTarget) event.currentTarget.hidden=true;});
 byId("addDetailedMeal")?.addEventListener("click",()=>{
-  const meal=state.selectedMeal; if(!meal)return; const normalized=normalizedClientItem(meal); const wantsDelivery=Boolean(normalized.deliveryAvailable && byId("mealDeliveryRequested")?.checked); state.cart=[{name:meal.name,price:Number(meal.price),description:meal.description||"",unit:normalized.unit,deliveryAvailable:normalized.deliveryAvailable,deliveryFee:normalized.deliveryFee,mealIndex:meal.mealIndex,restaurantId:meal.restaurantId,restaurantName:meal.restaurantName,restaurantAddress:meal.restaurantAddress,restaurantPhone:meal.restaurantPhone,restaurantLocation:meal.restaurantLocation}]; if(byId("foodDeliveryRequested")) byId("foodDeliveryRequested").checked=wantsDelivery; renderCart(); byId("mealDetailBackdrop").hidden=true; showToast(wantsDelivery ? "تم اختيار الوجبة مع التوصيل" : "تم اختيار الوجبة للاستلام من المطعم");
+  const meal=state.selectedMeal; if(!meal)return; const normalized=normalizedClientItem(meal);
+  const quantity=Number(byId("mealQuantity")?.value||0); const spec=itemUnitSpec(normalized.unit);
+  if(!quantityIsValid(quantity, normalized.unit)) return showToast(`حدد ${spec.quantityLabel} بشكل صحيح`);
+  const subtotal=Math.round(normalized.price*quantity);
+  const wantsDelivery=Boolean(normalized.deliveryAvailable && byId("mealDeliveryRequested")?.checked);
+  state.cart=[{name:meal.name,price:subtotal,unitPrice:normalized.price,subtotal,quantity,description:meal.description||"",unit:normalized.unit,deliveryAvailable:normalized.deliveryAvailable,deliveryFee:normalized.deliveryFee,mealIndex:meal.mealIndex,restaurantId:meal.restaurantId,restaurantName:meal.restaurantName,restaurantAddress:meal.restaurantAddress,restaurantPhone:meal.restaurantPhone,restaurantLocation:meal.restaurantLocation}];
+  if(byId("foodDeliveryRequested")) byId("foodDeliveryRequested").checked=wantsDelivery; renderCart(); byId("mealDetailBackdrop").hidden=true; showToast(`تم اختيار ${formatServiceQuantity(quantity)} ${spec.short} من ${normalized.name}`);
 });
 
 const otherServiceCategories = {
@@ -1295,7 +1330,39 @@ const otherRequestStatuses = {
   rejected: ["اعتذر المزود", "rejected"],
   cancelled: ["ملغي", "cancelled"]
 };
-const otherItemUnitLabels = { item: "قطعة / طلب", kg: "كيلوغرام", person: "نفر" };
+const otherItemUnits = {
+  item: { label: "قطعة / طلب", short: "قطعة", quantityLabel: "عدد القطع / الطلبات", min: 1, step: 1, max: 100, integer: true },
+  meal: { label: "وجبة", short: "وجبة", quantityLabel: "عدد الوجبات", min: 1, step: 1, max: 100, integer: true },
+  person: { label: "نفر", short: "نفر", quantityLabel: "عدد النفرات", min: 1, step: 1, max: 100, integer: true },
+  kg: { label: "كيلوغرام", short: "كغم", quantityLabel: "الوزن المطلوب (كغم)", min: 0.25, step: 0.25, max: 100, integer: false },
+  pack: { label: "عبوة / باكيت", short: "عبوة", quantityLabel: "عدد العبوات", min: 1, step: 1, max: 100, integer: true },
+  liter: { label: "لتر", short: "لتر", quantityLabel: "الكمية باللتر", min: 0.25, step: 0.25, max: 100, integer: false },
+  meter: { label: "متر", short: "متر", quantityLabel: "الطول بالمتر", min: 0.5, step: 0.5, max: 100, integer: false },
+  hour: { label: "ساعة", short: "ساعة", quantityLabel: "عدد الساعات", min: 0.5, step: 0.5, max: 100, integer: false },
+  day: { label: "يوم", short: "يوم", quantityLabel: "عدد الأيام", min: 1, step: 1, max: 100, integer: true }
+};
+const otherItemUnitLabels = Object.fromEntries(Object.entries(otherItemUnits).map(([key, spec]) => [key, spec.label]));
+function itemUnitSpec(unit) { return otherItemUnits[unit] || otherItemUnits.item; }
+function formatServiceQuantity(value) {
+  const number = Number(value || 0);
+  return Number.isInteger(number) ? number.toLocaleString("ar-IQ") : number.toLocaleString("ar-IQ", { maximumFractionDigits: 2 });
+}
+function quantityIsValid(value, unit) {
+  const spec = itemUnitSpec(unit);
+  const quantity = Number(value);
+  if (!Number.isFinite(quantity) || quantity < spec.min || quantity > spec.max) return false;
+  if (spec.integer && !Number.isInteger(quantity)) return false;
+  const scaled = quantity / spec.step;
+  return Math.abs(scaled - Math.round(scaled)) < 1e-7;
+}
+function configureQuantityInput(input, unit, reset = false) {
+  if (!input) return;
+  const spec = itemUnitSpec(unit);
+  input.min = String(spec.min);
+  input.step = String(spec.step);
+  input.max = String(spec.max);
+  if (reset || !quantityIsValid(input.value, unit)) input.value = String(spec.min);
+}
 
 function normalizedClientItem(item = {}) {
   const unit = otherItemUnitLabels[item.unit] ? item.unit : "item";
@@ -1385,17 +1452,16 @@ function updateSelectedServicePrice() {
   byId("selectedItemImage").textContent = karwaServiceTheme({ ...profile, items:profile.items || [] }).icon || professionIcon(profile) || "🧰";
   byId("selectedItemName").textContent = item.name;
   byId("selectedItemDescription").textContent = item.description || "لا توجد تفاصيل إضافية.";
-  byId("selectedServicePrice").textContent = `${formatMoney(item.price)} لكل ${otherItemUnitLabels[item.unit]}`;
-  byId("otherServiceQuantityLabel").textContent = item.unit === "kg" ? "الوزن المطلوب (كغم)" : item.unit === "person" ? "عدد النفرات" : "الكمية";
-  quantityInput.min = item.unit === "kg" ? "0.25" : "1";
-  quantityInput.step = item.unit === "kg" ? "0.25" : "1";
-  if (!Number.isFinite(Number(quantityInput.value)) || Number(quantityInput.value) < Number(quantityInput.min)) quantityInput.value = "1";
+  const unitSpec = itemUnitSpec(item.unit);
+  byId("selectedServicePrice").textContent = `${formatMoney(item.price)} لكل ${unitSpec.label}`;
+  byId("otherServiceQuantityLabel").textContent = unitSpec.quantityLabel;
+  configureQuantityInput(quantityInput, item.unit);
   if (deliveryNote) deliveryNote.innerHTML = item.deliveryAvailable
     ? `<b>التوصيل متاح بعد موافقة النشاط</b><small>بعد الموافقة تختار التوصيل مقابل ${formatMoney(item.deliveryFee)} أو الاستلام من النشاط.</small>`
     : `<b>الاستلام من النشاط</b><small>هذه الخدمة لا تتضمن توصيلًا. بعد الموافقة تستلمها من النشاط.</small>`;
   const quantity = Math.max(Number(quantityInput.min), Number(quantityInput.value || 1));
   const subtotal = Math.round(item.price * quantity);
-  byId("otherServiceTotalBreakdown").textContent = `${quantity.toLocaleString("ar-IQ")} ${otherItemUnitLabels[item.unit]} × ${formatMoney(item.price)}`;
+  byId("otherServiceTotalBreakdown").textContent = `${formatServiceQuantity(quantity)} ${itemUnitSpec(item.unit).short} × ${formatMoney(item.price)}`;
   byId("otherServiceGrandTotal").textContent = formatMoney(subtotal);
   byId("bookOtherService").disabled = false;
 }
@@ -1581,8 +1647,8 @@ byId("bookOtherService")?.addEventListener("click", async event => {
   const item = normalizedClientItem(profile.items?.[itemIndex]);
   const quantity = Number(byId("otherServiceQuantity").value || 0);
   const requestText = byId("otherServiceRequest").value.trim() || `طلب ${item.name}`;
-  const step = item.unit === "kg" ? 0.25 : 1;
-  if (!Number.isFinite(quantity) || quantity < step || quantity > 100 || (item.unit !== "kg" && !Number.isInteger(quantity))) return showToast("أدخل كمية صحيحة بين الحد الأدنى و100");
+  const unitSpec = itemUnitSpec(item.unit);
+  if (!quantityIsValid(quantity, item.unit)) return showToast(`أدخل ${unitSpec.quantityLabel} بشكل صحيح (من ${formatServiceQuantity(unitSpec.min)} إلى ${formatServiceQuantity(unitSpec.max)})`);
   const unitPrice = Math.max(0, Number(item.price || 0));
   const subtotal = Math.round(unitPrice * quantity);
   const button = event.currentTarget;
@@ -1797,9 +1863,10 @@ function renderCart() {
   const item=state.cart[0];
   const deliveryToggle=byId("foodDeliveryRequested");
   const wantsDelivery=Boolean(item && item.deliveryAvailable && deliveryToggle?.checked);
-  const total=item ? Number(item.price)+(wantsDelivery ? Number(item.deliveryFee||0) : 0) : 0;
+  const subtotal=item ? Number(item.subtotal ?? item.price ?? 0) : 0;
+  const total=item ? subtotal+(wantsDelivery ? Number(item.deliveryFee||0) : 0) : 0;
   byId("cartBar").classList.toggle("show", Boolean(item));
-  byId("cartCount").textContent = item ? `${item.name} — ${item.restaurantName}` : "";
+  byId("cartCount").textContent = item ? `${item.name} • ${formatServiceQuantity(item.quantity||1)} ${itemUnitSpec(item.unit).short} — ${item.restaurantName}` : "";
   byId("cartPrice").textContent = item ? `${formatMoney(total)} • ${wantsDelivery ? "مع التوصيل" : "استلام من المطعم"}` : "";
   if(item && deliveryToggle){ deliveryToggle.disabled=!item.deliveryAvailable; if(!item.deliveryAvailable) deliveryToggle.checked=false; }
   if(byId("foodDeliveryFeeLabel")) byId("foodDeliveryFeeLabel").textContent = item?.deliveryAvailable ? `أجرة التوصيل ${formatMoney(item.deliveryFee||0)} — ألغِ الاختيار للاستلام من المطعم` : "التوصيل غير متاح لهذه الأكلة — الاستلام من المطعم";
@@ -1825,9 +1892,12 @@ byId("orderFood").addEventListener("click", async event => {
   const address=deliveryRequested ? byId("foodCustomerAddress").value.trim() : "استلام من المطعم"; if(deliveryRequested && address.length<3)return showToast("اكتب عنوان العميل بالتفصيل"); if(deliveryRequested && !validServiceLocation(state.customerLocation))return showToast("حدد موقع العميل GPS قبل إرسال طلب التوصيل");
   const restaurant=state.restaurants.find(r=>r.firestoreId===item.restaurantId); const profile=state.serviceProfiles.find(p=>p.firestoreId===item.restaurantId && p.category==="restaurant" && p.active===true && p.approvalStatus==="approved"); if(!restaurant||!profile)return showToast("المطعم لم يعد متاحًا أو غير معتمد");
   const normalized=normalizedClientItem(profile.items?.[item.mealIndex]); if(deliveryRequested && !normalized.deliveryAvailable)return showToast("التوصيل غير متاح لهذه الأكلة؛ اختر الاستلام من المطعم");
+  if(item.unit!==normalized.unit)return showToast("تغيرت وحدة تسعير هذه الأكلة. أعد اختيارها من المطعم.");
+  const quantity=Number(item.quantity||1); if(!quantityIsValid(quantity, normalized.unit))return showToast("الكمية المختارة لم تعد صالحة. أعد اختيار الأكلة.");
+  const subtotal=Math.round(normalized.price*quantity); const deliveryFee=deliveryRequested ? normalized.deliveryFee : 0;
   const button=event.currentTarget; setButtonBusy(button,true,"جاري الإرسال للمطعم…");
   try {
-    await createServiceRequestWithCustomerFee({customerId:state.user.uid,customerName:state.name,providerId:item.restaurantId,providerName:profile.businessName,providerCategory:"restaurant",providerCity:profile.city||"",providerAddress:profile.address,providerLocation:{...profile.location},itemIndex:item.mealIndex,itemName:normalized.name,itemUnit:normalized.unit,quantity:1,unitPrice:normalized.price,itemPrice:normalized.price,subtotal:normalized.price,deliveryRequested,deliveryFee:deliveryRequested ? normalized.deliveryFee : 0,totalPrice:normalized.price+(deliveryRequested ? normalized.deliveryFee : 0),deliveryStatus:deliveryRequested ? "pendingProvider" : "notRequested",deliveryOrderId:"",requestText:`طلب طعام: ${normalized.name}`,customerAddress:address,customerLocation:deliveryRequested ? {...state.customerLocation} : null,status:"pending",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
+    await createServiceRequestWithCustomerFee({customerId:state.user.uid,customerName:state.name,providerId:item.restaurantId,providerName:profile.businessName,providerCategory:"restaurant",providerCity:profile.city||"",providerAddress:profile.address,providerLocation:{...profile.location},itemIndex:item.mealIndex,itemName:normalized.name,itemUnit:normalized.unit,quantity,unitPrice:normalized.price,itemPrice:normalized.price,subtotal,deliveryRequested,deliveryFee,totalPrice:subtotal+deliveryFee,deliveryStatus:deliveryRequested ? "pendingProvider" : "notRequested",deliveryOrderId:"",requestText:`طلب طعام: ${normalized.name} • ${formatServiceQuantity(quantity)} ${itemUnitSpec(normalized.unit).short}`,customerAddress:address,customerLocation:deliveryRequested ? {...state.customerLocation} : null,status:"pending",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
     state.cart=[]; renderCart(); byId("foodCustomerAddress").value=""; byId("foodLocationStatus").textContent="يجب تحديد موقعك قبل إرسال الطلب للمطعم."; showToast(deliveryRequested ? "تم إرسال الطلب للمطعم. بعد موافقته سيصل إلى كابتن التوصيل." : "تم إرسال الطلب للمطعم للاستلام من المطعم دون توصيل.");
   } catch(error){console.error(error);showToast(String(error?.message||"").includes("الرصيد غير كافٍ") ? error.message : "تعذر إرسال الطلب. تأكد أن بيانات المطعم منشورة من بوابة الخدمات ومعتمدة.");} finally {setButtonBusy(button,false);}
 });
