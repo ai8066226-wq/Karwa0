@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0b6f75">
   <meta name="description" content="بوابة كابتن كروة لاستلام الطلبات وتحديث الرحلات">
   <title>كروة | بوابة الكابتن</title>
-  <link rel="stylesheet" href="./portal.css?v=73">
+  <link rel="stylesheet" href="./portal.css?v=75">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css">
   <link rel="manifest" href="./manifest.webmanifest">
@@ -27,6 +27,8 @@ body.driver-map-mode{height:100dvh;overflow:hidden}
 #driverView .layout>aside:not(.driver-options-drawer){position:absolute!important;display:block!important;inset:0;margin:0!important}
 #driverView .layout>aside>.card:first-child{position:absolute!important;z-index:1;inset:0;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:#e9eef4;box-shadow:none!important;overflow:hidden}
 #driverMap{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;min-height:0!important;border:0!important;border-radius:0!important}
+.driver-driving-hud{position:absolute;z-index:520;left:50%;bottom:92px;transform:translateX(-50%);display:grid;grid-template-columns:auto minmax(115px,1fr) minmax(80px,.75fr);align-items:center;gap:8px;min-width:min(520px,calc(100% - 28px));padding:8px 10px;border:1px solid rgba(255,255,255,.34);border-radius:18px;background:rgba(9,29,48,.88);color:#fff;box-shadow:0 10px 30px rgba(0,20,35,.22);backdrop-filter:blur(12px);pointer-events:none}.driver-driving-hud>div{display:grid;gap:1px}.driver-driving-hud small{font-size:9px;opacity:.68}.driver-driving-hud strong{font-size:12px;white-space:nowrap}.driver-driving-mode-badge{padding:6px 8px;border-radius:999px;background:rgba(255,255,255,.12);font-size:9px;font-weight:900;white-space:nowrap}.driver-driving-mode-badge.active{background:#12a594;color:#fff;box-shadow:0 0 0 3px rgba(18,165,148,.18)}#driverView.driving-navigation-active .driver-nav-strip{box-shadow:0 12px 34px rgba(6,52,69,.22)}.driver-marker-help{display:block;margin-top:8px;color:#6b7d8b;font-size:10px;line-height:1.6}.driver-marker-style-picker button{display:flex!important;align-items:center;justify-content:center;gap:5px}.marker-choice-icon{font-size:15px;line-height:1}.driver-marker-style-picker button.active .marker-choice-icon{transform:scale(1.12)}
+
 #driverView>.hero{position:absolute;z-index:760;top:14px;right:16px;left:auto;width:min(430px,calc(100% - 32px));margin:0;padding:14px 16px;border:1px solid rgba(255,255,255,.2);border-radius:20px;background:linear-gradient(135deg,rgba(16,32,68,.95),rgba(31,104,113,.9));box-shadow:0 14px 38px rgba(16,32,68,.24);backdrop-filter:blur(18px)}
 #driverView>.hero h1{font-size:clamp(19px,2vw,25px)}#driverView>.hero p{margin-top:3px;font-size:13px}#driverView>.hero .role-badge{padding:6px 9px;font-size:11px}
 #driverView .layout>aside>.card:first-child>.card-heading,#driverView .driver-nav-strip,#driverView .nav-next-turn,#driverView .route-alert,#driverView #locationHint{position:absolute;z-index:720;margin:0!important;background:rgba(255,255,255,.93);box-shadow:0 8px 26px rgba(16,32,68,.15);backdrop-filter:blur(16px)}
@@ -491,7 +493,7 @@ body.driver-map-mode{--navy:var(--captain-ink);--navy-2:var(--captain-navy);--or
       <aside>
         <div class="card">
           <div class="card-heading"><h3>موقعك المباشر</h3><span class="status-chip active" id="locationStatus">بانتظار الإذن</span></div>
-          <div class="driver-nav-strip"><div><small>الاتجاه</small><strong id="driverNavTarget">—</strong></div><div><small>الوصول</small><strong id="driverEta">—</strong></div><div><small>المتبقي</small><strong id="driverRemaining">—</strong></div><div><small>الملاحة</small><strong id="driverRouteProvider">Valhalla</strong></div></div><div class="nav-next-turn"><span class="turn-icon" id="nextTurnIcon">⬆️</span><div><small>التوجيه التالي</small><strong id="nextTurnText">ابدأ القيادة وسيظهر التوجيه هنا</strong></div></div><div class="route-alert hidden" id="offRouteAlert">تم اكتشاف خروج محتمل عن المسار — جاري إعادة الحساب…</div>
+          <div class="driver-nav-strip"><div><small>الاتجاه</small><strong id="driverNavTarget">—</strong></div><div><small>الوصول</small><strong id="driverEta">—</strong></div><div><small>المتبقي</small><strong id="driverRemaining">—</strong></div><div><small>الملاحة</small><strong id="driverRouteProvider">Valhalla</strong></div></div><div class="nav-next-turn"><span class="turn-icon" id="nextTurnIcon">⬆️</span><div><small>التوجيه التالي</small><strong id="nextTurnText">ابدأ القيادة وسيظهر التوجيه هنا</strong></div></div><div class="driver-driving-hud"><span class="driver-driving-mode-badge" id="driverDrivingModeBadge">وضع القيادة</span><div><small>اتجاه المركبة</small><strong id="driverHeadingText">بانتظار اتجاه الحركة</strong></div><div><small>السرعة</small><strong id="driverSpeedText">— كم/س</strong></div></div><div class="route-alert hidden" id="offRouteAlert">تم اكتشاف خروج محتمل عن المسار — جاري إعادة الحساب…</div>
           <div class="live-map" id="driverMap"></div>
           <div class="driver-map-credit" aria-label="مصادر بيانات الخريطة"><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a><span>·</span><a href="https://openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a></div>
           <p class="muted" id="locationHint">فعّل حالة الاتصال واسمح بالوصول إلى الموقع.</p>
@@ -597,6 +599,13 @@ body.driver-map-mode{--navy:var(--captain-ink);--navy-2:var(--captain-navy);--or
             <button type="button" data-map-view="2d" aria-pressed="true">2D مسطحة</button>
             <button type="button" data-map-view="3d" aria-pressed="false">3D منظور</button>
           </div>
+          <div class="driver-settings-label"><span>شكل مؤشر القيادة</span><span id="driverMarkerStyleValue">سيارة</span></div>
+          <div class="driver-settings-segment driver-marker-style-picker" role="group" aria-label="شكل مؤشر الكابتن على الخريطة">
+            <button type="button" data-driver-marker-style="arrow" aria-pressed="false"><span class="marker-choice-icon">➤</span> سهم</button>
+            <button type="button" data-driver-marker-style="car" aria-pressed="true"><span class="marker-choice-icon">▰</span> سيارة</button>
+            <button type="button" data-driver-marker-style="bike" aria-pressed="false"><span class="marker-choice-icon">◉</span> دراجة</button>
+          </div>
+          <small class="driver-marker-help">يتجه المؤشر حسب اتجاه GPS الحقيقي، ويظهر بنفس الشكل والاتجاه للعميل أثناء التتبع المباشر.</small>
         </section>
         <section class="driver-settings-group" aria-label="تفضيلات القيادة">
           <div class="driver-setting-row"><div><strong>متابعة موقعي تلقائيًا</strong><small>تبقى الخريطة مركزة على موقع المركبة</small></div><button type="button" class="driver-pref-switch on" id="driverAutoFollowSetting" role="switch" aria-checked="true" aria-label="متابعة الموقع تلقائيًا"><span></span></button></div>
@@ -630,9 +639,9 @@ body.driver-map-mode{--navy:var(--captain-ink);--navy-2:var(--captain-navy);--or
   <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
   <script>try{if(window.maplibregl&&maplibregl.setRTLTextPlugin&&(!maplibregl.getRTLTextPluginStatus||maplibregl.getRTLTextPluginStatus()==="unavailable")){maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",true).catch(()=>{});}}catch(e){}</script>
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
-  <script src="./precise-location.js?v=73"></script>
-  <script type="module" src="./driver.js?v=73"></script>
-  <script src="./pwa.js?v=73"></script>
+  <script src="./precise-location.js?v=75"></script>
+  <script type="module" src="./driver.js?v=75"></script>
+  <script src="./pwa.js?v=75"></script>
 <script id="phase20-driver-map-first-js">
 window.addEventListener("DOMContentLoaded",()=>{
   const view=document.getElementById("driverView");

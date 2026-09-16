@@ -210,6 +210,9 @@ const state = {
   mapTheme: readDriverPreference("karwa.driver.mapTheme", "day") === "night" ? "night" : "day",
   mapView: readDriverPreference("karwa.driver.mapView", "2d") === "3d" ? "3d" : "2d",
   autoFollow: readDriverPreference("karwa.driver.autoFollow", "true") !== "false",
+  markerStyle: ["arrow","car","bike"].includes(readDriverPreference("karwa.driver.markerStyle", "car")) ? readDriverPreference("karwa.driver.markerStyle", "car") : "car",
+  driverHeading: null,
+  previousHeadingPoint: null,
   mapSearchMarker: null,
   mapSearchSelection: null,
   driverMarker: null,
@@ -225,6 +228,17 @@ const state = {
 
 let driverPricingSettings = {};
 function driverFixedFee(key,fallback){const n=Number(driverPricingSettings?.[key]);return Math.max(0,Math.min(100000,Math.round(Number.isFinite(n)?n:fallback)));}
+function driverOperationFee(orderOrType){
+  const type=typeof orderOrType==="string"?orderOrType:String(orderOrType?.type||"");
+  const legacy=driverFixedFee("captainOrderFee",250);
+  return type==="ride"?driverFixedFee("captainTaxiFee",legacy):driverFixedFee("captainDeliveryFee",legacy);
+}
+function driverFeeSummary(){
+  const serviceType=String(state.driverData?.serviceType||"");
+  if(serviceType==="taxi")return `${driverOperationFee("ride").toLocaleString("ar-IQ")} د.ع (تكسي)`;
+  if(serviceType==="delivery")return `${driverOperationFee("parcel").toLocaleString("ar-IQ")} د.ع (توصيل)`;
+  return `تكسي ${driverOperationFee("ride").toLocaleString("ar-IQ")} • توصيل ${driverOperationFee("parcel").toLocaleString("ar-IQ")} د.ع`;
+}
 function driverTimestampMillis(value){if(!value)return 0;if(typeof value.toMillis==="function")return value.toMillis();if(Number.isFinite(Number(value?.seconds)))return Number(value.seconds)*1000;const t=new Date(value).getTime();return Number.isFinite(t)?t:0;}
 function driverActiveBonus(data={}){const amount=Math.max(0,Number(data.bonusBalance||0));return amount>0&&driverTimestampMillis(data.bonusExpiresAt)>Date.now()?amount:0;}
 function driverWalletAvailable(data=state.userData||{}){return Math.max(0,Number(data?.balance||0))+driverActiveBonus(data||{});}
@@ -233,7 +247,7 @@ function driverSignupBonusFields(settings=driverPricingSettings||{}){const enabl
 function renderDriverWallet(){
   if(byId("driverWalletBalance"))byId("driverWalletBalance").textContent=`${driverWalletAvailable().toLocaleString("ar-IQ")} د.ع`;
   const bonus=driverActiveBonus(state.userData||{});if(byId("driverBonusStatus"))byId("driverBonusStatus").textContent=bonus>0?`مجاني ${bonus.toLocaleString("ar-IQ")} د.ع حتى ${new Date(driverTimestampMillis(state.userData?.bonusExpiresAt)).toLocaleString("ar-IQ")}`:"الرصيد المشحون";
-  if(byId("driverOrderFeeLabel"))byId("driverOrderFeeLabel").textContent=`${driverFixedFee("captainOrderFee",250).toLocaleString("ar-IQ")} د.ع`;
+  if(byId("driverOrderFeeLabel"))byId("driverOrderFeeLabel").textContent=driverFeeSummary();
   if(byId("driverTopupTransferLabel"))byId("driverTopupTransferLabel").textContent=driverPricingSettings.topupTransferLabel||"Mastercard محلي";
   if(byId("driverTopupTransferId"))byId("driverTopupTransferId").textContent=driverPricingSettings.topupTransferId||"أضف معرف التحويل من الإدارة";
   if(byId("driverTopupCardHolder"))byId("driverTopupCardHolder").textContent=driverPricingSettings.topupCardHolder||"إدارة كروة";
@@ -377,14 +391,91 @@ function setDriverNotificationsOpen(open,restoreFocus=true){
   if(open)window.setTimeout(()=>byId("driverNotificationsClose")?.focus({preventScroll:true}),80);else if(restoreFocus)toggle.focus({preventScroll:true});
 }
 
-function mapIcon(type) {
+function normalizeHeading(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return ((n % 360) + 360) % 360;
+}
+function circularHeadingLerp(from, to, amount = .28) {
+  if (!Number.isFinite(from)) return normalizeHeading(to);
+  const target = normalizeHeading(to); if (target === null) return normalizeHeading(from);
+  const diff = ((target - from + 540) % 360) - 180;
+  return normalizeHeading(from + diff * amount);
+}
+function bearingBetween(a,b){
+  if(!a||!b)return null;
+  const r=v=>v*Math.PI/180, y=Math.sin(r(b.longitude-a.longitude))*Math.cos(r(b.latitude));
+  const x=Math.cos(r(a.latitude))*Math.sin(r(b.latitude))-Math.sin(r(a.latitude))*Math.cos(r(b.latitude))*Math.cos(r(b.longitude-a.longitude));
+  return normalizeHeading(Math.atan2(y,x)*180/Math.PI);
+}
+function driverMarkerSvg(style="car") {
+  if(style==="arrow") return `<svg viewBox="0 0 48 48" aria-hidden="true"><path class="marker-shadow" d="M24 3 39 40 24 33 9 40Z"/><path class="marker-fill" d="M24 5 36 36 24 30 12 36Z"/><path class="marker-accent" d="M24 9v20"/></svg>`;
+  if(style==="bike") return `<svg viewBox="0 0 48 48" aria-hidden="true"><circle class="marker-wheel" cx="14" cy="33" r="7"/><circle class="marker-wheel" cx="35" cy="33" r="7"/><path class="marker-stroke" d="M14 33 21 20h8l6 13M20 20l-4-6m5 6 8 13m-8 0h14M27 15h7"/><circle class="marker-accent-dot" cx="25" cy="11" r="4"/></svg>`;
+  return `<svg viewBox="0 0 48 48" aria-hidden="true"><path class="marker-shadow" d="M14 39c-3 0-5-2-5-5v-14l5-10c1-3 4-5 7-5h6c3 0 6 2 7 5l5 10v14c0 3-2 5-5 5h-1v4h-5v-4H20v4h-5v-4Z"/><path class="marker-fill" d="M13 22h22l-4-10c-.7-1.7-2-2.5-4-2.5h-6c-2 0-3.3.8-4 2.5l-4 10Zm1 4v8h20v-8H14Z"/><circle class="marker-light" cx="17" cy="30" r="2.4"/><circle class="marker-light" cx="31" cy="30" r="2.4"/><path class="marker-accent" d="M24 3v6"/></svg>`;
+}
+function liveDriverMarkerHtml(style=state.markerStyle){
+  const safe=["arrow","car","bike"].includes(style)?style:"car";
+  return `<div class="karwa-live-vehicle marker-${safe}" data-marker-style="${safe}">${driverMarkerSvg(safe)}</div>`;
+}
+function mapIcon(type, style = state.markerStyle) {
   if (!window.L) return null;
+  if(type === "driver") return window.L.divIcon({className:"",html:liveDriverMarkerHtml(style),iconSize:[48,48],iconAnchor:[24,24]});
   return window.L.divIcon({
     className: "",
-    html: `<div class="portal-map-marker ${type}"><span>${type === "pickup" ? "●" : "🚗"}</span></div>`,
+    html: `<div class="portal-map-marker ${type}"><span>${type === "pickup" ? "●" : "●"}</span></div>`,
     iconSize: [40, 40],
     iconAnchor: [20, 36]
   });
+}
+function activeDrivingOrder(){return state.orders.find(order=>order.driverId===state.user?.uid&&!order.cancelled&&Number(order.statusIndex||0)<4)||null;}
+function resolveDriverHeading(position){
+  const current={latitude:Number(position?.coords?.latitude),longitude:Number(position?.coords?.longitude)};
+  let candidate=normalizeHeading(position?.coords?.heading);
+  if(candidate===null&&state.previousHeadingPoint&&haversine(current,state.previousHeadingPoint)>.004) candidate=bearingBetween(state.previousHeadingPoint,current);
+  if(candidate!==null) state.driverHeading=circularHeadingLerp(state.driverHeading,candidate,Number(position?.coords?.speed||0)>4?.4:.25);
+  if(!state.previousHeadingPoint||haversine(current,state.previousHeadingPoint)>.003) state.previousHeadingPoint=current;
+  return state.driverHeading;
+}
+function compassLabel(heading){
+  if(!Number.isFinite(heading))return "—";
+  const labels=["شمال","شمال شرق","شرق","جنوب شرق","جنوب","جنوب غرب","غرب","شمال غرب"];
+  return labels[Math.round(normalizeHeading(heading)/45)%8];
+}
+function setDriverMarkerVisual(marker, heading, style=state.markerStyle){
+  if(!marker)return;
+  const safe=["arrow","car","bike"].includes(style)?style:"car";
+  const el=marker.getElement()?.querySelector(".karwa-live-vehicle");
+  if(!el)return;
+  if(!el.classList.contains(`marker-${safe}`)){marker.setIcon(mapIcon("driver",safe));window.setTimeout(()=>setDriverMarkerVisual(marker,heading,safe),0);return;}
+  const h=normalizeHeading(heading); if(h!==null)el.style.setProperty("--vehicle-heading",`${h}deg`);
+}
+function setDriverMarkerStyle(style){
+  const safe=["arrow","car","bike"].includes(style)?style:"car";
+  state.markerStyle=safe;writeDriverPreference("karwa.driver.markerStyle",safe);
+  if(state.user) updateDoc(doc(db,"drivers",state.user.uid),{markerStyle:safe,updatedAt:serverTimestamp()}).catch(error=>console.warn("تعذر حفظ شكل مؤشر الكابتن",error));
+  if(state.driverMarker){state.driverMarker.setIcon(mapIcon("driver",safe));setDriverMarkerVisual(state.driverMarker,state.driverHeading,safe);}
+  applyDriverMapPreferences();sharePosition(state.lastPosition,true).catch(()=>{});
+  toast(safe==="arrow"?"تم اختيار السهم لمؤشر القيادة":safe==="bike"?"تم اختيار الدراجة لمؤشر القيادة":"تم اختيار السيارة لمؤشر القيادة");
+}
+function applyDriverCamera(point, heading){
+  if(!state.map||!state.autoFollow)return;
+  const driving=Boolean(activeDrivingOrder());
+  byId("driverView")?.classList.toggle("driving-navigation-active",driving);
+  const zoom=driving?17:15;
+  if(driving&&Number.isFinite(heading)){
+    try{
+      const p=state.map.project(window.L.latLng(point),zoom),size=state.map.getSize();
+      const lead=Math.max(75,Math.min(145,size.y*.18)),rad=normalizeHeading(heading)*Math.PI/180;
+      const ahead=window.L.point(p.x+Math.sin(rad)*lead,p.y-Math.cos(rad)*lead);
+      state.map.setView(state.map.unproject(ahead,zoom),zoom,{animate:true,duration:.55,easeLinearity:.25});
+    }catch(_){state.map.setView(point,zoom,{animate:true,duration:.45});}
+  }else state.map.setView(point,zoom,{animate:true,duration:.45});
+}
+function updateDriverHeadingHud(heading,speed){
+  const active=Boolean(activeDrivingOrder());
+  const badge=byId("driverDrivingModeBadge");if(badge)badge.classList.toggle("active",active);
+  const h=byId("driverHeadingText");if(h)h.textContent=Number.isFinite(heading)?`${compassLabel(heading)} • ${Math.round(normalizeHeading(heading))}°`:"بانتظار اتجاه الحركة";
+  const s=byId("driverSpeedText");if(s)s.textContent=Number.isFinite(Number(speed))?`${Math.max(0,Math.round(Number(speed)*3.6))} كم/س`:"— كم/س";
 }
 
 function initializeDriverMap() {
@@ -446,6 +537,12 @@ function applyDriverMapPreferences() {
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", String(active));
   });
+  view.querySelectorAll("[data-driver-marker-style]").forEach(button => {
+    const active = button.dataset.driverMarkerStyle === state.markerStyle;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  if (byId("driverMarkerStyleValue")) byId("driverMarkerStyleValue").textContent = state.markerStyle === "arrow" ? "سهم" : state.markerStyle === "bike" ? "دراجة" : "سيارة";
   if (byId("driverThemeValue")) byId("driverThemeValue").textContent = state.mapTheme === "night" ? "ليلي" : "نهاري";
   if (byId("driverViewValue")) byId("driverViewValue").textContent = state.mapView.toUpperCase();
   const follow = byId("driverAutoFollowSetting");
@@ -616,19 +713,21 @@ function handleDriverLocationError(error) {
 
 function showOwnPosition(position) {
   initializeDriverMap();
-  const latitude = position.coords.latitude;
-  const longitude = position.coords.longitude;
+  const latitude = Number(position.coords.latitude);
+  const longitude = Number(position.coords.longitude);
   const point = [latitude, longitude];
+  const heading = resolveDriverHeading(position);
   if (state.driverMarker) state.driverMarker.setLatLng(point);
-  else state.driverMarker = window.L.marker(point, { icon: mapIcon("driver") })
+  else state.driverMarker = window.L.marker(point, { icon: mapIcon("driver", state.markerStyle), zIndexOffset: 900 })
     .addTo(state.map)
     .bindPopup("موقعك الحالي");
-  if (state.autoFollow) state.map.setView(point, 15);
+  setDriverMarkerVisual(state.driverMarker, heading, state.markerStyle);
+  applyDriverCamera(point, heading);
+  updateDriverHeadingHud(heading, position.coords.speed);
   const acc=Math.round(position.coords.accuracy||0);
   const excellent=acc>0&&acc<=15, precise=acc>0&&acc<=30;
   setLocationStatus(excellent?"GPS ممتاز":(precise?"GPS دقيق":"GPS مقبول"), "approved");
   byId("locationHint").textContent = excellent?`دقة ممتازة • ${acc} م`:precise?`دقة عالية • ${acc} م`:`دقة الموقع ${acc} م — سيواصل كروة تحسينها تلقائيًا.`;
-  if(Number.isFinite(position.coords.heading)){const el=state.driverMarker?.getElement()?.querySelector(".portal-map-marker");if(el)el.style.transform=`rotate(${position.coords.heading}deg)`;}
   drawPickupRoute();
   checkRoadReportProximity(position);
   evaluateDriverAutoArrival();
@@ -642,7 +741,9 @@ async function sharePosition(position, force = false) {
     return;
   }
   const now = Date.now();
-  if (!force && now - state.lastLocationWrite < 5000) return;
+  const hasActiveOrder = state.orders.some(order => order.driverId === state.user.uid && !order.cancelled && Number(order.statusIndex || 0) < 4);
+  const shareInterval = hasActiveOrder ? 2500 : 5500;
+  if (!force && now - state.lastLocationWrite < shareInterval) return;
   const activeOrders = state.orders.filter(order =>
     order.driverId === state.user.uid && !order.cancelled && Number(order.statusIndex || 0) < 4
   );
@@ -652,8 +753,9 @@ async function sharePosition(position, force = false) {
     latitude: position.coords.latitude,
     longitude: position.coords.longitude,
     accuracy: Number(position.coords.accuracy || 0),
-    heading: Number.isFinite(position.coords.heading) ? position.coords.heading : null,
+    heading: Number.isFinite(state.driverHeading) ? state.driverHeading : (Number.isFinite(position.coords.heading) ? normalizeHeading(position.coords.heading) : null),
     speed: Number.isFinite(position.coords.speed) ? position.coords.speed : null,
+    markerStyle: state.markerStyle,
     updatedAt: serverTimestamp()
   };
   await updateDoc(doc(db, "drivers", state.user.uid), { latitude: location.latitude, longitude: location.longitude, locationAccuracy: location.accuracy, locationUpdatedAt: serverTimestamp(), updatedAt: serverTimestamp() }).catch(()=>{});
@@ -825,6 +927,9 @@ byId("driverSettingsPanel").querySelectorAll("[data-map-theme]").forEach(button 
 });
 byId("driverSettingsPanel").querySelectorAll("[data-map-view]").forEach(button => {
   button.addEventListener("click", () => setDriverMapView(button.dataset.mapView));
+});
+byId("driverSettingsPanel").querySelectorAll("[data-driver-marker-style]").forEach(button => {
+  button.addEventListener("click", () => setDriverMarkerStyle(button.dataset.driverMarkerStyle));
 });
 byId("driverAutoFollowSetting").addEventListener("click", () => {
   state.autoFollow = !state.autoFollow;
@@ -1198,6 +1303,12 @@ function openDriverDashboard() {
       plate: "غير محدد",
       online: false
     };
+    const savedMarkerStyle = ["arrow","car","bike"].includes(state.driverData.markerStyle) ? state.driverData.markerStyle : null;
+    if (savedMarkerStyle && savedMarkerStyle !== state.markerStyle) {
+      state.markerStyle = savedMarkerStyle;
+      writeDriverPreference("karwa.driver.markerStyle", savedMarkerStyle);
+      if (state.driverMarker) { state.driverMarker.setIcon(mapIcon("driver", savedMarkerStyle)); setDriverMarkerVisual(state.driverMarker, state.driverHeading, savedMarkerStyle); }
+    }
     renderReputation();
     if (state.driverData.blocked === true) {
       stopLocationSharing();
@@ -1326,7 +1437,7 @@ document.addEventListener("click", async event => {
         const order = snap.data();
         const driver = driverSnap.data();
         const userData = userSnap.data();
-        const captainFee=driverFixedFee("captainOrderFee",250);
+        const captainFee=driverOperationFee(order);
         const walletPatch=driverWalletDebitPatch(userData,captainFee);
         if(captainFee>0&&!walletPatch)throw new Error("INSUFFICIENT_WALLET");
         if (driver.blocked === true) throw new Error("DRIVER_BLOCKED");
@@ -1420,7 +1531,7 @@ document.addEventListener("click", async event => {
     }
   } catch (error) {
     console.error(error);
-    toast(error.message === "OFFLINE" ? "فعّل حالة الاتصال أولًا" : error.message === "PICKUP_OTP_REQUIRED" ? "يجب إدخال رمز الاستلام من المطعم أو صاحب الخدمة" : error.message === "PICKUP_OTP_INVALID" ? "رمز الاستلام غير صحيح" : error.message === "OTP_REQUIRED" ? "يجب إدخال الرمز" : error.message === "OTP_INVALID" ? "الرمز غير صحيح" : error.message === "ORDER_TAKEN" ? "سبق أن قبل كابتن آخر هذا الطلب" : error.message === "ORDER_NOT_FOUND" ? "الطلب غير موجود" : error.message === "ORDER_NOT_AVAILABLE" ? "الطلب لم يعد متاحًا" : error.message === "DRIVER_BUSY" ? "لديك رحلة نشطة بالفعل، أكملها أولًا" : error.message === "DRIVER_PROFILE_MISSING" ? "ملف الكابتن غير موجود. أعد تفعيل الحساب من الإدارة" : error.message === "DRIVER_BLOCKED" ? "الحساب موقوف من الإدارة" : error.message === "DELIVERY_DRIVER_ONLY" ? "هذا الطلب مخصص لكابتن مسجل في خدمة التوصيل" : error.message === "TAXI_DRIVER_ONLY" ? "هذا الطلب مخصص لكابتن تكسي مسجل لخدمة الركوب" : error.message === "OUTSIDE_DRIVER_AREA" ? "هذا الطلب خارج نطاق المدينة المسجلة لحسابك" : error.message === "LOCATION_REQUIRED" ? "يجب تفعيل GPS وتحديد موقعك الحالي قبل قبول أي طلب" : error.message === "OUTSIDE_REQUEST_RADIUS" ? `هذا الطلب أصبح خارج نطاق ${DRIVER_REQUEST_RADIUS_KM} كم من موقعك الحالي` : error.message === "INSUFFICIENT_WALLET" ? `رصيدك غير كافٍ. يلزم ${driverFixedFee("captainOrderFee",250).toLocaleString("ar-IQ")} د.ع لقبول الطلب. اشحن المحفظة أولًا.` : error.message === "USER_PROFILE_MISSING" ? "ملف المحفظة غير موجود. أعد تسجيل الدخول." : driverCallableMessage(error, button.dataset.action === "accept" ? "قبول الطلب" : "تحديث حالة الرحلة"));
+    toast(error.message === "OFFLINE" ? "فعّل حالة الاتصال أولًا" : error.message === "PICKUP_OTP_REQUIRED" ? "يجب إدخال رمز الاستلام من المطعم أو صاحب الخدمة" : error.message === "PICKUP_OTP_INVALID" ? "رمز الاستلام غير صحيح" : error.message === "OTP_REQUIRED" ? "يجب إدخال الرمز" : error.message === "OTP_INVALID" ? "الرمز غير صحيح" : error.message === "ORDER_TAKEN" ? "سبق أن قبل كابتن آخر هذا الطلب" : error.message === "ORDER_NOT_FOUND" ? "الطلب غير موجود" : error.message === "ORDER_NOT_AVAILABLE" ? "الطلب لم يعد متاحًا" : error.message === "DRIVER_BUSY" ? "لديك رحلة نشطة بالفعل، أكملها أولًا" : error.message === "DRIVER_PROFILE_MISSING" ? "ملف الكابتن غير موجود. أعد تفعيل الحساب من الإدارة" : error.message === "DRIVER_BLOCKED" ? "الحساب موقوف من الإدارة" : error.message === "DELIVERY_DRIVER_ONLY" ? "هذا الطلب مخصص لكابتن مسجل في خدمة التوصيل" : error.message === "TAXI_DRIVER_ONLY" ? "هذا الطلب مخصص لكابتن تكسي مسجل لخدمة الركوب" : error.message === "OUTSIDE_DRIVER_AREA" ? "هذا الطلب خارج نطاق المدينة المسجلة لحسابك" : error.message === "LOCATION_REQUIRED" ? "يجب تفعيل GPS وتحديد موقعك الحالي قبل قبول أي طلب" : error.message === "OUTSIDE_REQUEST_RADIUS" ? `هذا الطلب أصبح خارج نطاق ${DRIVER_REQUEST_RADIUS_KM} كم من موقعك الحالي` : error.message === "INSUFFICIENT_WALLET" ? `رصيدك غير كافٍ. يلزم ${driverOperationFee(state.orders.find(item=>item.firestoreId===button.dataset.id)||"parcel").toLocaleString("ar-IQ")} د.ع لقبول هذا الطلب. اشحن المحفظة أولًا.` : error.message === "USER_PROFILE_MISSING" ? "ملف المحفظة غير موجود. أعد تسجيل الدخول." : driverCallableMessage(error, button.dataset.action === "accept" ? "قبول الطلب" : "تحديث حالة الرحلة"));
   } finally {
     busy(button, false);
   }

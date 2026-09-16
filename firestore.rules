@@ -29,8 +29,18 @@ service cloud.firestore { match /databases/{database}/documents {
  function pricingExists(){return exists(/databases/$(database)/documents/appSettings/pricing);}
  function pricing(){return get(/databases/$(database)/documents/appSettings/pricing).data;}
  function customerOrderFee(){return pricingExists()?pricing().get('customerOrderFee',250):250;}
+ function customerTaxiFee(){return pricingExists()?pricing().get('customerTaxiFee',pricing().get('customerOrderFee',250)):250;}
+ function customerDeliveryFee(){return pricingExists()?pricing().get('customerDeliveryFee',pricing().get('customerOrderFee',250)):250;}
+ function customerServiceFee(){return pricingExists()?pricing().get('customerServiceFee',pricing().get('customerOrderFee',250)):250;}
  function providerOrderFee(){return pricingExists()?pricing().get('providerOrderFee',250):250;}
+ function providerRestaurantFee(){return pricingExists()?pricing().get('providerRestaurantFee',pricing().get('providerOrderFee',250)):250;}
+ function providerServiceFee(){return pricingExists()?pricing().get('providerServiceFee',pricing().get('providerOrderFee',250)):250;}
  function captainOrderFee(){return pricingExists()?pricing().get('captainOrderFee',250):250;}
+ function captainTaxiFee(){return pricingExists()?pricing().get('captainTaxiFee',pricing().get('captainOrderFee',250)):250;}
+ function captainDeliveryFee(){return pricingExists()?pricing().get('captainDeliveryFee',pricing().get('captainOrderFee',250)):250;}
+ function customerFeeForOrder(data){return data.type=='ride'?customerTaxiFee():customerDeliveryFee();}
+ function captainFeeForOrder(data){return data.type=='ride'?captainTaxiFee():captainDeliveryFee();}
+ function providerFeeForRequest(data){return data.providerCategory=='restaurant'?providerRestaurantFee():providerServiceFee();}
  function publishFee(){return pricingExists()?pricing().get('publishFee',1000):1000;}
  function signupBonusEnabled(){return !pricingExists()||pricing().get('signupBonusEnabled',true)==true;}
  function signupBonusAmount(){return pricingExists()?pricing().get('signupBonusAmount',1000):1000;}
@@ -65,6 +75,9 @@ service cloud.firestore { match /databases/{database}/documents {
    allow create,delete:if admin();
    allow update:if admin()||(own(uid)&&driver()&&(
      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['online','latitude','longitude','locationAccuracy','locationUpdatedAt','updatedAt'])
+     || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['markerStyle','updatedAt'])
+       && request.resource.data.markerStyle in ['arrow','car','bike'])
+     )
      || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['activeOrderId','activeOrderCode','busySince','updatedAt'])&&(
        (resource.data.get('activeOrderId','')==''
          && request.resource.data.activeOrderId is string
@@ -195,9 +208,9 @@ service cloud.firestore { match /databases/{database}/documents {
        && request.resource.data.statusIndex==0
        && request.resource.data.cancelled==false
        && validOrderMoney(request.resource.data)
-       && request.resource.data.customerPlatformFee==customerOrderFee()
+       && request.resource.data.customerPlatformFee==customerFeeForOrder(request.resource.data)
        && request.resource.data.customerFeeCharged==true
-       && walletCharged(request.auth.uid,customerOrderFee()))
+       && walletCharged(request.auth.uid,customerFeeForOrder(request.resource.data)))
      || (customer()
        && request.resource.data.type=='serviceDelivery'
        && request.resource.data.userId==request.auth.uid
@@ -324,7 +337,7 @@ service cloud.firestore { match /databases/{database}/documents {
      || gpsAutoCompleteAllowed()
      || (driver() && (
        (resource.data.driverId==null && resource.data.cancelled==false && resource.data.statusIndex==0 && request.resource.data.driverId==request.auth.uid && request.resource.data.statusIndex==resource.data.statusIndex
-         && resource.data.get('captainFeeCharged',false)==false && request.resource.data.captainFeeCharged==true && request.resource.data.captainPlatformFee==captainOrderFee() && walletCharged(request.auth.uid,captainOrderFee())
+         && resource.data.get('captainFeeCharged',false)==false && request.resource.data.captainFeeCharged==true && request.resource.data.captainPlatformFee==captainFeeForOrder(resource.data) && walletCharged(request.auth.uid,captainFeeForOrder(resource.data))
          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['driverId','driverName','driverPhone','assignmentStatus','captainPlatformFee','captainFeeCharged','acceptedAt','updatedAt'])
          && ((resource.data.type=='ride' && currentDriver().get('serviceType','')=='taxi' && currentDriver().get('vehicleType','')!='دراجة')
            || (resource.data.type in ['parcel','food','serviceDelivery'] && currentDriver().get('serviceType','')=='delivery' && currentDriver().get('vehicleType','') in ['اقتصادي','تكسي','عائلي','دراجة'] && (resource.data.type!='serviceDelivery' || currentDriver().get('city','')==resource.data.get('serviceCity',''))))
@@ -556,7 +569,7 @@ service cloud.firestore { match /databases/{database}/documents {
      && request.resource.data.totalPrice==request.resource.data.subtotal+request.resource.data.deliveryFee
      && request.resource.data.requestText is string && request.resource.data.requestText.size()>=3 && request.resource.data.requestText.size()<=500
      && request.resource.data.customerAddress is string && request.resource.data.customerAddress.size()>=3 && request.resource.data.customerAddress.size()<=180
-     && request.resource.data.customerPlatformFee==customerOrderFee() && request.resource.data.customerFeeCharged==true && request.resource.data.providerPlatformFee==0 && request.resource.data.providerFeeCharged==false && walletCharged(request.auth.uid,customerOrderFee())
+     && request.resource.data.customerPlatformFee==customerServiceFee() && request.resource.data.customerFeeCharged==true && request.resource.data.providerPlatformFee==0 && request.resource.data.providerFeeCharged==false && walletCharged(request.auth.uid,customerServiceFee())
      && request.resource.data.keys().hasOnly(['customerId','customerName','providerId','providerName','providerCategory','providerCity','providerAddress','providerLocation','items','itemCount','itemIndex','itemName','itemUnit','quantity','unitPrice','itemPrice','subtotal','deliveryRequested','deliveryFee','totalPrice','deliveryStatus','deliveryOrderId','requestText','customerAddress','customerLocation','customerPlatformFee','customerFeeCharged','providerPlatformFee','providerFeeCharged','status','createdAt','updatedAt']);
 
    // المطاعم تحتفظ بمسارها السابق للتوافق مع الإصدارات القديمة.
@@ -587,7 +600,7 @@ service cloud.firestore { match /databases/{database}/documents {
      && request.resource.data.totalPrice==request.resource.data.subtotal+request.resource.data.deliveryFee
      && request.resource.data.requestText is string && request.resource.data.requestText.size()>=3 && request.resource.data.requestText.size()<=500
      && request.resource.data.customerAddress is string && request.resource.data.customerAddress.size()>=3 && request.resource.data.customerAddress.size()<=180
-     && request.resource.data.customerPlatformFee==customerOrderFee() && request.resource.data.customerFeeCharged==true && request.resource.data.providerPlatformFee==0 && request.resource.data.providerFeeCharged==false && walletCharged(request.auth.uid,customerOrderFee())
+     && request.resource.data.customerPlatformFee==customerServiceFee() && request.resource.data.customerFeeCharged==true && request.resource.data.providerPlatformFee==0 && request.resource.data.providerFeeCharged==false && walletCharged(request.auth.uid,customerServiceFee())
      && request.resource.data.keys().hasOnly(['customerId','customerName','providerId','providerName','providerCategory','providerCity','providerAddress','providerLocation','itemIndex','itemName','itemUnit','quantity','unitPrice','itemPrice','subtotal','deliveryRequested','deliveryFee','totalPrice','deliveryStatus','deliveryOrderId','requestText','customerAddress','customerLocation','customerPlatformFee','customerFeeCharged','providerPlatformFee','providerFeeCharged','status','createdAt','updatedAt']);
 
    // Phase 72: طلب متعدد الأصناف من نفس مزود الخدمة.
@@ -612,7 +625,7 @@ service cloud.firestore { match /databases/{database}/documents {
      && request.resource.data.deliveryOrderId=='' && request.resource.data.totalPrice==request.resource.data.subtotal
      && request.resource.data.requestText is string && request.resource.data.requestText.size()>=3 && request.resource.data.requestText.size()<=500
      && request.resource.data.customerAddress=='' && request.resource.data.customerLocation==null
-     && request.resource.data.customerPlatformFee==customerOrderFee() && request.resource.data.customerFeeCharged==true && request.resource.data.providerPlatformFee==0 && request.resource.data.providerFeeCharged==false && walletCharged(request.auth.uid,customerOrderFee())
+     && request.resource.data.customerPlatformFee==customerServiceFee() && request.resource.data.customerFeeCharged==true && request.resource.data.providerPlatformFee==0 && request.resource.data.providerFeeCharged==false && walletCharged(request.auth.uid,customerServiceFee())
      && request.resource.data.keys().hasOnly(['customerId','customerName','providerId','providerName','providerCategory','providerCity','providerAddress','providerLocation','items','itemCount','itemIndex','itemName','itemUnit','quantity','unitPrice','itemPrice','subtotal','itemDeliveryAvailable','itemDeliveryFee','deliveryRequested','deliveryFee','totalPrice','deliveryStatus','deliveryOrderId','requestText','customerAddress','customerLocation','customerPlatformFee','customerFeeCharged','providerPlatformFee','providerFeeCharged','status','createdAt','updatedAt']);
 
    // الخدمات الأخرى: المسار القديم لصنف واحد للتوافق.
@@ -648,7 +661,7 @@ service cloud.firestore { match /databases/{database}/documents {
      && request.resource.data.requestText is string && request.resource.data.requestText.size()>=3 && request.resource.data.requestText.size()<=500
      && request.resource.data.customerAddress==''
      && request.resource.data.customerLocation==null
-     && request.resource.data.customerPlatformFee==customerOrderFee() && request.resource.data.customerFeeCharged==true && request.resource.data.providerPlatformFee==0 && request.resource.data.providerFeeCharged==false && walletCharged(request.auth.uid,customerOrderFee())
+     && request.resource.data.customerPlatformFee==customerServiceFee() && request.resource.data.customerFeeCharged==true && request.resource.data.providerPlatformFee==0 && request.resource.data.providerFeeCharged==false && walletCharged(request.auth.uid,customerServiceFee())
      && request.resource.data.keys().hasOnly(['customerId','customerName','providerId','providerName','providerCategory','providerCity','providerAddress','providerLocation','itemIndex','itemName','itemUnit','quantity','unitPrice','itemPrice','subtotal','itemDeliveryAvailable','itemDeliveryFee','deliveryRequested','deliveryFee','totalPrice','deliveryStatus','deliveryOrderId','requestText','customerAddress','customerLocation','customerPlatformFee','customerFeeCharged','providerPlatformFee','providerFeeCharged','status','createdAt','updatedAt']);
 
    allow read:if admin()||(customer()&&resource.data.customerId==request.auth.uid)||(serviceProvider()&&resource.data.providerId==request.auth.uid);
@@ -799,12 +812,12 @@ service cloud.firestore { match /databases/{database}/documents {
          || (resource.data.providerCategory!='restaurant'
            && resource.data.status=='pending'&&request.resource.data.status=='accepted'
            && request.resource.data.deliveryOrderId==''
-           && resource.data.get('providerFeeCharged',false)==false && request.resource.data.providerFeeCharged==true && request.resource.data.providerPlatformFee==providerOrderFee() && walletCharged(request.auth.uid,providerOrderFee())
+           && resource.data.get('providerFeeCharged',false)==false && request.resource.data.providerFeeCharged==true && request.resource.data.providerPlatformFee==providerFeeForRequest(resource.data) && walletCharged(request.auth.uid,providerFeeForRequest(resource.data))
            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','providerNote','providerPlatformFee','providerFeeCharged','deliveryStatus','deliveryOrderId','statusUpdatedAt','updatedAt'])
            && ((resource.data.get('itemDeliveryAvailable',false)==true&&request.resource.data.deliveryStatus=='awaitingCustomerChoice')||(resource.data.get('itemDeliveryAvailable',false)==false&&request.resource.data.deliveryStatus=='notRequested')))
          || (resource.data.providerCategory=='restaurant'
            && resource.data.status=='pending'&&request.resource.data.status=='accepted'
-           && resource.data.get('providerFeeCharged',false)==false && request.resource.data.providerFeeCharged==true && request.resource.data.providerPlatformFee==providerOrderFee() && walletCharged(request.auth.uid,providerOrderFee())
+           && resource.data.get('providerFeeCharged',false)==false && request.resource.data.providerFeeCharged==true && request.resource.data.providerPlatformFee==providerFeeForRequest(resource.data) && walletCharged(request.auth.uid,providerFeeForRequest(resource.data))
            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','providerNote','providerPlatformFee','providerFeeCharged','deliveryStatus','deliveryOrderId','pickupOtp','statusUpdatedAt','updatedAt'])
            && ((!resource.data.get('deliveryRequested',false)&&request.resource.data.deliveryStatus=='notRequested'&&request.resource.data.deliveryOrderId==''&&request.resource.data.get('pickupOtp','')=='')||(resource.data.get('deliveryRequested',false)&&request.resource.data.pickupOtp is string&&request.resource.data.pickupOtp.matches('^[0-9]{4}$')&&request.resource.data.deliveryStatus=='awaitingCaptain'&&request.resource.data.deliveryOrderId is string&&request.resource.data.deliveryOrderId.size()>0&&existsAfter(/databases/$(database)/documents/orders/$(request.resource.data.deliveryOrderId))&&getAfter(/databases/$(database)/documents/orders/$(request.resource.data.deliveryOrderId)).data.serviceRequestId==id&&getAfter(/databases/$(database)/documents/orders/$(request.resource.data.deliveryOrderId)).data.providerId==request.auth.uid))
        )));

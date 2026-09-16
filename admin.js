@@ -621,7 +621,14 @@ function renderPricingSettings(){
   const c=state.pricingSettings||{};
   const values={
     ridePerKmEconomy:c.ridePerKmEconomy??650,ridePerKmTaxi:c.ridePerKmTaxi??800,ridePerKmFamily:c.ridePerKmFamily??980,
-    publishFee:c.publishFee??1000,customerOrderFee:c.customerOrderFee??250,providerOrderFee:c.providerOrderFee??250,captainOrderFee:c.captainOrderFee??250,
+    publishFee:c.publishFee??1000,
+    customerTaxiFee:c.customerTaxiFee??c.customerOrderFee??250,
+    customerDeliveryFee:c.customerDeliveryFee??c.customerOrderFee??250,
+    customerServiceFee:c.customerServiceFee??c.customerOrderFee??250,
+    captainTaxiFee:c.captainTaxiFee??c.captainOrderFee??250,
+    captainDeliveryFee:c.captainDeliveryFee??c.captainOrderFee??250,
+    providerRestaurantFee:c.providerRestaurantFee??c.providerOrderFee??250,
+    providerServiceFee:c.providerServiceFee??c.providerOrderFee??250,
     signupBonusAmount:c.signupBonusAmount??1000,signupBonusHours:c.signupBonusHours??24,
     referralDiscountPercent:c.referralDiscountPercent??10,referralMaxDiscount:c.referralMaxDiscount??3000
   };
@@ -648,9 +655,17 @@ byId("pricingSettingsForm")?.addEventListener("submit",async event=>{
     payload.ridePerKmTaxi=settingNumber(byId("ridePerKmTaxi")?.value,800,0,10000);
     payload.ridePerKmFamily=settingNumber(byId("ridePerKmFamily")?.value,980,0,10000);
     payload.publishFee=Math.round(settingNumber(byId("publishFee")?.value,1000));
-    payload.customerOrderFee=Math.round(settingNumber(byId("customerOrderFee")?.value,250));
-    payload.providerOrderFee=Math.round(settingNumber(byId("providerOrderFee")?.value,250));
-    payload.captainOrderFee=Math.round(settingNumber(byId("captainOrderFee")?.value,250));
+    payload.customerTaxiFee=Math.round(settingNumber(byId("customerTaxiFee")?.value,250));
+    payload.customerDeliveryFee=Math.round(settingNumber(byId("customerDeliveryFee")?.value,250));
+    payload.customerServiceFee=Math.round(settingNumber(byId("customerServiceFee")?.value,250));
+    payload.captainTaxiFee=Math.round(settingNumber(byId("captainTaxiFee")?.value,250));
+    payload.captainDeliveryFee=Math.round(settingNumber(byId("captainDeliveryFee")?.value,250));
+    payload.providerRestaurantFee=Math.round(settingNumber(byId("providerRestaurantFee")?.value,250));
+    payload.providerServiceFee=Math.round(settingNumber(byId("providerServiceFee")?.value,250));
+    // حقول توافق للإصدارات القديمة، بينما Phase 74 يستخدم الرسوم التفصيلية أعلاه.
+    payload.customerOrderFee=payload.customerTaxiFee;
+    payload.captainOrderFee=payload.captainDeliveryFee;
+    payload.providerOrderFee=payload.providerServiceFee;
     payload.signupBonusEnabled=byId("signupBonusEnabled")?.checked!==false;
     payload.signupBonusAmount=Math.round(settingNumber(byId("signupBonusAmount")?.value,1000,0,100000));
     payload.signupBonusHours=Math.round(settingNumber(byId("signupBonusHours")?.value,24,1,168));

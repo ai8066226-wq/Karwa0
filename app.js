@@ -171,6 +171,8 @@ const state = {
   customerMarker: null,
   serviceMarker: null,
   driverMarker: null,
+  driverMarkerStyle: "car",
+  driverHeading: null,
   routeLine: null,
   customerLocation: null,
   pickupLocation: null,
@@ -206,7 +208,19 @@ const state = {
 };
 
 const formatMoney = value => Number(value || 0).toLocaleString("ar-IQ") + " د.ع";
-const DEFAULT_PLATFORM_FEES = { customerOrderFee: 250, providerOrderFee: 250, captainOrderFee: 250, publishFee: 1000 };
+const DEFAULT_PLATFORM_FEES = {
+  customerOrderFee: 250,
+  customerTaxiFee: 250,
+  customerDeliveryFee: 250,
+  customerServiceFee: 250,
+  providerOrderFee: 250,
+  providerRestaurantFee: 250,
+  providerServiceFee: 250,
+  captainOrderFee: 250,
+  captainTaxiFee: 250,
+  captainDeliveryFee: 250,
+  publishFee: 1000
+};
 const vehiclePricing = {
   "اقتصادي": { base: 1800, perKm: 650, perMin: 55, minimum: 3000, speedFactor: 1.08, perKmSetting: "ridePerKmEconomy" },
   "تكسي": { base: 2300, perKm: 800, perMin: 65, minimum: 4000, speedFactor: 1.00, perKmSetting: "ridePerKmTaxi" },
@@ -214,6 +228,15 @@ const vehiclePricing = {
 };
 function numericSetting(key,fallback,min=0,max=100000){const n=Number(state.appSettings?.[key]);return Math.max(min,Math.min(max,Number.isFinite(n)?n:fallback));}
 function fixedPlatformFee(key){return Math.round(numericSetting(key,DEFAULT_PLATFORM_FEES[key]??0,0,100000));}
+function customerOperationFee(kind){
+  const legacy=fixedPlatformFee("customerOrderFee");
+  if(kind==="ride")return Math.round(numericSetting("customerTaxiFee",legacy,0,100000));
+  if(kind==="parcel")return Math.round(numericSetting("customerDeliveryFee",legacy,0,100000));
+  return Math.round(numericSetting("customerServiceFee",legacy,0,100000));
+}
+function customerFeeSummary(){
+  return `تكسي ${formatMoney(customerOperationFee("ride"))} • توصيل ${formatMoney(customerOperationFee("parcel"))} • مطاعم/خدمات ${formatMoney(customerOperationFee("service"))}`;
+}
 function vehiclePricingFor(vehicle){const base=vehiclePricing[vehicle]||vehiclePricing["اقتصادي"];return {...base,perKm:numericSetting(base.perKmSetting,base.perKm,0,10000)};}
 function timestampMillis(value){if(!value)return 0;if(typeof value.toMillis==="function")return value.toMillis();if(Number.isFinite(Number(value?.seconds)))return Number(value.seconds)*1000;const t=new Date(value).getTime();return Number.isFinite(t)?t:0;}
 function activeBonusAmount(data={}){const amount=Math.max(0,Number(data.bonusBalance||0));return amount>0&&timestampMillis(data.bonusExpiresAt)>Date.now()?amount:0;}
@@ -360,15 +383,34 @@ function customerCancellationMeta(reason) {
   };
 }
 
-function mapIcon(type) {
+function customerDriverMarkerSvg(style="car") {
+  if(style==="arrow") return `<svg viewBox="0 0 48 48" aria-hidden="true"><path class="marker-shadow" d="M24 3 39 40 24 33 9 40Z"/><path class="marker-fill" d="M24 5 36 36 24 30 12 36Z"/><path class="marker-accent" d="M24 9v20"/></svg>`;
+  if(style==="bike") return `<svg viewBox="0 0 48 48" aria-hidden="true"><circle class="marker-wheel" cx="14" cy="33" r="7"/><circle class="marker-wheel" cx="35" cy="33" r="7"/><path class="marker-stroke" d="M14 33 21 20h8l6 13M20 20l-4-6m5 6 8 13m-8 0h14M27 15h7"/><circle class="marker-accent-dot" cx="25" cy="11" r="4"/></svg>`;
+  return `<svg viewBox="0 0 48 48" aria-hidden="true"><path class="marker-shadow" d="M14 39c-3 0-5-2-5-5v-14l5-10c1-3 4-5 7-5h6c3 0 6 2 7 5l5 10v14c0 3-2 5-5 5h-1v4h-5v-4H20v4h-5v-4Z"/><path class="marker-fill" d="M13 22h22l-4-10c-.7-1.7-2-2.5-4-2.5h-6c-2 0-3.3.8-4 2.5l-4 10Zm1 4v8h20v-8H14Z"/><circle class="marker-light" cx="17" cy="30" r="2.4"/><circle class="marker-light" cx="31" cy="30" r="2.4"/><path class="marker-accent" d="M24 3v6"/></svg>`;
+}
+function customerDriverMarkerHtml(style="car"){
+  const safe=["arrow","car","bike"].includes(style)?style:"car";
+  return `<div class="karwa-live-vehicle marker-${safe}" data-marker-style="${safe}">${customerDriverMarkerSvg(safe)}</div>`;
+}
+function mapIcon(type, style="car") {
   if (!window.L) return null;
-  const emoji = type === "driver" ? "🚗" : "●";
+  if(type==="driver")return window.L.divIcon({className:"",html:customerDriverMarkerHtml(style),iconSize:[48,48],iconAnchor:[24,24]});
+  const emoji = "●";
   return window.L.divIcon({
     className: "",
     html: `<div class="karwa-map-marker ${type}"><span>${emoji}</span></div>`,
     iconSize: [42, 42],
     iconAnchor: [21, 38]
   });
+}
+function normalizeLiveHeading(value){const n=Number(value);return Number.isFinite(n)?((n%360)+360)%360:null;}
+function customerCompassLabel(value){const h=normalizeLiveHeading(value);if(h===null)return "";return ["شمال","شمال شرق","شرق","جنوب شرق","جنوب","جنوب غرب","غرب","شمال غرب"][Math.round(h/45)%8];}
+function updateCustomerDriverVisual(heading,style){
+  const safe=["arrow","car","bike"].includes(style)?style:"car";
+  if(state.driverMarkerStyle!==safe&&state.driverMarker){state.driverMarkerStyle=safe;state.driverMarker.setIcon(mapIcon("driver",safe));}
+  const el=state.driverMarker?.getElement()?.querySelector(".karwa-live-vehicle"),h=normalizeLiveHeading(heading);
+  if(el&&h!==null)el.style.setProperty("--vehicle-heading",`${h}deg`);
+  if(h!==null)state.driverHeading=h;
 }
 
 function initializeCustomerMap() {
@@ -484,12 +526,14 @@ function liveTargetForOrder(){
   return o.pickupLocation || state.customerLocation;
 }
 function liveDistanceText(km){return km<1?`${Math.max(1,Math.round(km*1000))} م`:`${km.toFixed(1)} كم`;}
-function animateDriverMarker(point){
-  if(!state.driverMarker){state.driverMarker=window.L.marker(point,{icon:mapIcon("driver")}).addTo(state.map).bindPopup("موقع الكابتن");return;}
+function animateDriverMarker(point, heading=null, markerStyle="car"){
+  const safe=["arrow","car","bike"].includes(markerStyle)?markerStyle:"car";
+  if(!state.driverMarker){state.driverMarkerStyle=safe;state.driverMarker=window.L.marker(point,{icon:mapIcon("driver",safe),zIndexOffset:900}).addTo(state.map).bindPopup("موقع الكابتن");updateCustomerDriverVisual(heading,safe);return;}
+  if(state.driverMarkerStyle!==safe){state.driverMarkerStyle=safe;state.driverMarker.setIcon(mapIcon("driver",safe));}
   const from=state.driverMarker.getLatLng(), to=window.L.latLng(point);
   if(state.driverAnimationFrame) cancelAnimationFrame(state.driverAnimationFrame);
-  const started=performance.now(), duration=900;
-  const tick=now=>{const t=Math.min(1,(now-started)/duration),e=1-Math.pow(1-t,3);state.driverMarker.setLatLng([from.lat+(to.lat-from.lat)*e,from.lng+(to.lng-from.lng)*e]);if(t<1)state.driverAnimationFrame=requestAnimationFrame(tick);};
+  const started=performance.now(), duration=2100;
+  const tick=now=>{const t=Math.min(1,(now-started)/duration),e=1-Math.pow(1-t,3);state.driverMarker.setLatLng([from.lat+(to.lat-from.lat)*e,from.lng+(to.lng-from.lng)*e]);updateCustomerDriverVisual(heading,safe);if(t<1)state.driverAnimationFrame=requestAnimationFrame(tick);};
   state.driverAnimationFrame=requestAnimationFrame(tick);
 }
 async function drawLiveRoute(force=false) {
@@ -511,6 +555,8 @@ function clearDriverLocation() {
   if (state.driverMarker && state.map) state.map.removeLayer(state.driverMarker);
   if (state.routeLine && state.map) state.map.removeLayer(state.routeLine);
   state.driverMarker = null;
+  state.driverMarkerStyle = "car";
+  state.driverHeading = null;
   state.routeLine = null;
 }
 
@@ -521,12 +567,15 @@ function showDriverLocation(data) {
   const longitude = Number(data.longitude);
   if (!state.map || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
   const point = [latitude, longitude];
-  animateDriverMarker(point);
+  const heading=normalizeLiveHeading(data.heading), markerStyle=["arrow","car","bike"].includes(data.markerStyle)?data.markerStyle:"car";
+  animateDriverMarker(point,heading,markerStyle);
   const s=Number(state.activeOrder?.statusIndex||0);
   byId("mapInfoTitle").textContent = s>=3 ? "الرحلة متجهة إلى الوجهة" : "الكابتن يتحرك نحوك";
   const age=data.updatedAt?.toMillis?Math.max(0,Date.now()-data.updatedAt.toMillis()):0;
   const quality=Number(data.accuracy||0)>80?" • دقة GPS منخفضة":"";
-  byId("mapInfoText").textContent = `${age>30000?"آخر تحديث منذ "+Math.round(age/1000)+" ث":"الموقع مباشر"}${data.accuracy ? ` • دقة ${Math.round(data.accuracy)} م` : ""}${quality}`;
+  const direction=heading!==null?` • يتجه ${customerCompassLabel(heading)} (${Math.round(heading)}°)`:"";
+  const speed=Number.isFinite(Number(data.speed))?` • ${Math.max(0,Math.round(Number(data.speed)*3.6))} كم/س`:"";
+  byId("mapInfoText").textContent = `${age>30000?"آخر تحديث منذ "+Math.round(age/1000)+" ث":"الموقع مباشر"}${direction}${speed}${data.accuracy ? ` • دقة ${Math.round(data.accuracy)} م` : ""}${quality}`;
   drawLiveRoute(!state.routeLine);
   evaluateCustomerAutoArrival();
 }
@@ -774,7 +823,7 @@ function renderReferralCard(){
 }
 function renderTopupDestination(){
   const cfg=state.appSettings||{};
-  if(byId("customerOrderFeeLabel"))byId("customerOrderFeeLabel").textContent=formatMoney(fixedPlatformFee("customerOrderFee"));
+  if(byId("customerOrderFeeLabel"))byId("customerOrderFeeLabel").textContent=customerFeeSummary();
   if(byId("topupTransferLabel"))byId("topupTransferLabel").textContent=cfg.topupTransferLabel||"Mastercard محلي";
   if(byId("topupTransferId"))byId("topupTransferId").textContent=cfg.topupTransferId||"أضف معرف التحويل من لوحة الإدارة";
   if(byId("topupCardHolder"))byId("topupCardHolder").textContent=cfg.topupCardHolder||"إدارة كروة";
@@ -1196,6 +1245,7 @@ async function createOrder(type, title, route, price, options = {}) {
   if (!requireUser()) return false;
   const createdAtISO = new Date().toISOString();
   const orderRef = doc(collection(db, "orders"));
+  const customerFee = customerOperationFee(type);
   const order = {
     id: "KW-" + String(Date.now()).slice(-6),
     userId: state.user.uid,
@@ -1220,7 +1270,7 @@ async function createOrder(type, title, route, price, options = {}) {
     commissionRate: 0,
     commissionAmount: 0,
     driverEarnings: Number(price),
-    customerPlatformFee: fixedPlatformFee("customerOrderFee"),
+    customerPlatformFee: customerFee,
     customerFeeCharged: true,
     captainPlatformFee: 0,
     captainFeeCharged: false,
@@ -1236,7 +1286,6 @@ async function createOrder(type, title, route, price, options = {}) {
     ...(options.parcelDetails ? { parcelDetails: options.parcelDetails } : {})
   };
 
-  const customerFee=fixedPlatformFee("customerOrderFee");
   const walletPatch=walletDebitPatch({balance:state.balance,bonusBalance:state.bonusBalance,bonusExpiresAt:state.bonusExpiresAt},customerFee);
   if(customerFee>0&&!walletPatch) throw new Error(`الرصيد غير كافٍ. يلزم ${formatMoney(customerFee)} رسم كروة لإنشاء الطلب. اشحن المحفظة ثم أعد المحاولة.`);
   const batch = writeBatch(db);
@@ -2118,7 +2167,7 @@ byId("otherServiceCart")?.addEventListener("click", event => {
 });
 
 async function createServiceRequestWithCustomerFee(payload){
-  const fee=fixedPlatformFee("customerOrderFee");
+  const fee=customerOperationFee("service");
   const walletPatch=walletDebitPatch({balance:state.balance,bonusBalance:state.bonusBalance,bonusExpiresAt:state.bonusExpiresAt},fee);
   if(fee>0&&!walletPatch)throw new Error(`الرصيد غير كافٍ. يلزم ${formatMoney(fee)} رسم كروة لإرسال الطلب. اشحن المحفظة ثم أعد المحاولة.`);
   const requestRef=doc(collection(db,"serviceRequests"));

@@ -1,5 +1,5 @@
 let deferredInstall=null;
-const KARWA_BUILD={phase:73,version:"2.2.4"};
+const KARWA_BUILD={phase:75,version:"2.2.6"};
 let karwaLastVersionCheck=0,karwaUpdateReloading=false,karwaHiddenAt=0;
 const karwaIsNative=!!window.KarwaNative;
 function banner(){let b=document.getElementById('networkBanner');if(!b){b=document.createElement('div');b.id='networkBanner';b.style.cssText='position:fixed;z-index:99999;top:0;left:0;right:0;padding:9px 16px;text-align:center;font:600 13px system-ui;background:#fff3cd;color:#664d03;display:none';document.body.appendChild(b)}b.textContent=navigator.onLine?'تم استعادة الاتصال بالإنترنت':'أنت غير متصل بالإنترنت — سيستخدم كروة النسخة المحلية حتى عودة الشبكة';b.style.display=navigator.onLine?'none':'block'}

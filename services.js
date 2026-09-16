@@ -85,6 +85,11 @@ const pickupOtpBackfillIds = new Set();
 let pricingSettings = {};
 
 function fixedFee(key,fallback){const n=Number(pricingSettings?.[key]);return Math.max(0,Math.min(100000,Math.round(Number.isFinite(n)?n:fallback)));}
+function providerOperationFee(requestOrCategory){
+  const category=typeof requestOrCategory==="string"?requestOrCategory:String(requestOrCategory?.providerCategory||requestOrCategory?.category||currentProfile?.category||"");
+  const legacy=fixedFee("providerOrderFee",250);
+  return category==="restaurant"?fixedFee("providerRestaurantFee",legacy):fixedFee("providerServiceFee",legacy);
+}
 function timestampMillis(value){if(!value)return 0;if(typeof value.toMillis==="function")return value.toMillis();if(Number.isFinite(Number(value?.seconds)))return Number(value.seconds)*1000;const t=new Date(value).getTime();return Number.isFinite(t)?t:0;}
 function activeBonusAmount(data={}){const amount=Math.max(0,Number(data.bonusBalance||0));return amount>0&&timestampMillis(data.bonusExpiresAt)>Date.now()?amount:0;}
 function walletAvailable(data=currentUserData||{}){return Math.max(0,Number(data?.balance||0))+activeBonusAmount(data||{});}
@@ -99,7 +104,12 @@ function renderServiceWallet(){
   if(byId("serviceTopupTransferLabel"))byId("serviceTopupTransferLabel").textContent=pricingSettings.topupTransferLabel||"Mastercard محلي";
   if(byId("serviceTopupTransferId"))byId("serviceTopupTransferId").textContent=pricingSettings.topupTransferId||"أضف معرف التحويل من الإدارة";
   if(byId("serviceTopupCardHolder"))byId("serviceTopupCardHolder").textContent=pricingSettings.topupCardHolder||"إدارة كروة";
-  if(byId("serviceFeeSummary"))byId("serviceFeeSummary").textContent=`رسم النشر ${fixedFee("publishFee",1000).toLocaleString("ar-IQ")} د.ع • رسم الطلب ${fixedFee("providerOrderFee",250).toLocaleString("ar-IQ")} د.ع`;
+  if(byId("serviceFeeSummary")){
+    const publish=fixedFee("publishFee",1000).toLocaleString("ar-IQ");
+    const restaurant=providerOperationFee("restaurant").toLocaleString("ar-IQ");
+    const service=providerOperationFee("other").toLocaleString("ar-IQ");
+    byId("serviceFeeSummary").textContent=`نشر ${publish} د.ع • مطعم ${restaurant} د.ع • خدمات ${service} د.ع`;
+  }
   renderServiceTopupRequests();
 }
 function renderServiceTopupRequests(){
@@ -682,7 +692,7 @@ byId("providerRequestsList").addEventListener("click", async event => {
   setBusy(button, true);
   try {
     if (nextStatus === "accepted") {
-      const providerFee=fixedFee("providerOrderFee",250);
+      const providerFee=providerOperationFee(request);
       const walletPatch=walletDebitPatch(currentUserData||{},providerFee);
       if(providerFee>0&&!walletPatch){toast(`رصيدك غير كافٍ لقبول الطلب. يلزم ${providerFee.toLocaleString("ar-IQ")} د.ع رسم كروة. اشحن المحفظة أولًا.`);return;}
       if (request.providerCategory === "restaurant") {
