@@ -65,7 +65,7 @@
     else if(category==="maintenance"||has(text,["صيانه","اصلاح","ميكانيكي","نجار","حداد","فني","repair","maintenance"])) key="maintenance";
     else if(category==="home"||has(text,["خدمات منزليه","منزليه","house","home service"])) key="cleaning";
     const theme=THEMES[key]||THEMES.parcel;
-    return {key,image:`${BASE}${theme.image}?v=67`,accent:theme.accent,icon:theme.icon};
+    return {key,image:`${BASE}${theme.image}?v=68`,accent:theme.accent,icon:theme.icon};
   }
   function cssVars(input={}){
     const t=resolve(input);

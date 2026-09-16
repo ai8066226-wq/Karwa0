@@ -1,8 +1,8 @@
 {
-  "phase": 67,
-  "version": "2.1.8",
-  "webBasePhase": 67,
-  "updateMode": "server-first-local-fallback-version-check-no-resume-reload",
+  "phase": 68,
+  "version": "2.1.9",
+  "webBasePhase": 68,
+  "updateMode": "native-single-reload-web-guarded-single-attempt-server-first-local-fallback",
   "hosting": "https://karwa0.web.app",
   "notifications": "android-native-sound-vibration",
   "location": "native-gps-precise-permission-best-fix-20m-target-35m-acceptable",
@@ -10,5 +10,6 @@
   "backgroundConnection": "android-special-use-foreground-session-until-task-removed",
   "serviceThemes": "24-preloaded-textless-auto-by-service-type",
   "ratings": "unified-customer-taxi-delivery-service-admin-analytics",
-  "quantitySystem": "unit-aware-restaurant-services-piece-person-weight-liter-pack-meter-hour-day"
+  "quantitySystem": "unit-aware-restaurant-services-piece-person-weight-liter-pack-meter-hour-day",
+  "updateFix": "no-native-web-reload-loop-version-aligned"
 }

@@ -1181,7 +1181,7 @@ function restaurantSafeText(value) {
 }
 
 function karwaServiceTheme(input = {}) {
-  return window.KarwaServiceThemes?.resolve?.(input) || { key:"parcel", image:"./theme-parcel.webp?v=67", accent:"#087b75", icon:"🧰" };
+  return window.KarwaServiceThemes?.resolve?.(input) || { key:"parcel", image:"./theme-parcel.webp?v=68", accent:"#087b75", icon:"🧰" };
 }
 function karwaServiceThemeStyle(input = {}) {
   const theme = karwaServiceTheme(input);
