@@ -2457,7 +2457,7 @@ body.customer-map-mode #home>.welcome::after { display: none; }
   #authModal .role-entry-card { transition: none; }
 }
 </style>
-  <link rel="stylesheet" href="./native-notifications.css?v=71">
+  <link rel="stylesheet" href="./native-notifications.css?v=73">
 
 <style id="phase67-service-theme-css">
 
@@ -2558,6 +2558,10 @@ body.customer-map-mode #home>.welcome::after { display: none; }
             <p class="trip-stage-hint" id="tripStageHint">نبحث عن كابتن قريب</p>
             <div id="tripOtpBox" class="hidden" style="margin-top:14px;padding:14px;border-radius:16px;background:rgba(255,107,53,.08)">
               <strong>رمز التحقق: <span id="tripOtp" style="font-size:1.35rem;letter-spacing:4px">—</span></strong>
+              <div id="tripBarcodeWrap" class="trip-barcode-wrap hidden">
+                <div id="tripBarcode" class="trip-barcode" role="img" aria-label="باركود رمز الوصول"></div>
+                <small>يمكن للكابتن مسح الباركود بالكاميرا بدل إدخال الرمز يدويًا.</small>
+              </div>
               <small style="display:block;margin-top:6px">أعطِ هذا الرمز للكابتن فقط في خطوة التحقق المطلوبة. • حالة الدفع: <span id="paymentTripStatus">—</span></small>
             </div>
 
@@ -3134,11 +3138,11 @@ body.customer-map-mode #home>.welcome::after { display: none; }
   <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
   <script>try{if(window.maplibregl&&maplibregl.setRTLTextPlugin&&(!maplibregl.getRTLTextPluginStatus||maplibregl.getRTLTextPluginStatus()==="unavailable")){maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",true).catch(()=>{});}}catch(e){}</script>
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
-  <script src="./precise-location.js?v=71"></script>
-  <script src="./native-notifications.js?v=71"></script>
-  <script src="./service-themes.js?v=71"></script>
-  <script type="module" src="./app.js?v=71"></script>
-  <script src="./pwa.js?v=71"></script>
+  <script src="./precise-location.js?v=73"></script>
+  <script src="./native-notifications.js?v=73"></script>
+  <script src="./service-themes.js?v=73"></script>
+  <script type="module" src="./app.js?v=73"></script>
+  <script src="./pwa.js?v=73"></script>
 
 <script id="phase20-map-first-js">
 window.addEventListener("DOMContentLoaded",()=>{

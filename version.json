@@ -1,7 +1,7 @@
 {
-  "phase": 72,
-  "version": "2.2.3",
-  "webBasePhase": 72,
+  "phase": 73,
+  "version": "2.2.4",
+  "webBasePhase": 73,
   "updateMode": "native-single-reload-web-guarded-single-attempt-server-first-local-fallback",
   "hosting": "https://karwa0.web.app",
   "notifications": "android-native-sound-vibration",
@@ -15,5 +15,6 @@
   "arrivalFallback": "taxi-no-otp-both-gps-near-destination-120m-8s-single-settlement",
   "cancellationAudit": "required-reason-actor-name-email-role-for-customer-driver-service-admin",
   "customerOrderEditing": "owner-edits-service-quantity-notes-and-parcel-delivery-details-until-courier-pickup-status3-atomic-guarded",
-  "multiItemOrders": "single-or-multi-items-same-provider-max8-unit-aware-one-delivery-fee-edit-before-pickup"
+  "multiItemOrders": "single-or-multi-items-same-provider-max8-unit-aware-one-delivery-fee-edit-before-pickup",
+  "barcodeVerification": "customer-code128-under-otp-driver-camera-scan-with-manual-fallback"
 }

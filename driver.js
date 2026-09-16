@@ -97,6 +97,31 @@ const icons = { ride: "🚕", parcel: "📦", food: "🍽️", serviceDelivery: 
 const DELIVERY_ORDER_TYPES = new Set(["parcel", "food", "serviceDelivery"]);
 const DRIVER_REQUEST_RADIUS_KM = 10;
 
+const scannedOtpCache=new Map();
+let barcodeScannerStream=null, barcodeScannerFrame=0, barcodeScannerResolver=null, barcodeScannerBusy=false;
+function normalizeScannedOtp(raw){const value=String(raw||"").trim();if(/^\d{4}$/.test(value))return value;const match=value.match(/(?:KARWA[:|\- ]*)?(\d{4})$/i);return match?match[1]:"";}
+function stopBarcodeCamera(){if(barcodeScannerFrame){cancelAnimationFrame(barcodeScannerFrame);barcodeScannerFrame=0;}if(barcodeScannerStream){for(const track of barcodeScannerStream.getTracks())try{track.stop()}catch{}barcodeScannerStream=null;}const video=byId("barcodeScannerVideo");if(video)video.srcObject=null;barcodeScannerBusy=false;}
+function finishBarcodeScan(value=null){stopBarcodeCamera();const modal=byId("barcodeScannerModal");if(modal){modal.classList.add("hidden");modal.setAttribute("aria-hidden","true");}const resolve=barcodeScannerResolver;barcodeScannerResolver=null;if(resolve)resolve(value);}
+async function detectBarcodeLoop(detector,video,status){if(!barcodeScannerResolver||barcodeScannerBusy)return;barcodeScannerBusy=true;try{if(video.readyState>=2){const found=await detector.detect(video);for(const item of found){const otp=normalizeScannedOtp(item.rawValue);if(otp){finishBarcodeScan(otp);return;}}}}catch(error){console.warn("تعذر تحليل الباركود",error)}finally{barcodeScannerBusy=false}if(barcodeScannerResolver)barcodeScannerFrame=requestAnimationFrame(()=>detectBarcodeLoop(detector,video,status));}
+async function openCustomerBarcodeScanner(){
+  const modal=byId("barcodeScannerModal"),video=byId("barcodeScannerVideo"),status=byId("barcodeScannerStatus"),manual=byId("barcodeManualInput");
+  if(!modal||!video)return null; if(barcodeScannerResolver)finishBarcodeScan(null);
+  modal.classList.remove("hidden");modal.setAttribute("aria-hidden","false");if(manual){manual.value="";}if(status)status.textContent="وجّه الكاميرا نحو الباركود الموجود تحت رمز العميل.";
+  const result=new Promise(resolve=>{barcodeScannerResolver=resolve});
+  if(!navigator.mediaDevices?.getUserMedia){if(status)status.textContent="الكاميرا غير متاحة هنا. يمكنك إدخال الرمز يدويًا.";return result;}
+  try{barcodeScannerStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1280},height:{ideal:720}},audio:false});video.srcObject=barcodeScannerStream;await video.play();}
+  catch(error){console.warn("تعذر فتح كاميرا الباركود",error);if(status)status.textContent="تعذر فتح الكاميرا. اسمح بصلاحية الكاميرا أو أدخل الرمز يدويًا.";return result;}
+  if(!("BarcodeDetector" in window)){if(status)status.textContent="الكاميرا مفتوحة لكن ماسح الباركود غير مدعوم في هذا الإصدار. أدخل الرمز يدويًا.";return result;}
+  try{let formats=["code_128","qr_code"];if(BarcodeDetector.getSupportedFormats){const supported=await BarcodeDetector.getSupportedFormats();formats=formats.filter(x=>supported.includes(x));}if(!formats.length)throw new Error("FORMAT_UNSUPPORTED");const detector=new BarcodeDetector({formats});if(status)status.textContent="ثبّت الباركود داخل الإطار وسيتم التقاطه تلقائيًا.";barcodeScannerFrame=requestAnimationFrame(()=>detectBarcodeLoop(detector,video,status));}
+  catch(error){console.warn("ماسح الباركود غير متاح",error);if(status)status.textContent="تعذر تشغيل ماسح الباركود. يمكنك إدخال الرمز يدويًا.";}
+  return result;
+}
+byId("barcodeScannerClose")?.addEventListener("click",()=>finishBarcodeScan(null));
+byId("barcodeManualSubmit")?.addEventListener("click",()=>{const value=normalizeScannedOtp(byId("barcodeManualInput")?.value);if(!value)return toast("أدخل رمزًا صحيحًا من 4 أرقام");finishBarcodeScan(value)});
+byId("barcodeManualInput")?.addEventListener("keydown",event=>{if(event.key==="Enter")byId("barcodeManualSubmit")?.click()});
+window.addEventListener("pagehide",()=>finishBarcodeScan(null));
+function orderNeedsCustomerBarcode(order,statusIndex=Number(order?.statusIndex||0)){if(order?.cancelled)return false;return order?.type==="ride"?statusIndex===2:DELIVERY_ORDER_TYPES.has(order?.type)&&statusIndex===3;}
+
 function validDispatchPoint(point) {
   const lat = Number(point?.latitude);
   const lng = Number(point?.longitude);
@@ -1086,6 +1111,8 @@ function orderCard(order, mode) {
     : statusIndex < 4 && !order.cancelled
       ? `<button class="primary" data-action="advance" data-id="${order.firestoreId}">${escapeHtml(driverStatusLabel(order, statusIndex + 1))}</button><button class="danger" data-action="cancel" data-id="${order.firestoreId}">إلغاء الطلب</button>`
       : "";
+  const scanAction = mode !== "available" && orderNeedsCustomerBarcode(order,statusIndex)
+    ? `<button class="secondary" data-action="scan-otp" data-id="${order.firestoreId}">📷 مسح باركود العميل</button>` : "";
   return `
     <article class="order-card">
       <div class="order-top">
@@ -1102,7 +1129,7 @@ function orderCard(order, mode) {
         <span class="order-price">${money(order.price)}</span>
       </div>
       ${order.type==="ride"&&statusIndex===2?`<div class="order-meta"><span>📍 إذا لم تُدخل رمز العميل، سيؤكد كروة الوصول تلقائيًا عندما تصلان معًا إلى الوجهة عبر GPS الدقيق.</span></div>`:""}
-      ${action ? `<div class="order-actions">${action}</div>` : ""}
+      ${action || scanAction ? `<div class="order-actions">${scanAction}${action}</div>` : ""}
     </article>`;
 }
 
@@ -1268,6 +1295,13 @@ byId("onlineSwitch").addEventListener("click", async () => {
 document.addEventListener("click", async event => {
   const button = event.target.closest("button[data-action]");
   if (!button || !state.user) return;
+  if (button.dataset.action === "scan-otp") {
+    const order=state.orders.find(item=>item.firestoreId===button.dataset.id); if(!order||!orderNeedsCustomerBarcode(order))return toast("هذا الطلب لا يحتاج مسح الرمز الآن");
+    const scanned=await openCustomerBarcodeScanner(); if(!scanned)return;
+    if(String(scanned)!==String(order.tripOtp||""))return toast("الباركود لا يطابق رمز هذا الطلب");
+    scannedOtpCache.set(order.firestoreId,scanned); toast("تمت قراءة باركود العميل بنجاح");
+    const advance=[...document.querySelectorAll('button[data-action="advance"]')].find(x=>x.dataset.id===order.firestoreId); if(advance)advance.click(); return;
+  }
   if (state.driverData?.blocked === true) {
     toast("الحساب محظور من تنفيذ الطلبات");
     return;
@@ -1355,7 +1389,9 @@ document.addEventListener("click", async event => {
         if (!/^\d{4}$/.test(pickupOtp)) throw new Error("PICKUP_OTP_INVALID");
       }
       if (next === finalOtpStep) {
-        otp = prompt(DELIVERY_ORDER_TYPES.has(order.type) ? "أدخل رمز التسليم المكوّن من 4 أرقام الذي يعطيك إياه العميل عند الوصول:" : "أدخل رمز بدء الرحلة المكوّن من 4 أرقام:", "") || "";
+        otp = scannedOtpCache.get(order.firestoreId) || "";
+        scannedOtpCache.delete(order.firestoreId);
+        if (!otp) otp = prompt(DELIVERY_ORDER_TYPES.has(order.type) ? "أدخل رمز التسليم المكوّن من 4 أرقام الذي يعطيك إياه العميل عند الوصول:" : "أدخل رمز بدء الرحلة المكوّن من 4 أرقام:", "") || "";
         if (!otp) throw new Error("OTP_REQUIRED");
       }
       if (next === finalOtpStep && String(otp).trim() !== String(order.tripOtp || "").trim()) throw new Error("OTP_INVALID");

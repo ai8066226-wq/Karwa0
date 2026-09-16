@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0b6f75">
   <meta name="description" content="بوابة كابتن كروة لاستلام الطلبات وتحديث الرحلات">
   <title>كروة | بوابة الكابتن</title>
-  <link rel="stylesheet" href="./portal.css?v=71">
+  <link rel="stylesheet" href="./portal.css?v=73">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css">
   <link rel="manifest" href="./manifest.webmanifest">
@@ -617,12 +617,22 @@ body.driver-map-mode{--navy:var(--captain-ink);--navy-2:var(--captain-navy);--or
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+  <div id="barcodeScannerModal" class="barcode-scanner-modal hidden" role="dialog" aria-modal="true" aria-labelledby="barcodeScannerTitle" aria-hidden="true">
+    <div class="barcode-scanner-sheet">
+      <div class="barcode-scanner-head"><strong id="barcodeScannerTitle">مسح باركود رمز العميل</strong><button id="barcodeScannerClose" class="barcode-scanner-close" type="button" aria-label="إغلاق">×</button></div>
+      <div class="barcode-camera-box"><video id="barcodeScannerVideo" playsinline muted></video><div class="barcode-viewfinder"></div><div class="barcode-scan-line"></div></div>
+      <div id="barcodeScannerStatus" class="barcode-scanner-status">وجّه الكاميرا نحو الباركود الموجود تحت رمز العميل.</div>
+      <div class="barcode-manual"><input id="barcodeManualInput" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="أو اكتب الرمز يدويًا"><button id="barcodeManualSubmit" type="button">تأكيد</button></div>
+      <small class="barcode-scanner-note">لا يتم حفظ صورة الكاميرا أو رفعها إلى السيرفر.</small>
+    </div>
+  </div>
   <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
   <script>try{if(window.maplibregl&&maplibregl.setRTLTextPlugin&&(!maplibregl.getRTLTextPluginStatus||maplibregl.getRTLTextPluginStatus()==="unavailable")){maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",true).catch(()=>{});}}catch(e){}</script>
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
-  <script src="./precise-location.js?v=71"></script>
-  <script type="module" src="./driver.js?v=71"></script>
-  <script src="./pwa.js?v=71"></script>
+  <script src="./precise-location.js?v=73"></script>
+  <script type="module" src="./driver.js?v=73"></script>
+  <script src="./pwa.js?v=73"></script>
 <script id="phase20-driver-map-first-js">
 window.addEventListener("DOMContentLoaded",()=>{
   const view=document.getElementById("driverView");
