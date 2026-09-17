@@ -23,6 +23,13 @@ import {
   where,
   writeBatch
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
+import {
+  deleteObject,
+  getDownloadURL,
+  getStorage,
+  ref as storageRef,
+  uploadBytes
+} from "https://www.gstatic.com/firebasejs/12.18.0/firebase-storage.js";
 import { requireNativeRegistrationDevice, addDeviceRegistrationWrites, enforceDeviceSession } from "./device-binding.js?v=85";
 
 const firebaseConfig = {
@@ -37,6 +44,89 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig, "karwa-services-portal-v4");
 const auth = getAuth(app);
 const db = getFirestore(app);
+const storage = getStorage(app);
+
+const SERVICE_IMAGE_MAX_BYTES = 50 * 1024;
+const SERVICE_IMAGE_SOURCE_MAX_BYTES = 12 * 1024 * 1024;
+let pendingCoverImageBlob = null;
+let pendingCoverPreviewUrl = "";
+let coverMarkedForRemoval = false;
+let draftItemImageBlob = null;
+let draftItemPreviewUrl = "";
+const pendingItemImageBlobs = new Map();
+const pendingItemPreviewUrls = new Map();
+const mediaPathsPendingDelete = new Set();
+
+function randomMediaId(prefix = "img") {
+  const raw = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${prefix}-${String(raw).replace(/[^a-zA-Z0-9_-]/g, "")}`.slice(0, 90);
+}
+function revokeObjectUrl(url) { if (url && String(url).startsWith("blob:")) try { URL.revokeObjectURL(url); } catch {} }
+function imageSizeLabel(bytes) { return `${Math.max(1, Math.ceil(Number(bytes || 0) / 1024))} KB`; }
+function currentCoverPreviewUrl() {
+  if (coverMarkedForRemoval) return "";
+  return pendingCoverPreviewUrl || String(currentProfile?.coverImageUrl || "");
+}
+function itemPreviewUrl(item = {}) { return pendingItemPreviewUrls.get(String(item.imageId || "")) || String(item.imageUrl || ""); }
+function safeImageHtml(url, alt, className = "service-media-image") {
+  const clean = String(url || "").trim();
+  return clean ? `<img class="${className}" src="${escapeHtml(clean)}" alt="${escapeHtml(alt || "صورة")}" loading="lazy" decoding="async">` : "";
+}
+
+async function canvasWebpBlob(canvas, quality) {
+  return new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("WEBP_UNSUPPORTED")), "image/webp", quality));
+}
+async function loadImageSource(file) {
+  if (globalThis.createImageBitmap) {
+    try { const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" }); return { source: bitmap, width: bitmap.width, height: bitmap.height, close: () => bitmap.close?.() }; } catch {}
+  }
+  const url = URL.createObjectURL(file);
+  try {
+    const image = await new Promise((resolve, reject) => { const img = new Image(); img.onload = () => resolve(img); img.onerror = reject; img.src = url; });
+    return { source: image, width: image.naturalWidth, height: image.naturalHeight, close: () => URL.revokeObjectURL(url) };
+  } catch (error) { URL.revokeObjectURL(url); throw error; }
+}
+async function compressServiceImage(file, { maxWidth = 960, maxHeight = 720 } = {}) {
+  if (!file || !String(file.type || "").startsWith("image/")) throw new Error("IMAGE_REQUIRED");
+  if (Number(file.size || 0) > SERVICE_IMAGE_SOURCE_MAX_BYTES) throw new Error("SOURCE_TOO_LARGE");
+  const loaded = await loadImageSource(file);
+  try {
+    let scale = Math.min(1, maxWidth / loaded.width, maxHeight / loaded.height);
+    let width = Math.max(96, Math.round(loaded.width * scale));
+    let height = Math.max(96, Math.round(loaded.height * scale));
+    let best = null;
+    for (let pass = 0; pass < 8; pass++) {
+      const canvas = document.createElement("canvas"); canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext("2d", { alpha: false });
+      ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(loaded.source, 0, 0, width, height);
+      for (const quality of [0.82, 0.72, 0.62, 0.52, 0.44, 0.36, 0.30]) {
+        const blob = await canvasWebpBlob(canvas, quality);
+        if (!best || blob.size < best.size) best = blob;
+        if (blob.size <= SERVICE_IMAGE_MAX_BYTES) return blob;
+      }
+      width = Math.max(96, Math.round(width * 0.82));
+      height = Math.max(96, Math.round(height * 0.82));
+    }
+    if (best?.size <= SERVICE_IMAGE_MAX_BYTES) return best;
+    throw new Error("CANNOT_REACH_50KB");
+  } finally { loaded.close?.(); }
+}
+async function uploadServiceMedia(blob, kind, id) {
+  if (!currentUser) throw new Error("AUTH_REQUIRED");
+  if (!blob || blob.size > SERVICE_IMAGE_MAX_BYTES || blob.type !== "image/webp") throw new Error("INVALID_MEDIA");
+  const safeKind = kind === "cover" ? "cover" : "items";
+  const path = `service-media/${currentUser.uid}/${safeKind}/${id}.webp`;
+  const target = storageRef(storage, path);
+  await uploadBytes(target, blob, { contentType: "image/webp", cacheControl: "public,max-age=31536000,immutable", customMetadata: { ownerId: currentUser.uid, kind: safeKind } });
+  return { imageUrl: await getDownloadURL(target), imagePath: path, imageBytes: blob.size };
+}
+async function deleteServiceMediaPath(path) {
+  const clean = String(path || "");
+  if (!currentUser || !clean.startsWith(`service-media/${currentUser.uid}/`)) return;
+  try { await deleteObject(storageRef(storage, clean)); } catch (error) { if (error?.code !== "storage/object-not-found") console.warn("تعذر حذف صورة الخدمة", clean, error); }
+}
+async function deleteQueuedServiceMedia(paths) { await Promise.all([...new Set(paths)].filter(Boolean).map(deleteServiceMediaPath)); }
 
 async function registerServiceNativePushToken(user){
   if(!user)return false;let token="";try{token=String(window.KarwaNative?.getPushToken?.()||window.KarwaNotify?.getNativePushToken?.()||"").trim()}catch{}if(!token)return false;
@@ -536,7 +626,11 @@ function normalizedProviderItem(item = {}) {
     description: String(item.description || "").slice(0, 300),
     unit,
     deliveryAvailable: item.deliveryAvailable === true,
-    deliveryFee: item.deliveryAvailable === true ? Math.max(0, Math.round(Number(item.deliveryFee || 0))) : 0
+    deliveryFee: item.deliveryAvailable === true ? Math.max(0, Math.round(Number(item.deliveryFee || 0))) : 0,
+    imageId: String(item.imageId || "").slice(0, 100),
+    imageUrl: String(item.imageUrl || "").slice(0, 2200),
+    imagePath: String(item.imagePath || "").slice(0, 500),
+    imageBytes: Math.max(0, Math.round(Number(item.imageBytes || 0)))
   };
 }
 
@@ -546,7 +640,8 @@ function renderProviderItems() {
   byId("pItemList").innerHTML = providerItems.length
     ? providerItems.map((item, index) => `
         <div class="catalog-item catalog-item-rich">
-          <div><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.description || "بدون وصف")}</small><div class="catalog-item-tags"><span>السعر لكل ${escapeHtml(itemUnitLabels[item.unit] || itemUnitLabels.item)}</span><span>${item.deliveryAvailable ? `توصيل ${money(item.deliveryFee)}` : "استلام فقط"}</span></div></div>
+          <div class="catalog-item-media">${safeImageHtml(itemPreviewUrl(item), item.name, "catalog-item-thumb") || `<span class="catalog-item-placeholder">📷</span>`}</div>
+          <div><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.description || "بدون وصف")}</small><div class="catalog-item-tags"><span>السعر لكل ${escapeHtml(itemUnitLabels[item.unit] || itemUnitLabels.item)}</span><span>${item.deliveryAvailable ? `توصيل ${money(item.deliveryFee)}` : "استلام فقط"}</span>${item.imageBytes ? `<span>${imageSizeLabel(item.imageBytes)}</span>` : ""}</div></div>
           <span class="price">${money(item.price)}</span>
           <button class="button danger" type="button" data-remove-item="${index}">حذف</button>
         </div>`).join("")
@@ -556,6 +651,11 @@ function renderProviderItems() {
       const index = Number(button.dataset.removeItem);
       const item = providerItems[index];
       if (!item || !confirm(`حذف ${item.name} من القائمة؟`)) return;
+      if (item.imagePath) mediaPathsPendingDelete.add(item.imagePath);
+      if (item.imageId) {
+        pendingItemImageBlobs.delete(item.imageId);
+        const previewUrl = pendingItemPreviewUrls.get(item.imageId); revokeObjectUrl(previewUrl); pendingItemPreviewUrls.delete(item.imageId);
+      }
       providerItems.splice(index, 1);
       renderProviderItems();
       toast("تم حذف العنصر من المسودة. احفظ التغييرات للتأكيد.");
@@ -563,6 +663,38 @@ function renderProviderItems() {
   });
   renderPreview();
 }
+
+byId("pCoverImage").addEventListener("change", async event => {
+  const file = event.target.files?.[0]; if (!file) return;
+  const status = byId("pCoverImageStatus"); status.textContent = "جاري تجهيز الصورة…";
+  try {
+    const blob = await compressServiceImage(file, { maxWidth: 1280, maxHeight: 800 });
+    revokeObjectUrl(pendingCoverPreviewUrl); pendingCoverImageBlob = blob; pendingCoverPreviewUrl = URL.createObjectURL(blob); coverMarkedForRemoval = false;
+    status.textContent = `جاهزة للرفع • WebP • ${imageSizeLabel(blob.size)} من 50 KB`;
+    byId("pCoverImagePreview").innerHTML = safeImageHtml(pendingCoverPreviewUrl, "معاينة واجهة الخدمة", "draft-item-image");
+    byId("pRemoveCoverImage").hidden = false; renderPreview();
+  } catch (error) {
+    console.error(error); event.target.value = ""; status.textContent = "تعذر تجهيز الصورة";
+    toast(error?.message === "SOURCE_TOO_LARGE" ? "اختر صورة أصلية أصغر من 12 MB." : "تعذر ضغط الصورة إلى WebP أقل من 50 KB. اختر صورة أبسط أو أصغر.");
+  }
+});
+byId("pRemoveCoverImage").addEventListener("click", () => {
+  pendingCoverImageBlob = null; revokeObjectUrl(pendingCoverPreviewUrl); pendingCoverPreviewUrl = ""; coverMarkedForRemoval = true; byId("pCoverImage").value = "";
+  byId("pCoverImageStatus").textContent = "سيتم حذف صورة الواجهة عند حفظ التغييرات."; byId("pCoverImagePreview").innerHTML = "🏪"; byId("pRemoveCoverImage").hidden = true; renderPreview();
+});
+byId("pItemImage").addEventListener("change", async event => {
+  const file = event.target.files?.[0]; if (!file) return;
+  const status = byId("pItemImageStatus"); status.textContent = "جاري تجهيز صورة العنصر…";
+  try {
+    const blob = await compressServiceImage(file, { maxWidth: 720, maxHeight: 720 });
+    revokeObjectUrl(draftItemPreviewUrl); draftItemImageBlob = blob; draftItemPreviewUrl = URL.createObjectURL(blob);
+    byId("pItemImagePreview").innerHTML = safeImageHtml(draftItemPreviewUrl, "معاينة صورة المنتج", "draft-item-image");
+    status.textContent = `جاهزة • WebP • ${imageSizeLabel(blob.size)} من 50 KB`;
+  } catch (error) {
+    console.error(error); event.target.value = ""; draftItemImageBlob = null; revokeObjectUrl(draftItemPreviewUrl); draftItemPreviewUrl = ""; byId("pItemImagePreview").innerHTML = "📷";
+    status.textContent = "تعذر تجهيز الصورة"; toast("تعذر ضغط الصورة إلى WebP أقل من 50 KB. اختر صورة أبسط أو أصغر.");
+  }
+});
 
 byId("pDeliveryAvailable").addEventListener("change", event => {
   byId("pDeliveryFee").disabled = !event.target.checked;
@@ -584,7 +716,10 @@ byId("pAddItem").addEventListener("click", event => {
   const button = event.currentTarget;
   setBusy(button, true, "جارٍ الإضافة…");
   try {
-    providerItems.push(normalizedProviderItem({ name, price, description, unit, deliveryAvailable, deliveryFee }));
+    const imageId = draftItemImageBlob ? randomMediaId("item") : "";
+    if (imageId) { pendingItemImageBlobs.set(imageId, draftItemImageBlob); pendingItemPreviewUrls.set(imageId, draftItemPreviewUrl); }
+    providerItems.push(normalizedProviderItem({ name, price, description, unit, deliveryAvailable, deliveryFee, imageId, imageBytes: draftItemImageBlob?.size || 0 }));
+    draftItemImageBlob = null; draftItemPreviewUrl = "";
     byId("pItemName").value = "";
     byId("pItemPrice").value = "";
     byId("pItemDescription").value = "";
@@ -592,6 +727,7 @@ byId("pAddItem").addEventListener("click", event => {
     byId("pDeliveryAvailable").checked = false;
     byId("pDeliveryFee").value = "0";
     byId("pDeliveryFee").disabled = true;
+    byId("pItemImage").value = ""; byId("pItemImagePreview").innerHTML = "📷"; byId("pItemImageStatus").textContent = "اختياري • تُحوّل تلقائيًا إلى WebP ≤ 50 KB";
     renderProviderItems();
     toast("تمت إضافة العنصر. احفظ التغييرات لنشره للعملاء.");
   } catch (error) {
@@ -606,7 +742,12 @@ function renderPreview() {
   const category = currentProfile?.category || currentApplication?.category || "other";
   const theme = window.KarwaServiceThemes?.resolve?.({ category, serviceType:currentApplication?.serviceType || "", description:byId("pDescription")?.value || currentProfile?.description || "", items:providerItems }) || { image:"./theme-parcel.webp?v=73", accent:"#087b75", icon:"🧰", key:"parcel" };
   const cover = byId("previewThemeCover");
-  if (cover) { cover.style.backgroundImage = `linear-gradient(180deg,rgba(3,15,24,.02),rgba(3,15,24,.2)),url('${theme.image}')`; cover.style.setProperty("--preview-theme-accent", theme.accent); cover.dataset.theme = theme.key; }
+  const customCover = currentCoverPreviewUrl();
+  if (cover) {
+    const visual = customCover || theme.image;
+    cover.style.backgroundImage = `linear-gradient(180deg,rgba(3,15,24,.02),rgba(3,15,24,.2)),url("${String(visual).replace(/["\\]/g, "\\$&")}")`;
+    cover.style.setProperty("--preview-theme-accent", theme.accent); cover.dataset.theme = customCover ? "custom" : theme.key;
+  }
   const themeIcon = byId("previewThemeIcon"); if (themeIcon) themeIcon.textContent = theme.icon;
   byId("previewCategory").textContent = categoryLabel(category);
   byId("previewName").textContent = byId("pBusinessName").value.trim() || "اسم النشاط";
@@ -614,7 +755,7 @@ function renderPreview() {
   byId("previewAddress").textContent = `${byId("pCity").value.trim()} • ${byId("pAddress").value.trim()}`.replace(/^ • | • $/g, "") || "العنوان";
   byId("previewPhone").textContent = byId("pPhone").value.trim() || "الهاتف";
   byId("previewItems").innerHTML = providerItems.slice(0, 4).map(item => `
-    <div class="catalog-item catalog-item-rich"><div><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.description || "")}</small><div class="catalog-item-tags"><span>لكل ${escapeHtml(itemUnitLabels[item.unit] || itemUnitLabels.item)}</span><span>${item.deliveryAvailable ? `توصيل ${money(item.deliveryFee)}` : "استلام"}</span></div></div><span class="price">${money(item.price)}</span></div>
+    <div class="catalog-item catalog-item-rich"><div class="catalog-item-media">${safeImageHtml(itemPreviewUrl(item), item.name, "catalog-item-thumb") || `<span class="catalog-item-placeholder">📷</span>`}</div><div><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.description || "")}</small><div class="catalog-item-tags"><span>لكل ${escapeHtml(itemUnitLabels[item.unit] || itemUnitLabels.item)}</span><span>${item.deliveryAvailable ? `توصيل ${money(item.deliveryFee)}` : "استلام"}</span></div></div><span class="price">${money(item.price)}</span></div>
   `).join("") || `<div class="empty">ستظهر عناصر خدمتك هنا.</div>`;
   byId("activeMetric").textContent = byId("pActive").checked ? "نشط" : "متوقف مؤقتًا";
 }
@@ -631,7 +772,11 @@ function fillProviderForm(data) {
   byId("pActive").checked = data.active !== false;
   byId("categoryMetric").textContent = categoryLabel(category);
   providerLocation = data.location || null;
+  pendingCoverImageBlob = null; revokeObjectUrl(pendingCoverPreviewUrl); pendingCoverPreviewUrl = ""; coverMarkedForRemoval = false; mediaPathsPendingDelete.clear();
+  pendingItemPreviewUrls.forEach(revokeObjectUrl); pendingItemPreviewUrls.clear(); pendingItemImageBlobs.clear();
   providerItems = Array.isArray(data.items) ? data.items.map(normalizedProviderItem) : [];
+  byId("pCoverImage").value = ""; byId("pRemoveCoverImage").hidden = !data.coverImageUrl; byId("pCoverImagePreview").innerHTML = safeImageHtml(data.coverImageUrl, data.businessName || "واجهة الخدمة", "draft-item-image") || "🏪";
+  byId("pCoverImageStatus").textContent = data.coverImageUrl ? `صورة واجهة محفوظة${data.coverImageBytes ? ` • ${imageSizeLabel(data.coverImageBytes)}` : ""}` : "اختياري • تُحوّل تلقائيًا إلى WebP ≤ 50 KB";
   byId("pGpsStatus").textContent = providerLocation?.latitude != null && providerLocation?.longitude != null
     ? `محفوظ ✓ ${Number(providerLocation.latitude).toFixed(5)}, ${Number(providerLocation.longitude).toFixed(5)}`
     : "لم يتم تحديد الموقع";
@@ -827,6 +972,9 @@ async function openProvider() {
     address: restaurant?.address || currentApplication?.address || "",
     description: currentApplication?.description || "",
     location: restaurant?.location || currentApplication?.location || null,
+    coverImageUrl: restaurant?.coverImageUrl || "",
+    coverImagePath: restaurant?.coverImagePath || "",
+    coverImageBytes: Number(restaurant?.coverImageBytes || 0),
     items: restaurant?.meals || [],
     active: restaurant?.active !== false
   };
@@ -899,7 +1047,22 @@ byId("providerForm").addEventListener("submit", async event => {
   if(chargePublish&&publishFee>0&&!publishWalletPatch)return toast(`يلزم ${publishFee.toLocaleString("ar-IQ")} د.ع لنشر النشاط لأول مرة. اشحن المحفظة ثم أعد المحاولة.`);
   const button = byId("saveProviderButton");
   setBusy(button, true, "جاري حفظ التغييرات…");
+  const uploadedPaths = [];
+  let saveCommitted = false;
   try {
+    let coverImageUrl = coverMarkedForRemoval ? "" : String(currentProfile?.coverImageUrl || "");
+    let coverImagePath = coverMarkedForRemoval ? "" : String(currentProfile?.coverImagePath || "");
+    let coverImageBytes = coverMarkedForRemoval ? 0 : Math.max(0, Number(currentProfile?.coverImageBytes || 0));
+    if (pendingCoverImageBlob) {
+      const uploaded = await uploadServiceMedia(pendingCoverImageBlob, "cover", randomMediaId("cover")); uploadedPaths.push(uploaded.imagePath);
+      coverImageUrl = uploaded.imageUrl; coverImagePath = uploaded.imagePath; coverImageBytes = uploaded.imageBytes;
+    }
+    const itemsForSave = [];
+    for (const item of providerItems) {
+      const clean = normalizedProviderItem(item); const blob = clean.imageId ? pendingItemImageBlobs.get(clean.imageId) : null;
+      if (blob) { const uploaded = await uploadServiceMedia(blob, "items", clean.imageId); uploadedPaths.push(uploaded.imagePath); Object.assign(clean, uploaded); }
+      itemsForSave.push(clean);
+    }
     const batch = writeBatch(db);
     batch.set(doc(db, "serviceProfiles", currentUser.uid), {
       ownerId: currentUser.uid,
@@ -910,7 +1073,10 @@ byId("providerForm").addEventListener("submit", async event => {
       address,
       description,
       location: providerLocation,
-      items: providerItems.map(item => ({ ...item })),
+      items: itemsForSave.map(item => ({ ...item })),
+      coverImageUrl,
+      coverImagePath,
+      coverImageBytes,
       active,
       publishFeePaid: currentProfile?.publishFeePaid===true || chargePublish,
       publishFeeAmount: currentProfile?.publishFeePaid===true ? Number(currentProfile.publishFeeAmount||publishFee) : (chargePublish?publishFee:Number(currentProfile?.publishFeeAmount||0)),
@@ -925,22 +1091,34 @@ byId("providerForm").addEventListener("submit", async event => {
         phone,
         address,
         location: providerLocation,
-        meals: providerItems.map(item => ({ ...item })),
+        meals: itemsForSave.map(item => ({ ...item })),
+        coverImageUrl,
+        coverImagePath,
+        coverImageBytes,
         active,
         approvalStatus: "approved",
         updatedAt: serverTimestamp()
       }, { merge: true });
     }
     if(publishWalletPatch)batch.set(doc(db,"users",currentUser.uid),publishWalletPatch,{merge:true});
-    await batch.commit();
+    await batch.commit(); saveCommitted = true;
+    const oldCoverPath = String(currentProfile?.coverImagePath || "");
+    const deletionPaths = new Set(mediaPathsPendingDelete);
+    if (oldCoverPath && oldCoverPath !== coverImagePath) deletionPaths.add(oldCoverPath);
+    await deleteQueuedServiceMedia(deletionPaths);
+    mediaPathsPendingDelete.clear(); pendingItemImageBlobs.clear(); pendingItemPreviewUrls.forEach(revokeObjectUrl); pendingItemPreviewUrls.clear();
+    pendingCoverImageBlob = null; revokeObjectUrl(pendingCoverPreviewUrl); pendingCoverPreviewUrl = ""; coverMarkedForRemoval = false;
+    providerItems = itemsForSave; byId("pCoverImage").value = ""; byId("pRemoveCoverImage").hidden = !coverImageUrl; byId("pCoverImagePreview").innerHTML = safeImageHtml(coverImageUrl, businessName, "draft-item-image") || "🏪";
+    byId("pCoverImageStatus").textContent = coverImageUrl ? `صورة واجهة محفوظة${coverImageBytes ? ` • ${imageSizeLabel(coverImageBytes)}` : ""}` : "اختياري • تُحوّل تلقائيًا إلى WebP ≤ 50 KB";
     if(publishWalletPatch){currentUserData={...(currentUserData||{}),balance:publishWalletPatch.balance,bonusBalance:publishWalletPatch.bonusBalance};renderServiceWallet();}
-    currentProfile = { ...currentProfile, businessName, category, phone, city, address, description, location: providerLocation, items: providerItems, active, publishFeePaid:currentProfile?.publishFeePaid===true||chargePublish, publishFeeAmount:currentProfile?.publishFeePaid===true?Number(currentProfile.publishFeeAmount||publishFee):(chargePublish?publishFee:Number(currentProfile?.publishFeeAmount||0)) };
+    currentProfile = { ...currentProfile, businessName, category, phone, city, address, description, location: providerLocation, items: providerItems, coverImageUrl, coverImagePath, coverImageBytes, active, publishFeePaid:currentProfile?.publishFeePaid===true||chargePublish, publishFeeAmount:currentProfile?.publishFeePaid===true?Number(currentProfile.publishFeeAmount||publishFee):(chargePublish?publishFee:Number(currentProfile?.publishFeeAmount||0)) };
     byId("providerHeroName").textContent = businessName;
-    renderPreview();
+    renderProviderItems();
     toast("تم حفظ ملف الخدمة بنجاح");
   } catch (error) {
     console.error(error);
-    toast("تعذر حفظ التغييرات. تحقق من الاتصال وقواعد Firestore.");
+    if (!saveCommitted) await deleteQueuedServiceMedia(uploadedPaths);
+    toast(error?.code === "storage/unauthorized" ? "تعذر رفع الصور: انشر قواعد Storage الجديدة أولًا." : "تعذر حفظ التغييرات أو رفع الصور. تحقق من الاتصال والقواعد.");
   } finally {
     setBusy(button, false);
   }
@@ -956,6 +1134,13 @@ byId("serviceTopupForm")?.addEventListener("submit",async event=>{
   const button=event.submitter||byId("serviceTopupSubmit");setBusy(button,true,"جاري الإرسال…");
   try{const requestRef=doc(collection(db,"topupRequests"));const batch=writeBatch(db);batch.set(requestRef,{userId:currentUser.uid,customerName:currentUserData?.name||currentUser.displayName||"مزود خدمة",email:currentUser.email||"",amount,transferReference:transferReference.slice(0,80),method:"mastercard_local",accountType:"service",accountRole:currentUserData?.role||"serviceProvider",status:"pending",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});batch.set(doc(db,"topupLocks",currentUser.uid),{userId:currentUser.uid,requestId:requestRef.id,status:"pending",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});await batch.commit();serviceTopupRequests=[{firestoreId:requestRef.id,userId:currentUser.uid,amount,transferReference,status:"pending",createdAt:null},...serviceTopupRequests.filter(x=>x.firestoreId!==requestRef.id)];renderServiceTopupRequests();event.currentTarget.reset();toast("تم إرسال طلب الشحن مرة واحدة. انتظر قرار الإدارة قبل طلب جديد.");}catch(error){console.error(error);toast(error?.code==="permission-denied"?"يوجد طلب شحن قيد المراجعة بالفعل أو لم تُنشر قواعد Phase 79 بعد.":"تعذر إرسال طلب الشحن");}finally{setBusy(button,false);updateServiceTopupFormState();}
 });
+
+window.KarwaServiceMedia = {
+  async deleteAllKnownForCurrentProfile() {
+    const paths = [currentProfile?.coverImagePath, ...(Array.isArray(currentProfile?.items) ? currentProfile.items.map(item => item?.imagePath) : [])].filter(Boolean);
+    await deleteQueuedServiceMedia(paths);
+  }
+};
 
 function clearRoleContent() {
   contentUnsubscribe?.();
