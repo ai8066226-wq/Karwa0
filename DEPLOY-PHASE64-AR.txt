@@ -1,3 +1,0 @@
-كروة Phase 65 / v2.1.6
-انشر: firebase deploy --only hosting
-الثيمات موجودة داخل مجلد themes وتختار تلقائيًا حسب نوع الخدمة.
