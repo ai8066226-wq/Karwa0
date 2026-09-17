@@ -27,7 +27,7 @@ import {
   where,
   writeBatch
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
-import { requireNativeRegistrationDevice, addDeviceRegistrationWrites, enforceDeviceSession } from "./device-binding.js?v=82";
+import { requireNativeRegistrationDevice, addDeviceRegistrationWrites, enforceDeviceSession } from "./device-binding.js?v=83";
 
 const firebaseConfig = {
   apiKey: "AIzaSyASl5jV5mLaDh8CoeeofV7ftVJ3gaog64E",
@@ -470,6 +470,7 @@ function resetDriverNavigationUi(){
   if(byId("nextTurnIcon"))byId("nextTurnIcon").textContent="⬆️";
   if(byId("nextTurnText"))byId("nextTurnText").textContent="ابدأ القيادة وسيظهر التوجيه هنا";
 }
+function setDriverNavigationText(id,value){const element=byId(id);if(element)element.textContent=value;}
 function showDriverNavigationArrival(order){
   const nav=state.routeNavigation;if(!nav||nav.orderId!==order?.firestoreId)return false;
   state.navigationCompletedOrderId=String(order.firestoreId);
@@ -894,10 +895,10 @@ async function drawPickupRoute(force=false, reason="") {
     state.routeProgressIndex=0;
     state.offRouteHits=0;
     if(state.routeLine)state.routeLine.setLatLngs(coords);else state.routeLine=window.L.polyline(coords,{color:"#087b75",weight:8,opacity:.95,lineCap:"round"}).addTo(state.map);
-    byId("driverEta").textContent=`${Math.max(1,Math.round(mins))} دقيقة`;
-    byId("driverRemaining").textContent=km<1?`${Math.max(1,Math.round(km*1000))} م`:`${km.toFixed(1)} كم`;
-    byId("driverNavTarget").textContent=st>=3?"إلى الوجهة":"إلى الراكب";
-    byId("driverRouteProvider").textContent=provider;
+    setDriverNavigationText("driverEta",`${Math.max(1,Math.round(mins))} دقيقة`);
+    setDriverNavigationText("driverRemaining",km<1?`${Math.max(1,Math.round(km*1000))} م`:`${km.toFixed(1)} كم`);
+    setDriverNavigationText("driverNavTarget",st>=3?"إلى الوجهة":"إلى الراكب");
+    setDriverNavigationText("driverRouteProvider",provider);
     const m=maneuvers.find(x=>isGuidanceManeuver(x))||maneuvers[0];
     byId("nextTurnText").textContent=m?.instruction||m?.verbal_transition_alert_instruction||"استمر على المسار المحدد";
     byId("nextTurnIcon").textContent=turnIcon(m);

@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0b6f75">
   <meta name="description" content="بوابة كابتن كروة لاستلام الطلبات وتحديث الرحلات">
   <title>كروة | بوابة الكابتن</title>
-  <link rel="stylesheet" href="./portal.css?v=82">
+  <link rel="stylesheet" href="./portal.css?v=83">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css">
   <link rel="manifest" href="./manifest.webmanifest">
@@ -499,7 +499,7 @@ body.driver-map-mode{--navy:var(--captain-ink);--navy-2:var(--captain-navy);--or
       <aside>
         <div class="card">
           <div class="card-heading"><h3>موقعك المباشر</h3><span class="status-chip active" id="locationStatus">بانتظار الإذن</span></div>
-          <div class="driver-nav-strip"><div><small>الاتجاه</small><strong id="driverNavTarget">—</strong></div><div><small>الوصول</small><strong id="driverEta">—</strong></div><div><small>المتبقي</small><strong id="driverRemaining">—</strong></div><div><small>الملاحة</small><strong id="driverRouteProvider">Valhalla</strong></div></div><div class="nav-next-turn"><span class="turn-icon" id="nextTurnIcon">⬆️</span><div><small>التوجيه التالي</small><strong id="nextTurnText">ابدأ القيادة وسيظهر التوجيه هنا</strong></div></div><div class="route-alert hidden" id="offRouteAlert">تم اكتشاف خروج محتمل عن المسار — جاري إعادة الحساب…</div>
+          <div class="nav-next-turn"><span class="turn-icon" id="nextTurnIcon">⬆️</span><div><small>التوجيه التالي</small><strong id="nextTurnText">ابدأ القيادة وسيظهر التوجيه هنا</strong></div></div><div class="route-alert hidden" id="offRouteAlert">تم اكتشاف خروج محتمل عن المسار — جاري إعادة الحساب…</div>
           <div class="live-map" id="driverMap"></div>
           <div class="driver-map-credit" aria-label="مصادر بيانات الخريطة"><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a><span>·</span><a href="https://openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a></div>
           <p class="muted" id="locationHint">فعّل حالة الاتصال واسمح بالوصول إلى الموقع.</p>
@@ -646,9 +646,9 @@ body.driver-map-mode{--navy:var(--captain-ink);--navy-2:var(--captain-navy);--or
   <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
   <script>try{if(window.maplibregl&&maplibregl.setRTLTextPlugin&&(!maplibregl.getRTLTextPluginStatus||maplibregl.getRTLTextPluginStatus()==="unavailable")){maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",true).catch(()=>{});}}catch(e){}</script>
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
-  <script src="./precise-location.js?v=82"></script>
-  <script type="module" src="./driver.js?v=82"></script>
-  <script src="./pwa.js?v=82"></script>
+  <script src="./precise-location.js?v=83"></script>
+  <script type="module" src="./driver.js?v=83"></script>
+  <script src="./pwa.js?v=83"></script>
 <script id="phase20-driver-map-first-js">
 window.addEventListener("DOMContentLoaded",()=>{
   const view=document.getElementById("driverView");
