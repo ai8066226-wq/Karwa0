@@ -54,14 +54,34 @@ service cloud.firestore { match /databases/{database}/documents {
    && data.balance is number && data.balance>=0
    && data.get('bonusBalance',0) is number && data.get('bonusBalance',0)>=0
    && data.get('notifications',true) is bool;}
+ function validDeviceKey(value){return value is string&&value.matches('^KDW1-[A-F0-9]{64}$');}
+ function validDeviceRoleFamily(value){return value in ['customer','driver','service'];}
+ function signupDeviceBound(uid){
+   let link=getAfter(/databases/$(database)/documents/accountDeviceLinks/$(uid)).data;
+   let binding=getAfter(/databases/$(database)/documents/deviceBindings/$(link.deviceKey)).data;
+   let access=getAfter(/databases/$(database)/documents/deviceAccess/$(uid)/devices/$(link.deviceKey)).data;
+   return validDeviceKey(link.deviceKey)
+     && link.userId==uid
+     && binding.deviceKey==link.deviceKey
+     && binding.userId==uid
+     && binding.status=='active'
+     && access.active==true;
+ }
+ function legacyDeviceBindUpgrade(uid){return own(uid)
+   && resource.data.get('deviceBound',false)!=true
+   && request.resource.data.deviceBound==true
+   && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deviceBound','updatedAt'])
+   && signupDeviceBound(uid);}
  match /users/{uid}{
    allow create:if (own(uid)
      && (request.resource.data.role=='customer'||request.resource.data.role=='driverApplicant'||request.resource.data.role=='serviceApplicant')
      && request.resource.data.balance is number
+     && request.resource.data.deviceBound==true
+     && signupDeviceBound(uid)
      && validSignupWallet(request.resource.data))
      || validAdminActivationUser(request.resource.data);
    allow read:if own(uid)||admin();
-   allow update:if admin()||(own(uid)&&(
+   allow update:if admin()||legacyDeviceBindUpgrade(uid)||(own(uid)&&(
      (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','email','notifications','savedAddresses','updatedAt']))
      || walletDecreaseOnly()
      || (!resource.data.keys().hasAny(['referralCode'])
@@ -74,6 +94,71 @@ service cloud.firestore { match /databases/{database}/documents {
    ));
    allow delete:if admin();
    match /pushTokens/{id}{allow read:if own(uid)||admin();allow write:if own(uid);}
+ }
+ match /deviceBindings/{deviceKey}{
+   allow read:if admin();
+   allow create:if signed()
+     && validDeviceKey(deviceKey)
+     && request.resource.data.keys().hasOnly(['deviceKey','userId','roleFamily','status','deviceLabel','boundAt','updatedAt'])
+     && request.resource.data.deviceKey==deviceKey
+     && request.resource.data.userId==request.auth.uid
+     && validDeviceRoleFamily(request.resource.data.roleFamily)
+     && request.resource.data.status=='active'
+     && request.resource.data.deviceLabel is string && request.resource.data.deviceLabel.size()<=120
+     && request.resource.data.boundAt is timestamp && request.resource.data.updatedAt is timestamp
+     && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.deviceBound==true
+     && getAfter(/databases/$(database)/documents/accountDeviceLinks/$(request.auth.uid)).data.deviceKey==deviceKey
+     && getAfter(/databases/$(database)/documents/deviceAccess/$(request.auth.uid)/devices/$(deviceKey)).data.active==true;
+   allow update,delete:if admin();
+ }
+ match /accountDeviceLinks/{uid}{
+   allow read:if admin();
+   allow create:if own(uid)
+     && request.resource.data.keys().hasOnly(['userId','deviceKey','roleFamily','deviceLabel','boundAt','updatedAt'])
+     && request.resource.data.userId==uid
+     && validDeviceKey(request.resource.data.deviceKey)
+     && validDeviceRoleFamily(request.resource.data.roleFamily)
+     && request.resource.data.deviceLabel is string && request.resource.data.deviceLabel.size()<=120
+     && request.resource.data.boundAt is timestamp && request.resource.data.updatedAt is timestamp
+     && getAfter(/databases/$(database)/documents/deviceBindings/$(request.resource.data.deviceKey)).data.userId==uid
+     && getAfter(/databases/$(database)/documents/deviceBindings/$(request.resource.data.deviceKey)).data.status=='active'
+     && getAfter(/databases/$(database)/documents/deviceAccess/$(uid)/devices/$(request.resource.data.deviceKey)).data.active==true;
+   allow update,delete:if admin();
+ }
+ match /deviceAccess/{uid}/devices/{deviceKey}{
+   allow get:if admin()||own(uid);
+   allow list:if admin();
+   allow create:if own(uid)
+     && validDeviceKey(deviceKey)
+     && request.resource.data.keys().hasOnly(['active','boundAt','updatedAt'])
+     && request.resource.data.active==true
+     && request.resource.data.boundAt is timestamp && request.resource.data.updatedAt is timestamp
+     && getAfter(/databases/$(database)/documents/deviceBindings/$(deviceKey)).data.userId==uid
+     && getAfter(/databases/$(database)/documents/deviceBindings/$(deviceKey)).data.status=='active'
+     && getAfter(/databases/$(database)/documents/accountDeviceLinks/$(uid)).data.deviceKey==deviceKey;
+   allow update,delete:if admin();
+ }
+ match /deviceChangeRequests/{uid}{
+   function deviceFreeForReplacement(){return !exists(/databases/$(database)/documents/deviceBindings/$(request.resource.data.newDeviceKey))
+     || (get(/databases/$(database)/documents/deviceBindings/$(request.resource.data.newDeviceKey)).data.userId==uid
+       && get(/databases/$(database)/documents/deviceBindings/$(request.resource.data.newDeviceKey)).data.status=='active');}
+   function validOwnDeviceChange(){return own(uid)
+     && get(/databases/$(database)/documents/users/$(uid)).data.get('deviceBound',false)==true
+     && request.resource.data.userId==uid
+     && validDeviceKey(request.resource.data.newDeviceKey)
+     && request.resource.data.accountRole is string && request.resource.data.accountRole.size()<=40
+     && request.resource.data.accountName is string && request.resource.data.accountName.size()<=80
+     && request.resource.data.email is string && request.resource.data.email.size()<=160
+     && request.resource.data.newDeviceLabel is string && request.resource.data.newDeviceLabel.size()<=120
+     && request.resource.data.status=='pending'
+     && request.resource.data.requestedAt is timestamp && request.resource.data.updatedAt is timestamp
+     && deviceFreeForReplacement();}
+   allow read:if admin();
+   allow create:if validOwnDeviceChange()
+     && request.resource.data.keys().hasOnly(['userId','accountRole','accountName','email','newDeviceKey','newDeviceLabel','status','requestedAt','updatedAt']);
+   allow update:if admin()||(validOwnDeviceChange()
+     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['accountRole','accountName','email','newDeviceKey','newDeviceLabel','status','requestedAt','updatedAt']));
+   allow delete:if admin();
  }
  match /driverApplications/{uid}{allow create:if own(uid)&&request.resource.data.userId==request.auth.uid&&request.resource.data.status=='pending'&&validDriverApplication(request.resource.data);allow read:if own(uid)||admin();allow update:if admin()||(own(uid)&&resource.data.status!='approved'&&request.resource.data.userId==request.auth.uid&&request.resource.data.status=='pending'&&validDriverApplication(request.resource.data)&&request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','email','phone','serviceType','vehicleType','vehicleMake','vehicleModel','vehicleCondition','plate','city','status','profileComplete','submittedAt','updatedAt']));allow delete:if admin();}
  match /drivers/{uid}{

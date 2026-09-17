@@ -1,5 +1,5 @@
 let deferredInstall=null;
-const KARWA_BUILD={phase:80,version:"2.3.1"};
+const KARWA_BUILD={phase:81,version:"2.3.2"};
 let karwaLastVersionCheck=0,karwaUpdateReloading=false,karwaHiddenAt=0;
 const karwaIsNative=!!window.KarwaNative;
 function banner(){let b=document.getElementById('networkBanner');if(!b){b=document.createElement('div');b.id='networkBanner';b.style.cssText='position:fixed;z-index:99999;top:0;left:0;right:0;padding:9px 16px;text-align:center;font:600 13px system-ui;background:#fff3cd;color:#664d03;display:none';document.body.appendChild(b)}b.textContent=navigator.onLine?'تم استعادة الاتصال بالإنترنت':'أنت غير متصل بالإنترنت — سيستخدم كروة النسخة المحلية حتى عودة الشبكة';b.style.display=navigator.onLine?'none':'block'}
@@ -28,5 +28,5 @@ document.addEventListener('visibilitychange',()=>{if(karwaIsNative)return;if(doc
 if(!karwaIsNative)setInterval(()=>{if(!document.hidden)checkKarwaUpdate(false)},120000);
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredInstall=e;document.querySelectorAll('[data-install-karwa]').forEach(x=>x.hidden=false)});
 window.installKarwa=async()=>{if(!deferredInstall)return false;deferredInstall.prompt();await deferredInstall.userChoice;deferredInstall=null;return true};
-if(!karwaIsNative&&location.protocol!=='file:'&&'serviceWorker'in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js?v=80',{updateViaCache:'none'}).then(reg=>{reg.update();if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'})}).catch(console.error));}
+if(!karwaIsNative&&location.protocol!=='file:'&&'serviceWorker'in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js?v=81',{updateViaCache:'none'}).then(reg=>{reg.update();if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'})}).catch(console.error));}
 window.KarwaUpdate={check:()=>checkKarwaUpdate(true),build:KARWA_BUILD,native:karwaIsNative};

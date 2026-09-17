@@ -1,9 +1,10 @@
-Karwa Phase 80 / 2.3.1
+Karwa Phase 81 / 2.3.2
+بدون Cloud Functions
 
-هذه النسخة لا تحتوي Cloud Functions.
+أولًا:
+firebase deploy --only firestore:rules
 
-مهم جدًا لإصلاح زر قبول وتفعيل:
-1) firebase deploy --only firestore:rules
-2) firebase deploy --only hosting
+ثم:
+firebase deploy --only hosting
 
-يجب نشر firestore.rules الجديدة قبل تجربة التفعيل، لأنها تسمح للإدارة باستعادة ملف users المفقود للطلبات القديمة بشكل مقيد وآمن.
+مهم: قواعد Phase 81 مطلوبة قبل تجربة إنشاء الحساب أو استبدال الجهاز.

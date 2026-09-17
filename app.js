@@ -25,6 +25,7 @@ import {
   where,
   writeBatch
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
+import { requireNativeRegistrationDevice, addDeviceRegistrationWrites, enforceDeviceSession } from "./device-binding.js?v=81";
 
 const firebaseConfig = {
   apiKey: "AIzaSyASl5jV5mLaDh8CoeeofV7ftVJ3gaog64E",
@@ -1039,16 +1040,20 @@ byId("authForm").addEventListener("submit", async event => {
           console.warn("تعذر تحميل إعدادات التسجيل؛ سيتم استخدام القيم الافتراضية", settingsError);
           state.appSettings = state.appSettings || {};
         }
+        const deviceInfo = requireNativeRegistrationDevice();
         credential = await createUserWithEmailAndPassword(auth, email, password);
         await updateProfile(credential.user, { displayName: name });
         const ownReferral=makeReferralCode(credential.user.uid);
         let invitedByUserId="";
         if(inviteCode){try{const rs=await getDoc(doc(db,"referralCodes",inviteCode));if(rs.exists()&&rs.data().ownerId!==credential.user.uid)invitedByUserId=rs.data().ownerId;}catch(_){}}
         const welcomeBonus=signupBonusFields();
-        await setDoc(doc(db, "users", credential.user.uid), {
-          name,email,role:"customer",balance:0,...welcomeBonus,notifications:true,referralCode:ownReferral,
+        const registrationBatch=writeBatch(db);
+        registrationBatch.set(doc(db, "users", credential.user.uid), {
+          name,email,role:"customer",balance:0,...welcomeBonus,notifications:true,referralCode:ownReferral,deviceBound:true,
           ...(inviteCode&&invitedByUserId?{invitedByCode:inviteCode,invitedByUserId}:{}),createdAt:serverTimestamp(),updatedAt:serverTimestamp()
         });
+        addDeviceRegistrationWrites(registrationBatch,db,credential.user.uid,"customer",deviceInfo);
+        await registrationBatch.commit();
         profileSaved = true;
         try {
           await setDoc(doc(db,"referralCodes",ownReferral),{code:ownReferral,ownerId:credential.user.uid,ownerName:name,active:true,createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
@@ -1078,7 +1083,12 @@ byId("authForm").addEventListener("submit", async event => {
   } catch (error) {
     customerRegistrationInProgress = false;
     console.error(error);
-    byId("authMessage").textContent = authErrorMessage(error);
+    const deviceError = error?.message === "DEVICE_NATIVE_REQUIRED" || error?.code === "device/native-required"
+      ? "إنشاء حساب جديد متاح من تطبيق كروة على Android فقط حتى يتم ربط الحساب بهذا الهاتف."
+      : (state.authMode === "register" && String(error?.code||"").includes("permission-denied")
+        ? "هذا الهاتف مرتبط بالفعل بحساب كروة آخر، أو لم تُنشر قواعد Phase 81 الجديدة."
+        : "");
+    byId("authMessage").textContent = deviceError || authErrorMessage(error);
   } finally {
     setButtonBusy(submit, false);
     setAuthMode(state.authMode);
@@ -3289,7 +3299,18 @@ onAuthStateChanged(auth, async user => {
   byId("connectionBadge").textContent = "متصل ومحفوظ سحابيًا";
   try {
     const roleSnap = await getDoc(doc(db, "users", user.uid));
-    const accountRole = roleSnap.exists() ? roleSnap.data().role : null;
+    const accountData = roleSnap.exists() ? roleSnap.data() : null;
+    const accountRole = accountData?.role || null;
+    if (accountData) {
+      const deviceCheck = await enforceDeviceSession(db,user,accountData);
+      if (!deviceCheck.ok) {
+        await signOut(auth);
+        openAuthModal();
+        byId("authMessage").textContent = deviceCheck.message;
+        byId("connectionBadge").textContent = "الجهاز غير معتمد لهذا الحساب";
+        return;
+      }
+    }
     if (["driver","driverApplicant"].includes(accountRole)) {
       window.location.replace("./driver.html");
       return;

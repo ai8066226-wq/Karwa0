@@ -6,6 +6,7 @@ import {
   setPersistence,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  deleteUser,
   updateProfile,
   signOut
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
@@ -26,6 +27,7 @@ import {
   where,
   writeBatch
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
+import { requireNativeRegistrationDevice, addDeviceRegistrationWrites, enforceDeviceSession } from "./device-binding.js?v=81";
 
 const firebaseConfig = {
   apiKey: "AIzaSyASl5jV5mLaDh8CoeeofV7ftVJ3gaog64E",
@@ -220,6 +222,9 @@ const state = {
   lastRoutePoint: null,
   routeNavigation: null,
   routeProgressIndex: 0,
+  offRouteHits: 0,
+  routeRecalcInFlight: false,
+  lastOffRouteRerouteAt: 0,
   navigationOrderId: null,
   announcedTurnKeys: new Set(),
   mapDrivingActive: false,
@@ -634,6 +639,36 @@ function nearestRouteIndex(coords,point,from=0){
   if(bestKm>.18){for(let i=0;i<coords.length;i+=3){const c={latitude:Number(coords[i][0]),longitude:Number(coords[i][1])},d=haversine(point,c);if(d<bestKm){bestKm=d;best=i;}}}
   return best;
 }
+function pointSegmentDistanceMeters(point,a,b){
+  const lat0=Number(point.latitude)*Math.PI/180,latScale=111320,lonScale=111320*Math.max(.2,Math.cos(lat0));
+  const px=0,py=0;
+  const ax=(Number(a[1])-Number(point.longitude))*lonScale,ay=(Number(a[0])-Number(point.latitude))*latScale;
+  const bx=(Number(b[1])-Number(point.longitude))*lonScale,by=(Number(b[0])-Number(point.latitude))*latScale;
+  const dx=bx-ax,dy=by-ay,den=dx*dx+dy*dy;
+  const t=den>0?Math.max(0,Math.min(1,-(ax*dx+ay*dy)/den)):0;
+  const x=ax+t*dx,y=ay+t*dy;return Math.hypot(x,y);
+}
+function routeDeviationInfo(coords,current,fromIndex=0){
+  if(!Array.isArray(coords)||coords.length<2||!current)return {meters:Infinity,index:0};
+  let best=Infinity,bestIndex=Math.max(0,Math.min(coords.length-2,Number(fromIndex)||0));
+  const scan=(start,end)=>{for(let i=Math.max(0,start);i<Math.min(coords.length-1,end);i++){const d=pointSegmentDistanceMeters(current,coords[i],coords[i+1]);if(d<best){best=d;bestIndex=i;}}};
+  scan(bestIndex-18,bestIndex+260);
+  if(best>150)scan(0,coords.length-1);
+  return {meters:best,index:bestIndex};
+}
+function evaluateRouteDeviation(current,accuracy=25){
+  const active=activeDrivingOrder(),nav=state.routeNavigation;if(!active||!nav||nav.orderId!==active.firestoreId||!nav.coords?.length)return;
+  const deviation=routeDeviationInfo(nav.coords,current,state.routeProgressIndex);
+  const threshold=Math.max(55,Math.min(90,Number(accuracy||25)*1.7));
+  if(deviation.meters<=threshold){state.offRouteHits=0;return;}
+  state.offRouteHits+=1;
+  const alert=byId("offRouteAlert");if(alert){alert.textContent=`خرجت عن المسار بنحو ${Math.round(deviation.meters)} م — جاري تجهيز طريق جديد من موقعك الحالي…`;alert.classList.remove("hidden");}
+  if(state.offRouteHits<2||state.routeRecalcInFlight||Date.now()-state.lastOffRouteRerouteAt<3500)return;
+  state.offRouteHits=0;state.lastOffRouteRerouteAt=Date.now();
+  speakDriverNavigation("تم اكتشاف خروج عن المسار. جاري حساب طريق جديد من موقعك الحالي.",22);
+  drawPickupRoute(true,"offroute").catch(error=>console.warn("تعذر إعادة حساب المسار بعد الانحراف",error));
+}
+
 function routeDistanceMeters(coords,fromIndex,toIndex,current){
   if(!coords?.length)return Infinity;const from=Math.max(0,Math.min(coords.length-1,fromIndex)),to=Math.max(from,Math.min(coords.length-1,toIndex));let km=0;
   if(current)km+=haversine(current,{latitude:Number(coords[from][0]),longitude:Number(coords[from][1])});
@@ -756,21 +791,33 @@ async function releaseDriverLockForCompletedOrder(){
   await updateDoc(doc(db,"drivers",state.user.uid),{activeOrderId:"",activeOrderCode:"",busySince:null,updatedAt:serverTimestamp()}).catch(error=>console.warn("تعذر تحرير حالة الكابتن بعد انتهاء الطلب",error));
 }
 
-async function drawPickupRoute(force=false) {
+async function drawPickupRoute(force=false, reason="") {
   if (!state.map) return;
   const activeOrder=state.orders.find(order=>order.driverId===state.user?.uid&&!order.cancelled&&Number(order.statusIndex||0)<4);
-  if(!activeOrder){state.routeNavigation=null;state.navigationOrderId=null;state.routeProgressIndex=0;return;}
-  if(state.navigationOrderId!==activeOrder.firestoreId){state.navigationOrderId=activeOrder.firestoreId;state.announcedTurnKeys.clear();state.routeProgressIndex=0;state.routeNavigation=null;}
+  if(!activeOrder){state.routeNavigation=null;state.navigationOrderId=null;state.routeProgressIndex=0;state.offRouteHits=0;return;}
+  if(state.navigationOrderId!==activeOrder.firestoreId){state.navigationOrderId=activeOrder.firestoreId;state.announcedTurnKeys.clear();state.routeProgressIndex=0;state.routeNavigation=null;state.offRouteHits=0;}
   const st=Number(activeOrder.statusIndex||0),target=st>=3?activeOrder.destinationLocation:activeOrder.pickupLocation;if(!target)return;
   const targetPoint=[Number(target.latitude),Number(target.longitude)];if(state.pickupMarker)state.pickupMarker.setLatLng(targetPoint);else state.pickupMarker=window.L.marker(targetPoint,{icon:mapIcon("pickup")}).addTo(state.map);state.pickupMarker.bindPopup(st>=3?"عنوان العميل":(activeOrder?.type==="serviceDelivery"?"عنوان النشاط / الاستلام":"موقع العميل"));
-  if(!state.driverMarker)return;const pos=state.driverMarker.getLatLng(),now=Date.now(),current={latitude:pos.lat,longitude:pos.lng};const moved=state.lastRoutePoint?haversine(current,state.lastRoutePoint):Infinity;if(!force&&now-state.lastRouteAt<5000&&moved<.03){evaluateTurnAnnouncement(current);return;}state.lastRouteAt=now;state.lastRoutePoint=current;
+  if(!state.driverMarker)return;
+  const pos=state.driverMarker.getLatLng(),now=Date.now(),current={latitude:pos.lat,longitude:pos.lng};
+  const moved=state.lastRoutePoint?haversine(current,state.lastRoutePoint):Infinity;
+  if(!force&&now-state.lastRouteAt<5000&&moved<.03){evaluateTurnAnnouncement(current);return;}
+  if(state.routeRecalcInFlight)return;
+  state.routeRecalcInFlight=true;
+  state.lastRouteAt=now;state.lastRoutePoint=current;
+  if(reason==="offroute")state.announcedTurnKeys.clear();
   let coords=[[pos.lat,pos.lng],targetPoint],km=haversine(current,target)*1.28,mins=km/28*60,provider="تقدير",maneuvers=[];
-  try{const vr=await valhallaNavigate(current,target);coords=vr.coords;km=vr.km;mins=vr.mins;maneuvers=vr.maneuvers;provider="Valhalla";}catch(e){try{const u=`https://router.project-osrm.org/route/v1/driving/${pos.lng},${pos.lat};${target.longitude},${target.latitude}?overview=full&steps=true&geometries=geojson`;const r=await fetch(u,{signal:AbortSignal.timeout(4500)}),x=await r.json(),route=x.routes?.[0];if(!route)throw 0;coords=route.geometry.coordinates.map(([lng,lat])=>[lat,lng]);km=route.distance/1000;mins=route.duration/60;maneuvers=osrmManeuvers(route,coords);provider="OSRM";}catch(_){} }
-  state.routeNavigation={orderId:activeOrder.firestoreId,coords,maneuvers,updatedAt:Date.now()};state.routeProgressIndex=0;
-  if(state.routeLine)state.routeLine.setLatLngs(coords);else state.routeLine=window.L.polyline(coords,{color:"#087b75",weight:8,opacity:.95,lineCap:"round"}).addTo(state.map);
-  byId("driverEta").textContent=`${Math.max(1,Math.round(mins))} دقيقة`;byId("driverRemaining").textContent=km<1?`${Math.max(1,Math.round(km*1000))} م`:`${km.toFixed(1)} كم`;byId("driverNavTarget").textContent=st>=3?"إلى الوجهة":"إلى الراكب";byId("driverRouteProvider").textContent=provider;
-  const m=maneuvers.find(x=>isGuidanceManeuver(x))||maneuvers[0];byId("nextTurnText").textContent=m?.instruction||m?.verbal_transition_alert_instruction||"استمر على المسار المحدد";byId("nextTurnIcon").textContent=turnIcon(m);
-  byId("offRouteAlert").classList.add("hidden");evaluateTurnAnnouncement(current);if(force)state.map.setView([pos.lat,pos.lng],16,{animate:true,duration:.38});
+  try{
+    try{const vr=await valhallaNavigate(current,target);coords=vr.coords;km=vr.km;mins=vr.mins;maneuvers=vr.maneuvers;provider="Valhalla";}catch(e){try{const u=`https://router.project-osrm.org/route/v1/driving/${pos.lng},${pos.lat};${target.longitude},${target.latitude}?overview=full&steps=true&geometries=geojson`;const r=await fetch(u,{signal:AbortSignal.timeout(4500)}),x=await r.json(),route=x.routes?.[0];if(!route)throw 0;coords=route.geometry.coordinates.map(([lng,lat])=>[lat,lng]);km=route.distance/1000;mins=route.duration/60;maneuvers=osrmManeuvers(route,coords);provider="OSRM";}catch(_){} }
+    state.routeNavigation={orderId:activeOrder.firestoreId,coords,maneuvers,updatedAt:Date.now(),target:{latitude:Number(target.latitude),longitude:Number(target.longitude)}};state.routeProgressIndex=0;state.offRouteHits=0;
+    if(state.routeLine)state.routeLine.setLatLngs(coords);else state.routeLine=window.L.polyline(coords,{color:"#087b75",weight:8,opacity:.95,lineCap:"round"}).addTo(state.map);
+    byId("driverEta").textContent=`${Math.max(1,Math.round(mins))} دقيقة`;byId("driverRemaining").textContent=km<1?`${Math.max(1,Math.round(km*1000))} م`:`${km.toFixed(1)} كم`;byId("driverNavTarget").textContent=st>=3?"إلى الوجهة":"إلى الراكب";byId("driverRouteProvider").textContent=provider;
+    const m=maneuvers.find(x=>isGuidanceManeuver(x))||maneuvers[0];byId("nextTurnText").textContent=m?.instruction||m?.verbal_transition_alert_instruction||"استمر على المسار المحدد";byId("nextTurnIcon").textContent=turnIcon(m);
+    const alert=byId("offRouteAlert");if(alert){if(reason==="offroute"){alert.textContent="تم رسم مسار جديد من موقعك الحالي إلى نقطة الوصول.";window.setTimeout(()=>alert.classList.add("hidden"),1800);}else alert.classList.add("hidden");}
+    evaluateTurnAnnouncement(current);
+    if(reason==="offroute")speakDriverNavigation("تم تحديث المسار. اتبع الطريق الجديد إلى نقطة الوصول.",22);
+    if(force)state.map.setView([pos.lat,pos.lng],16,{animate:true,duration:.38});
+  }finally{state.routeRecalcInFlight=false;}
 }
 
 async function getDriverPrecisePosition(options = {}) {
@@ -808,6 +855,7 @@ function showOwnPosition(position) {
   applyDriverCamera(point, heading);
   updateDriverHeadingHud(heading, position.coords.speed);
   evaluateTurnAnnouncement({latitude,longitude});
+  evaluateRouteDeviation({latitude,longitude},Number(position.coords.accuracy||25));
   const acc=Math.round(position.coords.accuracy||0);
   const excellent=acc>0&&acc<=15, precise=acc>0&&acc<=30;
   setLocationStatus(excellent?"GPS ممتاز":(precise?"GPS دقيق":"GPS مقبول"), "approved");
@@ -1228,19 +1276,19 @@ byId("applicationForm").addEventListener("submit", async event => {
 
   const button = byId("submitApplication");
   busy(button, true, directSignup ? "جاري إنشاء الحساب…" : "جاري الإرسال…");
+  let createdCredential = null;
   try {
     let accountUser = state.user;
+    let deviceInfo = null;
+    let welcomeBonus = null;
     if (directSignup) {
       const settingsSnapshot = await getDoc(doc(db, "appSettings", "pricing"));
       driverPricingSettings = settingsSnapshot.exists() ? settingsSnapshot.data() : {};
-      const credential = await createUserWithEmailAndPassword(auth, registerEmail, registerPassword);
-      accountUser = credential.user;
+      deviceInfo = requireNativeRegistrationDevice();
+      createdCredential = await createUserWithEmailAndPassword(auth, registerEmail, registerPassword);
+      accountUser = createdCredential.user;
       await updateProfile(accountUser, { displayName: name });
-      const welcomeBonus=driverSignupBonusFields();
-      await setDoc(doc(db, "users", accountUser.uid), {
-        name, email: registerEmail, role: "driverApplicant", balance: 0, ...welcomeBonus, notifications: true,
-        createdAt: serverTimestamp(), updatedAt: serverTimestamp()
-      });
+      welcomeBonus=driverSignupBonusFields();
     }
 
     const applicationPayload = {
@@ -1260,27 +1308,45 @@ byId("applicationForm").addEventListener("submit", async event => {
       submittedAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     };
-    await setDoc(doc(db, "driverApplications", accountUser.uid), applicationPayload, { merge: true });
 
-    if (isRestaurant) {
-      await setDoc(doc(db,"restaurants",accountUser.uid), {
-        ownerId: accountUser.uid, name: byId("captainRestaurantName").value.trim(),
-        address: byId("captainRestaurantAddress").value.trim(), phone: byId("captainRestaurantPhone").value.trim(),
-        location: {...state.restaurantGps}, meals: state.restaurantMeals.map(meal=>({...meal})),
-        active: false, approvalStatus: "pending", createdAt: serverTimestamp(), updatedAt: serverTimestamp()
-      }, {merge:true});
+    const restaurantPayload = isRestaurant ? {
+      ownerId: accountUser.uid, name: byId("captainRestaurantName").value.trim(),
+      address: byId("captainRestaurantAddress").value.trim(), phone: byId("captainRestaurantPhone").value.trim(),
+      location: {...state.restaurantGps}, meals: state.restaurantMeals.map(meal=>({...meal})),
+      active: false, approvalStatus: "pending", createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+    } : null;
+
+    if (directSignup) {
+      const registrationBatch=writeBatch(db);
+      registrationBatch.set(doc(db, "users", accountUser.uid), {
+        name, email: registerEmail, role: "driverApplicant", balance: 0, ...welcomeBonus, notifications: true, deviceBound: true,
+        createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+      });
+      addDeviceRegistrationWrites(registrationBatch,db,accountUser.uid,"driverApplicant",deviceInfo);
+      registrationBatch.set(doc(db, "driverApplications", accountUser.uid), applicationPayload);
+      if (restaurantPayload) registrationBatch.set(doc(db,"restaurants",accountUser.uid),restaurantPayload,{merge:true});
+      await registrationBatch.commit();
+    } else {
+      await setDoc(doc(db, "driverApplications", accountUser.uid), applicationPayload, { merge: true });
+      if (restaurantPayload) await setDoc(doc(db,"restaurants",accountUser.uid),restaurantPayload,{merge:true});
     }
 
     if (directSignup) {
       state.directRegistration = false;
       history.replaceState(null, "", "./driver.html");
-      toast("تم إنشاء حساب الكابتن وإرسال طلبك الكامل إلى الإدارة. الحساب ينتظر الموافقة قبل التشغيل.");
+      toast("تم إنشاء حساب الكابتن وربطه بهذا الهاتف وإرسال الطلب إلى الإدارة.");
     } else {
       toast(isRestaurant ? "تم إرسال طلب الخدمة إلى الإدارة للموافقة. لن يظهر المطعم للعملاء قبل الاعتماد." : "تم إرسال طلب الكابتن إلى الإدارة للموافقة");
     }
   } catch (error) {
     console.error(error);
-    toast(authMessage(error));
+    if (directSignup && createdCredential?.user) {
+      try { await deleteUser(createdCredential.user); } catch (rollbackError) { console.warn("تعذر حذف حساب التسجيل غير المكتمل", rollbackError); }
+    }
+    const deviceMessage = error?.message === "DEVICE_NATIVE_REQUIRED" || error?.code === "device/native-required"
+      ? "إنشاء حساب كابتن جديد متاح من تطبيق كروة على Android فقط حتى يتم ربط الحساب بهذا الهاتف."
+      : (directSignup && String(error?.code||"").includes("permission-denied") ? "هذا الهاتف مرتبط بالفعل بحساب كروة آخر، أو لم تُنشر قواعد Phase 81 الجديدة." : "");
+    toast(deviceMessage || authMessage(error));
   } finally {
     busy(button, false);
   }
@@ -1662,7 +1728,7 @@ onAuthStateChanged(auth, user => {
   }
 
   registerDriverPushToken(user); window.setTimeout(()=>registerDriverPushToken(user),5000);
-  state.userUnsubscribe = onSnapshot(doc(db, "users", user.uid), snapshot => {
+  state.userUnsubscribe = onSnapshot(doc(db, "users", user.uid), async snapshot => {
     if (!snapshot.exists()) {
       if (state.directRegistration) {
         showView("application");
@@ -1673,6 +1739,13 @@ onAuthStateChanged(auth, user => {
       return;
     }
     state.userData = snapshot.data();
+    const deviceCheck = await enforceDeviceSession(db,user,state.userData);
+    if (!deviceCheck.ok) {
+      const message=deviceCheck.message;
+      await signOut(auth);
+      window.setTimeout(()=>{showView("auth");byId("authError").textContent=message;},40);
+      return;
+    }
     state.deviceNotificationsEnabled = state.userData.notifications !== false && driverNativePermissionGranted();
     updateDriverNotificationSetting();
     renderDriverWallet();

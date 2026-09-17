@@ -23,6 +23,7 @@ import {
   where,
   writeBatch
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
+import { requireNativeRegistrationDevice, addDeviceRegistrationWrites, enforceDeviceSession } from "./device-binding.js?v=81";
 
 const firebaseConfig = {
   apiKey: "AIzaSyASl5jV5mLaDh8CoeeofV7ftVJ3gaog64E",
@@ -318,6 +319,7 @@ byId("authForm").addEventListener("submit", async event => {
     try {
       const settingsSnapshot = await getDoc(doc(db, "appSettings", "pricing"));
       pricingSettings = settingsSnapshot.exists() ? settingsSnapshot.data() : {};
+      const deviceInfo = requireNativeRegistrationDevice();
       credential = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(credential.user, { displayName: data.ownerName });
       const batch = writeBatch(db);
@@ -329,9 +331,11 @@ byId("authForm").addEventListener("submit", async event => {
         balance: 0,
         ...welcomeBonus,
         notifications: true,
+        deviceBound: true,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
+      addDeviceRegistrationWrites(batch,db,credential.user.uid,"serviceApplicant",deviceInfo);
       batch.set(doc(db, "serviceApplications", credential.user.uid), {
         userId: credential.user.uid,
         ownerName: data.ownerName,
@@ -361,7 +365,10 @@ byId("authForm").addEventListener("submit", async event => {
           console.warn("تعذر التراجع عن الحساب غير المكتمل", rollbackError);
         }
       }
-      byId("authMessage").textContent = authErrorMessage(error);
+      const deviceMessage = error?.message === "DEVICE_NATIVE_REQUIRED" || error?.code === "device/native-required"
+        ? "إنشاء حساب خدمة جديد متاح من تطبيق كروة على Android فقط حتى يتم ربط الحساب بهذا الهاتف."
+        : (String(error?.code||"").includes("permission-denied") ? "هذا الهاتف مرتبط بالفعل بحساب كروة آخر، أو لم تُنشر قواعد Phase 81 الجديدة." : "");
+      byId("authMessage").textContent = deviceMessage || authErrorMessage(error);
     } finally {
       setBusy(submit, false);
       setAuthMode(authMode);
@@ -986,6 +993,13 @@ onAuthStateChanged(auth, user => {
       return;
     }
     currentUserData = snapshot.data();
+    const deviceCheck = await enforceDeviceSession(db,user,currentUserData);
+    if (!deviceCheck.ok) {
+      const message=deviceCheck.message;
+      await signOut(auth);
+      window.setTimeout(()=>{setAuthMode("login");showView("authView");byId("authMessage").textContent=message;},40);
+      return;
+    }
     byId("accountName").textContent = currentUserData.name || user.displayName || user.email || "";
     renderServiceWallet();
     const role = currentUserData.role;

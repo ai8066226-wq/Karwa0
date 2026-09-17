@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0b6f75">
   <meta name="description" content="لوحة إدارة تطبيق كروة">
   <title>كروة | لوحة الإدارة</title>
-  <link rel="stylesheet" href="./portal.css?v=80">
+  <link rel="stylesheet" href="./portal.css?v=81">
   <link rel="manifest" href="./manifest.webmanifest">
   <meta name="theme-color" content="#0b6f75">
   <link rel="icon" href="./karwa-icon.svg" type="image/svg+xml">
@@ -17,8 +17,10 @@
     .ratings-overview{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:12px 0}.ratings-overview>div{padding:12px;border:1px solid #dfe7ef;border-radius:14px;background:linear-gradient(145deg,#fff,#f6f9fb)}.ratings-overview small{display:block;color:#718196;font-size:10px;font-weight:800}.ratings-overview strong{display:block;margin-top:4px;color:#0b4f70;font-size:19px}.ratings-filter{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0 12px;color:#63758a;font-size:11px;font-weight:800}.ratings-filter select{min-width:145px;padding:8px 10px;border:1px solid #d9e3ea;border-radius:10px;background:#fff;font:inherit}.review-card-pro{display:grid;gap:8px}.review-card-head,.review-stars-row,.review-meta{display:flex;align-items:center;justify-content:space-between;gap:10px}.rating-type-chip{padding:5px 9px;border-radius:999px;font-size:9px;font-weight:900;background:#e8f1f8;color:#0b4f70}.rating-type-chip.delivery{background:#e5f8f4;color:#08765b}.rating-type-chip.service{background:#fff2da;color:#8c5b00}.review-tags{display:flex;flex-wrap:wrap;gap:5px}.review-tags span{padding:4px 7px;border-radius:999px;background:#f1f5f8;color:#55697c;font-size:9px;font-weight:800}.review-meta{color:#7a8998;font-size:9px}@media(max-width:700px){.ratings-overview{grid-template-columns:1fr 1fr}}
     .cancellation-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0 14px}.cancellation-toolbar label{display:flex;align-items:center;gap:8px;color:#66798d;font-size:11px;font-weight:800}.cancellation-toolbar select{padding:8px 10px;border:1px solid #d9e3ea;border-radius:10px;background:#fff;font:inherit}.cancellation-card{display:grid;gap:9px;padding:14px;border:1px solid #f0ccd2;border-right:4px solid #b42335;border-radius:15px;background:linear-gradient(145deg,#fff,#fff7f8)}.cancellation-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}.cancellation-head strong{color:#20384c}.cancellation-chip{padding:5px 8px;border-radius:999px;background:#ffeaee;color:#a51f32;font-size:9px;font-weight:900}.cancellation-reason{padding:10px 11px;border-radius:11px;background:#fff0f2;color:#92243a;font-size:11px;font-weight:800}.cancellation-user{display:grid;gap:3px;padding:9px 10px;border-radius:11px;background:#fff}.cancellation-user b{font-size:11px}.cancellation-user small{color:#75879a;font-size:9px}.cancellation-meta{display:flex;flex-wrap:wrap;gap:6px 12px;color:#6d7f90;font-size:9px}@media(max-width:620px){.cancellation-toolbar{align-items:stretch;flex-direction:column}.cancellation-toolbar label{justify-content:space-between}}
 .driver-search-wrap{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;margin:10px 0 14px}.driver-search-wrap input{width:100%;min-height:44px;padding:10px 13px;border:1px solid #d8e3e9;border-radius:12px;background:#fff;color:#173248;font:inherit;outline:none}.driver-search-wrap input:focus{border-color:#51a89f;box-shadow:0 0 0 3px rgba(8,123,117,.1)}.driver-search-count{min-width:92px;padding:9px 11px;border-radius:11px;background:#eef7f6;color:#08736d;font-size:10px;font-weight:900;text-align:center}@media(max-width:640px){.driver-search-wrap{grid-template-columns:1fr}.driver-search-count{justify-self:start}}
+
+.device-admin-list{display:grid;gap:10px}.device-admin-card{display:grid;gap:9px;padding:13px;border:1px solid #dbe5eb;border-radius:14px;background:#fff}.device-admin-card.pending{border-color:#eacb84;background:#fffaf0}.device-admin-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.device-id{direction:ltr;text-align:left;display:block;padding:7px 9px;border-radius:9px;background:#f1f5f8;color:#173248;font:700 10px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere}.device-pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}.device-pair>div{padding:9px;border-radius:11px;background:#f8fafb}.device-pair small{display:block;color:#738496;font-size:9px;font-weight:800;margin-bottom:4px}.device-bound-summary{margin-top:14px;padding-top:14px;border-top:1px solid #e1e8ed}.device-bound-grid{display:grid;gap:7px;max-height:460px;overflow:auto}.device-bound-row{display:grid;grid-template-columns:minmax(130px,.8fr) minmax(0,1.4fr);gap:8px;padding:9px 10px;border:1px solid #e2e9ee;border-radius:11px;background:#fbfcfd}.device-bound-row small{color:#6c7e91}@media(max-width:650px){.device-pair,.device-bound-row{grid-template-columns:1fr}}
 </style>
-  <link rel="stylesheet" href="./native-notifications.css?v=80">
+  <link rel="stylesheet" href="./native-notifications.css?v=81">
 </head>
 <body>
   <header class="topbar">
@@ -226,6 +228,14 @@
           <div class="orders" id="driversList"></div>
         </div>
 
+        <div class="card admin-panel" id="deviceManagementPanel">
+          <div class="card-heading"><div><h2>إدارة أجهزة الحسابات</h2><p class="muted">معرف الجهاز خاص بالإدارة فقط. وافق على الاستبدال عندما يفقد المستخدم هاتفه وينتقل إلى هاتف جديد.</p></div><span class="status-chip pending" id="deviceChangesBadge">0 طلب تغيير</span></div>
+          <div class="admin-panel-body">
+            <div id="deviceChangeRequestsList" class="device-admin-list"><p class="muted">لا توجد طلبات تغيير جهاز.</p></div>
+            <div class="device-bound-summary"><h3>الأجهزة المرتبطة حاليًا</h3><div id="boundDevicesList" class="device-bound-grid"><p class="muted">لا توجد أجهزة مرتبطة بعد.</p></div></div>
+          </div>
+        </div>
+
         <div class="card admin-panel" id="waitingOrdersPanel">
           <div class="card-heading"><h2>طلبات العملاء في الانتظار</h2><span class="status-chip pending" id="waitingOrdersBadge">0 بانتظار كابتن</span></div>
           <div class="orders" id="ordersList"></div>
@@ -268,8 +278,8 @@
   </main>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="./native-notifications.js?v=80"></script>
-  <script type="module" src="./admin.js?v=80"></script>
-  <script src="./pwa.js?v=80"></script>
+  <script src="./native-notifications.js?v=81"></script>
+  <script type="module" src="./admin.js?v=81"></script>
+  <script src="./pwa.js?v=81"></script>
 </body>
 </html>

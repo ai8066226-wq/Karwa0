@@ -63,6 +63,9 @@ const state = {
   orders: [],
   serviceRequests: [],
   topupRequests: [],
+  deviceBindings: [],
+  deviceLinks: [],
+  deviceChangeRequests: [],
   pricingSettings: {},
   roleUnsubscribe: null,
   dashboardUnsubscribes: []
@@ -151,6 +154,36 @@ function activationUserPayload(application, role) {
   };
 }
 
+function adminRoleLabel(role="") {
+  return ({customer:"عميل",driver:"كابتن",driverApplicant:"طلب كابتن",serviceProvider:"خدمات أخرى",serviceApplicant:"طلب خدمات",admin:"إدارة"})[role] || role || "حساب";
+}
+function deviceRoleFamily(role="") {
+  if (["driver","driverApplicant"].includes(role)) return "driver";
+  if (["serviceProvider","serviceApplicant"].includes(role)) return "service";
+  return "customer";
+}
+function userForDevice(uid){return state.users.find(item=>item.firestoreId===uid)||{};}
+function currentDeviceLink(uid){return state.deviceLinks.find(item=>item.firestoreId===uid)||null;}
+function renderDeviceManagement(){
+  const requests=[...state.deviceChangeRequests].sort((a,b)=>{const ap=(a.status||"pending")==="pending"?0:1,bp=(b.status||"pending")==="pending"?0:1;if(ap!==bp)return ap-bp;return Number(b.requestedAt?.seconds||0)-Number(a.requestedAt?.seconds||0);});
+  const pending=requests.filter(item=>(item.status||"pending")==="pending");
+  const badge=byId("deviceChangesBadge");if(badge){badge.textContent=`${pending.length} طلب تغيير`;badge.classList.toggle("no-items",pending.length===0);}
+  const requestHost=byId("deviceChangeRequestsList");
+  if(requestHost){
+    requestHost.innerHTML=requests.length?requests.map(req=>{
+      const uid=req.userId||req.firestoreId,user=userForDevice(uid),link=currentDeviceLink(uid),oldKey=link?.deviceKey||"غير مسجل",status=req.status||"pending";
+      const statusLabel=status==="approved"?"تم الاستبدال":status==="rejected"?"مرفوض":"بانتظار القرار";
+      const actions=status==="pending"?`<div class="order-actions"><button class="primary" data-action="approve-device-change" data-id="${escapeHtml(req.firestoreId)}">السماح واستبدال الجهاز</button><button class="danger" data-action="reject-device-change" data-id="${escapeHtml(req.firestoreId)}">رفض الطلب</button></div>`:"";
+      return `<article class="device-admin-card ${status}"><div class="device-admin-head"><div><strong>${escapeHtml(req.accountName||user.name||"مستخدم كروة")}</strong><small> • ${escapeHtml(req.email||user.email||"")} • ${escapeHtml(adminRoleLabel(req.accountRole||user.role))}</small></div><span class="status-chip ${status==='approved'?'approved':status==='rejected'?'cancelled':'pending'}">${statusLabel}</span></div><div class="device-pair"><div><small>المعرف الحالي</small><code class="device-id">${escapeHtml(oldKey)}</code><small>${escapeHtml(link?.deviceLabel||"—")}</small></div><div><small>المعرف الجديد المطلوب</small><code class="device-id">${escapeHtml(req.newDeviceKey||"—")}</code><small>${escapeHtml(req.newDeviceLabel||"Android")}</small></div></div>${req.reviewNote?`<p class="admin-note">${escapeHtml(req.reviewNote)}</p>`:""}${actions}</article>`;
+    }).join(""):`<p class="muted">لا توجد طلبات تغيير جهاز.</p>`;
+  }
+  const boundHost=byId("boundDevicesList");
+  if(boundHost){
+    const rows=[...state.deviceLinks].sort((a,b)=>String(userForDevice(a.firestoreId).name||a.firestoreId).localeCompare(String(userForDevice(b.firestoreId).name||b.firestoreId),"ar"));
+    boundHost.innerHTML=rows.length?rows.map(link=>{const user=userForDevice(link.firestoreId);return `<div class="device-bound-row"><div><strong>${escapeHtml(user.name||link.firestoreId)}</strong><small>${escapeHtml(adminRoleLabel(user.role||link.roleFamily))} • ${escapeHtml(user.email||"")}</small></div><div><code class="device-id">${escapeHtml(link.deviceKey||"—")}</code><small>${escapeHtml(link.deviceLabel||"Android")}</small></div></div>`;}).join(""):`<p class="muted">لا توجد أجهزة مرتبطة بعد.</p>`;
+  }
+}
+
 function activationErrorMessage(error) {
   const code = String(error?.code || "");
   const message = String(error?.message || "");
@@ -193,6 +226,7 @@ function adminNotificationCounts() {
   const completedTrips = state.orders.filter(order =>
     !order.cancelled && Number(order.statusIndex || 0) >= 4
   ).length;
+  const deviceChanges = state.deviceChangeRequests.filter(item => (item.status || "pending") === "pending").length;
 
   return {
     captainApplications,
@@ -201,6 +235,7 @@ function adminNotificationCounts() {
     waitingOrders,
     driversAttention,
     completedTrips,
+    deviceChanges,
     ratings: state.ratings.length
   };
 }
@@ -239,7 +274,7 @@ function renderAdminNotifications() {
   setPanelNotification("financialReportBadge", counts.completedTrips, "رحلة مكتملة");
   setPanelNotification("ratingsBadge", counts.ratings, "تقييم");
 
-  const actionable = counts.topups + counts.serviceApplications + counts.captainApplications + counts.driversAttention + counts.waitingOrders;
+  const actionable = counts.topups + counts.serviceApplications + counts.captainApplications + counts.driversAttention + counts.waitingOrders + counts.deviceChanges;
   const globalBadge = byId("globalNotificationsBadge");
   const notificationsLink = byId("adminNotificationsLink");
   const heroCount = byId("heroActionCount");
@@ -277,7 +312,7 @@ function renderMetrics() {
   byId("driversCount").textContent = state.drivers.length;
   byId("serviceProvidersCount").textContent = state.users.filter(user => user.role === "serviceProvider").length;
   byId("blockedCount").textContent = state.drivers.filter(driver => driver.blocked === true).length;
-  byId("pendingCount").textContent = notifications.captainApplications + notifications.serviceApplications + notifications.topups;
+  byId("pendingCount").textContent = notifications.captainApplications + notifications.serviceApplications + notifications.topups + notifications.deviceChanges;
   byId("ordersCount").textContent = state.orders.length;
   byId("liveTripsCount").textContent = state.orders.filter(o => !o.cancelled && Number(o.statusIndex||0) > 0 && Number(o.statusIndex||0) < 4).length;
   byId("cancelledTripsCount").textContent = state.orders.filter(o => o.cancelled).length;
@@ -720,6 +755,7 @@ function openDashboard() {
     state.users = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
     renderMetrics();
     renderCancellations();
+    renderDeviceManagement();
   });
   const applicationsUnsubscribe = onSnapshot(collection(db, "driverApplications"), snapshot => {
     state.applications = snapshot.docs.map(item => ({ ...item.data(), firestoreId: item.id }));
@@ -770,6 +806,19 @@ function openDashboard() {
     state.topupRequests = snapshot.docs.map(item=>({...item.data(),firestoreId:item.id}));
     renderTopupRequests();
   });
+  const deviceBindingsUnsubscribe = onSnapshot(collection(db,"deviceBindings"), snapshot => {
+    state.deviceBindings = snapshot.docs.map(item=>({...item.data(),firestoreId:item.id}));
+    renderDeviceManagement();
+  });
+  const deviceLinksUnsubscribe = onSnapshot(collection(db,"accountDeviceLinks"), snapshot => {
+    state.deviceLinks = snapshot.docs.map(item=>({...item.data(),firestoreId:item.id}));
+    renderDeviceManagement();
+  });
+  const deviceChangesUnsubscribe = onSnapshot(collection(db,"deviceChangeRequests"), snapshot => {
+    state.deviceChangeRequests = snapshot.docs.map(item=>({...item.data(),firestoreId:item.id}));
+    renderDeviceManagement();
+    renderMetrics();
+  });
   const pricingUnsubscribe = onSnapshot(doc(db,"appSettings","pricing"), snapshot => {
     state.pricingSettings = snapshot.exists()?snapshot.data():{};
     renderPricingSettings();
@@ -785,6 +834,9 @@ function openDashboard() {
     driversUnsubscribe,
     ratingsUnsubscribe,
     topupsUnsubscribe,
+    deviceBindingsUnsubscribe,
+    deviceLinksUnsubscribe,
+    deviceChangesUnsubscribe,
     pricingUnsubscribe
   );
 }
@@ -795,7 +847,44 @@ document.addEventListener("click", async event => {
   const id = button.dataset.id;
   busy(button, true);
   try {
-    if (button.dataset.action === "approve-topup") {
+    if (button.dataset.action === "approve-device-change") {
+      await runTransaction(db, async transaction => {
+        const requestRef=doc(db,"deviceChangeRequests",id);
+        const requestSnap=await transaction.get(requestRef);
+        if(!requestSnap.exists())throw new Error("DEVICE_REQUEST_NOT_FOUND");
+        const request=requestSnap.data();
+        if((request.status||"pending")!=="pending")throw new Error("DEVICE_REQUEST_REVIEWED");
+        const uid=String(request.userId||id);
+        const newKey=String(request.newDeviceKey||"");
+        if(!/^KDW1-[A-F0-9]{64}$/.test(newKey))throw new Error("BAD_DEVICE_KEY");
+        const linkRef=doc(db,"accountDeviceLinks",uid);
+        const userRef=doc(db,"users",uid);
+        const [linkSnap,userSnap,newBindingSnap]=await Promise.all([
+          transaction.get(linkRef),transaction.get(userRef),transaction.get(doc(db,"deviceBindings",newKey))
+        ]);
+        if(!userSnap.exists())throw new Error("USER_NOT_FOUND");
+        if(newBindingSnap.exists()&&newBindingSnap.data().userId!==uid)throw new Error("DEVICE_ALREADY_BOUND");
+        const oldKey=linkSnap.exists()?String(linkSnap.data().deviceKey||""):"";
+        let oldBindingSnap=null;
+        if(oldKey&&oldKey!==newKey)oldBindingSnap=await transaction.get(doc(db,"deviceBindings",oldKey));
+        const user=userSnap.data(),family=deviceRoleFamily(user.role),label=String(request.newDeviceLabel||"Android").slice(0,120);
+        if(oldKey&&oldKey!==newKey&&oldBindingSnap?.exists()){
+          transaction.update(doc(db,"deviceBindings",oldKey),{status:"replaced",replacedBy:newKey,replacedAt:serverTimestamp(),replacedByAdmin:state.user.uid,updatedAt:serverTimestamp()});
+          transaction.delete(doc(db,"deviceAccess",uid,"devices",oldKey));
+        }
+        transaction.set(doc(db,"deviceBindings",newKey),{deviceKey:newKey,userId:uid,roleFamily:family,status:"active",deviceLabel:label,boundAt:serverTimestamp(),updatedAt:serverTimestamp()},{merge:true});
+        transaction.set(linkRef,{userId:uid,deviceKey:newKey,roleFamily:family,deviceLabel:label,boundAt:serverTimestamp(),updatedAt:serverTimestamp()},{merge:true});
+        transaction.set(doc(db,"deviceAccess",uid,"devices",newKey),{active:true,boundAt:serverTimestamp(),updatedAt:serverTimestamp()},{merge:true});
+        transaction.update(userRef,{deviceBound:true,updatedAt:serverTimestamp()});
+        transaction.update(requestRef,{status:"approved",oldDeviceKey:oldKey,reviewedBy:state.user.uid,reviewedAt:serverTimestamp(),updatedAt:serverTimestamp()});
+      });
+      toast("تم استبدال الجهاز. يمكن للمستخدم تسجيل الدخول من الهاتف الجديد الآن.");
+    } else if (button.dataset.action === "reject-device-change") {
+      const note=prompt("سبب رفض تغيير الجهاز:","تعذر التحقق من طلب استبدال الهاتف")?.trim();
+      if(!note)return;
+      await updateDoc(doc(db,"deviceChangeRequests",id),{status:"rejected",reviewNote:note.slice(0,200),reviewedBy:state.user.uid,reviewedAt:serverTimestamp(),updatedAt:serverTimestamp()});
+      toast("تم رفض طلب تغيير الجهاز");
+    } else if (button.dataset.action === "approve-topup") {
       await runTransaction(db, async transaction => {
         const requestRef=doc(db,"topupRequests",id);
         const requestSnap=await transaction.get(requestRef);
@@ -1019,7 +1108,9 @@ document.addEventListener("click", async event => {
     }
   } catch (error) {
     console.error("Admin operation failed", { action: button.dataset.action, id, code: error?.code, message: error?.message, error });
-    toast(activationErrorMessage(error));
+    if(String(error?.message||"").includes("DEVICE_ALREADY_BOUND")) toast("الهاتف الجديد مرتبط حاليًا بحساب آخر؛ لا يمكن استبداله قبل معالجة ذلك الحساب.");
+    else if(String(error?.message||"").includes("DEVICE_REQUEST_REVIEWED")) toast("تمت مراجعة طلب تغيير الجهاز مسبقًا.");
+    else toast(activationErrorMessage(error));
   } finally {
     busy(button, false);
   }
