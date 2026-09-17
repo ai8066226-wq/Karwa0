@@ -28,5 +28,5 @@ document.addEventListener('visibilitychange',()=>{if(karwaIsNative)return;if(doc
 if(!karwaIsNative)setInterval(()=>{if(!document.hidden)checkKarwaUpdate(false)},120000);
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredInstall=e;document.querySelectorAll('[data-install-karwa]').forEach(x=>x.hidden=false)});
 window.installKarwa=async()=>{if(!deferredInstall)return false;deferredInstall.prompt();await deferredInstall.userChoice;deferredInstall=null;return true};
-if(!karwaIsNative&&location.protocol!=='file:'&&'serviceWorker'in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js?v=84',{updateViaCache:'none'}).then(reg=>{reg.update();if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'})}).catch(console.error));}
+if(!karwaIsNative&&location.protocol!=='file:'&&'serviceWorker'in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js?v=85',{updateViaCache:'none'}).then(reg=>{reg.update();if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'})}).catch(console.error));}
 window.KarwaUpdate={check:()=>checkKarwaUpdate(true),build:KARWA_BUILD,native:karwaIsNative};

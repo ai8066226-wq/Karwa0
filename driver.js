@@ -27,7 +27,7 @@ import {
   where,
   writeBatch
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
-import { requireNativeRegistrationDevice, addDeviceRegistrationWrites, enforceDeviceSession } from "./device-binding.js?v=84";
+import { requireNativeRegistrationDevice, addDeviceRegistrationWrites, enforceDeviceSession } from "./device-binding.js?v=85";
 
 const firebaseConfig = {
   apiKey: "AIzaSyASl5jV5mLaDh8CoeeofV7ftVJ3gaog64E",
@@ -170,7 +170,7 @@ function orderMeetsDriverDispatchConditions(order, now = Date.now()) {
   return !expiresAt || expiresAt <= now || !Array.isArray(order.dispatchCandidateIds) || !order.dispatchCandidateIds.length || order.dispatchCandidateIds.includes(state.user?.uid);
 }
 const DRIVER_MAP_STYLES = {
-  day: "https://tiles.openfreemap.org/styles/positron",
+  day: "https://tiles.openfreemap.org/styles/bright",
   night: "https://tiles.openfreemap.org/styles/dark"
 };
 
@@ -531,7 +531,7 @@ function applyDriverCamera(point, heading){
   const normalized=normalizeHeading(heading);
   if(mapEl)mapEl.style.setProperty("--driver-map-bearing",driving&&normalized!==null?`${-normalized}deg`:"0deg");
   if(!state.autoFollow)return;
-  const zoom=driving?16:15;
+  const zoom=driving?16.5:15;
   if(driving&&Number.isFinite(heading)){
     try{
       const p=state.map.project(window.L.latLng(point),zoom),size=state.map.getSize();
