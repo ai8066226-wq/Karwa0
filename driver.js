@@ -27,7 +27,7 @@ import {
   where,
   writeBatch
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
-import { requireNativeRegistrationDevice, addDeviceRegistrationWrites, enforceDeviceSession } from "./device-binding.js?v=81";
+import { requireNativeRegistrationDevice, addDeviceRegistrationWrites, enforceDeviceSession } from "./device-binding.js?v=82";
 
 const firebaseConfig = {
   apiKey: "AIzaSyASl5jV5mLaDh8CoeeofV7ftVJ3gaog64E",
@@ -222,10 +222,15 @@ const state = {
   lastRoutePoint: null,
   routeNavigation: null,
   routeProgressIndex: 0,
+  routeRequestToken: 0,
+  routeRecalcQueued: false,
   offRouteHits: 0,
   routeRecalcInFlight: false,
   lastOffRouteRerouteAt: 0,
   navigationOrderId: null,
+  navigationLegKey: "",
+  navigationCompletedOrderId: null,
+  navigationArrivalAnnouncedFor: null,
   announcedTurnKeys: new Set(),
   mapDrivingActive: false,
   restaurantGps: null,
@@ -448,6 +453,39 @@ function mapIcon(type, style = state.markerStyle) {
   });
 }
 function activeDrivingOrder(){return state.orders.find(order=>order.driverId===state.user?.uid&&!order.cancelled&&Number(order.statusIndex||0)<4)||null;}
+function navigationLegForOrder(order){
+  const status=Number(order?.statusIndex||0),toDestination=status>=3;
+  return {status,toDestination,target:toDestination?order?.destinationLocation:order?.pickupLocation,legKey:`${order?.firestoreId||""}:${toDestination?"destination":"pickup"}`};
+}
+function clearDriverNavigationLine(){
+  if(state.routeLine&&state.map){try{state.map.removeLayer(state.routeLine)}catch(_){}}
+  state.routeLine=null;
+}
+function resetDriverNavigationUi(){
+  byId("driverView")?.classList.remove("navigation-arrived");
+  const alert=byId("offRouteAlert");if(alert)alert.classList.add("hidden");
+  if(byId("driverNavTarget"))byId("driverNavTarget").textContent="—";
+  if(byId("driverEta"))byId("driverEta").textContent="—";
+  if(byId("driverRemaining"))byId("driverRemaining").textContent="—";
+  if(byId("nextTurnIcon"))byId("nextTurnIcon").textContent="⬆️";
+  if(byId("nextTurnText"))byId("nextTurnText").textContent="ابدأ القيادة وسيظهر التوجيه هنا";
+}
+function showDriverNavigationArrival(order){
+  const nav=state.routeNavigation;if(!nav||nav.orderId!==order?.firestoreId)return false;
+  state.navigationCompletedOrderId=String(order.firestoreId);
+  byId("driverView")?.classList.add("navigation-arrived");
+  if(byId("driverNavTarget"))byId("driverNavTarget").textContent="تم الوصول";
+  if(byId("driverEta"))byId("driverEta").textContent="وصلت";
+  if(byId("driverRemaining"))byId("driverRemaining").textContent="0 م";
+  if(byId("nextTurnIcon"))byId("nextTurnIcon").textContent="🏁";
+  if(byId("nextTurnText"))byId("nextTurnText").textContent="لقد وصلت إلى الوجهة";
+  const alert=byId("offRouteAlert");if(alert)alert.classList.add("hidden");
+  if(state.navigationArrivalAnnouncedFor!==String(order.firestoreId)){
+    state.navigationArrivalAnnouncedFor=String(order.firestoreId);
+    speakDriverNavigation("لقد وصلت إلى الوجهة. تم إنهاء الرحلة.",0);
+  }
+  return true;
+}
 function resolveDriverHeading(position){
   const current={latitude:Number(position?.coords?.latitude),longitude:Number(position?.coords?.longitude)};
   let candidate=normalizeHeading(position?.coords?.heading);
@@ -767,6 +805,8 @@ async function autoCompleteTaxiFromDriver(order){
         transaction.update(driverRef,{activeOrderId:"",activeOrderCode:"",busySince:null,updatedAt:serverTimestamp()});
       }
     });
+    state.navigationCompletedOrderId=String(order.firestoreId);
+    window.setTimeout(()=>drawPickupRoute(true,"arrived"),0);
     toast("تم تأكيد وصولك أنت والعميل إلى الوجهة عبر GPS وإكمال الرحلة تلقائيًا.");
     addDriverNotification({id:`auto-arrival:${order.firestoreId}`,type:"trip",title:"تم إكمال الرحلة تلقائيًا",message:"تم تأكيد وصول الطرفين إلى الوجهة عبر GPS. رسوم كروة محتسبة مرة واحدة فقط.",target:""});
     state.driverAutoArrivalSince=0;
@@ -794,30 +834,83 @@ async function releaseDriverLockForCompletedOrder(){
 async function drawPickupRoute(force=false, reason="") {
   if (!state.map) return;
   const activeOrder=state.orders.find(order=>order.driverId===state.user?.uid&&!order.cancelled&&Number(order.statusIndex||0)<4);
-  if(!activeOrder){state.routeNavigation=null;state.navigationOrderId=null;state.routeProgressIndex=0;state.offRouteHits=0;return;}
-  if(state.navigationOrderId!==activeOrder.firestoreId){state.navigationOrderId=activeOrder.firestoreId;state.announcedTurnKeys.clear();state.routeProgressIndex=0;state.routeNavigation=null;state.offRouteHits=0;}
-  const st=Number(activeOrder.statusIndex||0),target=st>=3?activeOrder.destinationLocation:activeOrder.pickupLocation;if(!target)return;
-  const targetPoint=[Number(target.latitude),Number(target.longitude)];if(state.pickupMarker)state.pickupMarker.setLatLng(targetPoint);else state.pickupMarker=window.L.marker(targetPoint,{icon:mapIcon("pickup")}).addTo(state.map);state.pickupMarker.bindPopup(st>=3?"عنوان العميل":(activeOrder?.type==="serviceDelivery"?"عنوان النشاط / الاستلام":"موقع العميل"));
+  if(!activeOrder){
+    const retainedId=String(state.navigationCompletedOrderId||state.navigationOrderId||"");
+    const retainedOrder=retainedId?state.orders.find(order=>String(order.firestoreId)===retainedId&&order.driverId===state.user?.uid&&!order.cancelled&&Number(order.statusIndex||0)>=4):null;
+    if(retainedOrder&&state.routeLine&&(!state.routeNavigation||state.routeNavigation.orderId===retainedId)){
+      if(!state.routeNavigation)state.routeNavigation={orderId:retainedId,legKey:`${retainedId}:destination`,coords:[],maneuvers:[],updatedAt:Date.now(),target:retainedOrder.destinationLocation||null};
+      showDriverNavigationArrival(retainedOrder);return;
+    }
+    state.routeRequestToken++;
+    state.routeRecalcQueued=false;
+    state.routeNavigation=null;
+    state.navigationOrderId=null;
+    state.navigationLegKey="";
+    state.navigationCompletedOrderId=null;
+    state.navigationArrivalAnnouncedFor=null;
+    state.routeProgressIndex=0;
+    state.offRouteHits=0;
+    state.lastRoutePoint=null;
+    resetDriverNavigationUi();
+    clearDriverNavigationLine();
+    return;
+  }
+  const leg=navigationLegForOrder(activeOrder),st=leg.status,target=leg.target;
+  const targetLat=Number(target?.latitude),targetLng=Number(target?.longitude);
+  if(!Number.isFinite(targetLat)||!Number.isFinite(targetLng))return;
+  const orderId=String(activeOrder.firestoreId),orderChanged=state.navigationOrderId!==orderId,legChanged=state.navigationLegKey!==leg.legKey;
+  if(orderChanged||legChanged){
+    state.navigationOrderId=orderId;
+    state.navigationLegKey=leg.legKey;
+    state.navigationCompletedOrderId=null;
+    state.navigationArrivalAnnouncedFor=null;
+    state.announcedTurnKeys.clear();
+    state.routeProgressIndex=0;
+    state.routeNavigation=null;
+    state.offRouteHits=0;
+    state.routeRequestToken++;
+    byId("driverView")?.classList.remove("navigation-arrived");
+  }
+  const targetPoint=[targetLat,targetLng];
+  if(state.pickupMarker)state.pickupMarker.setLatLng(targetPoint);else state.pickupMarker=window.L.marker(targetPoint,{icon:mapIcon("pickup")}).addTo(state.map);
+  state.pickupMarker.bindPopup(st>=3?"عنوان العميل":(activeOrder?.type==="serviceDelivery"?"عنوان النشاط / الاستلام":"موقع العميل"));
   if(!state.driverMarker)return;
+  if(state.routeRecalcInFlight){if(force||legChanged||reason)state.routeRecalcQueued=true;return;}
   const pos=state.driverMarker.getLatLng(),now=Date.now(),current={latitude:pos.lat,longitude:pos.lng};
   const moved=state.lastRoutePoint?haversine(current,state.lastRoutePoint):Infinity;
-  if(!force&&now-state.lastRouteAt<5000&&moved<.03){evaluateTurnAnnouncement(current);return;}
-  if(state.routeRecalcInFlight)return;
+  if(!force&&!legChanged&&now-state.lastRouteAt<5000&&moved<.03){evaluateTurnAnnouncement(current);return;}
   state.routeRecalcInFlight=true;
-  state.lastRouteAt=now;state.lastRoutePoint=current;
+  state.routeRecalcQueued=false;
+  const requestToken=++state.routeRequestToken;
+  state.lastRouteAt=now;
+  state.lastRoutePoint=current;
   if(reason==="offroute")state.announcedTurnKeys.clear();
-  let coords=[[pos.lat,pos.lng],targetPoint],km=haversine(current,target)*1.28,mins=km/28*60,provider="تقدير",maneuvers=[];
+  let coords=[[pos.lat,pos.lng],targetPoint],km=haversine(current,{latitude:targetLat,longitude:targetLng})*1.28,mins=km/28*60,provider="تقدير",maneuvers=[];
   try{
-    try{const vr=await valhallaNavigate(current,target);coords=vr.coords;km=vr.km;mins=vr.mins;maneuvers=vr.maneuvers;provider="Valhalla";}catch(e){try{const u=`https://router.project-osrm.org/route/v1/driving/${pos.lng},${pos.lat};${target.longitude},${target.latitude}?overview=full&steps=true&geometries=geojson`;const r=await fetch(u,{signal:AbortSignal.timeout(4500)}),x=await r.json(),route=x.routes?.[0];if(!route)throw 0;coords=route.geometry.coordinates.map(([lng,lat])=>[lat,lng]);km=route.distance/1000;mins=route.duration/60;maneuvers=osrmManeuvers(route,coords);provider="OSRM";}catch(_){} }
-    state.routeNavigation={orderId:activeOrder.firestoreId,coords,maneuvers,updatedAt:Date.now(),target:{latitude:Number(target.latitude),longitude:Number(target.longitude)}};state.routeProgressIndex=0;state.offRouteHits=0;
+    try{const vr=await valhallaNavigate(current,{latitude:targetLat,longitude:targetLng});coords=vr.coords;km=vr.km;mins=vr.mins;maneuvers=vr.maneuvers;provider="Valhalla";}catch(e){try{const u=`https://router.project-osrm.org/route/v1/driving/${pos.lng},${pos.lat};${targetLng},${targetLat}?overview=full&steps=true&geometries=geojson`;const r=await fetch(u,{signal:AbortSignal.timeout(4500)}),x=await r.json(),route=x.routes?.[0];if(!route)throw 0;coords=route.geometry.coordinates.map(([lng,lat])=>[lat,lng]);km=route.distance/1000;mins=route.duration/60;maneuvers=osrmManeuvers(route,coords);provider="OSRM";}catch(_){} }
+    const latest=activeDrivingOrder(),latestLeg=navigationLegForOrder(latest);
+    if(requestToken!==state.routeRequestToken||!latest||String(latest.firestoreId)!==orderId||latestLeg.legKey!==leg.legKey)return;
+    state.routeNavigation={orderId,legKey:leg.legKey,coords,maneuvers,updatedAt:Date.now(),target:{latitude:targetLat,longitude:targetLng}};
+    state.routeProgressIndex=0;
+    state.offRouteHits=0;
     if(state.routeLine)state.routeLine.setLatLngs(coords);else state.routeLine=window.L.polyline(coords,{color:"#087b75",weight:8,opacity:.95,lineCap:"round"}).addTo(state.map);
-    byId("driverEta").textContent=`${Math.max(1,Math.round(mins))} دقيقة`;byId("driverRemaining").textContent=km<1?`${Math.max(1,Math.round(km*1000))} م`:`${km.toFixed(1)} كم`;byId("driverNavTarget").textContent=st>=3?"إلى الوجهة":"إلى الراكب";byId("driverRouteProvider").textContent=provider;
-    const m=maneuvers.find(x=>isGuidanceManeuver(x))||maneuvers[0];byId("nextTurnText").textContent=m?.instruction||m?.verbal_transition_alert_instruction||"استمر على المسار المحدد";byId("nextTurnIcon").textContent=turnIcon(m);
-    const alert=byId("offRouteAlert");if(alert){if(reason==="offroute"){alert.textContent="تم رسم مسار جديد من موقعك الحالي إلى نقطة الوصول.";window.setTimeout(()=>alert.classList.add("hidden"),1800);}else alert.classList.add("hidden");}
+    byId("driverEta").textContent=`${Math.max(1,Math.round(mins))} دقيقة`;
+    byId("driverRemaining").textContent=km<1?`${Math.max(1,Math.round(km*1000))} م`:`${km.toFixed(1)} كم`;
+    byId("driverNavTarget").textContent=st>=3?"إلى الوجهة":"إلى الراكب";
+    byId("driverRouteProvider").textContent=provider;
+    const m=maneuvers.find(x=>isGuidanceManeuver(x))||maneuvers[0];
+    byId("nextTurnText").textContent=m?.instruction||m?.verbal_transition_alert_instruction||"استمر على المسار المحدد";
+    byId("nextTurnIcon").textContent=turnIcon(m);
+    const alert=byId("offRouteAlert");
+    if(alert){if(reason==="offroute"){alert.textContent="تم رسم مسار جديد من موقعك الحالي إلى نقطة الوصول.";window.setTimeout(()=>alert.classList.add("hidden"),1800);}else alert.classList.add("hidden");}
     evaluateTurnAnnouncement(current);
     if(reason==="offroute")speakDriverNavigation("تم تحديث المسار. اتبع الطريق الجديد إلى نقطة الوصول.",22);
+    else if(legChanged&&leg.toDestination)speakDriverNavigation("بدأت الرحلة. اتبع المسار إلى الوجهة.",22);
     if(force)state.map.setView([pos.lat,pos.lng],16,{animate:true,duration:.38});
-  }finally{state.routeRecalcInFlight=false;}
+  }finally{
+    state.routeRecalcInFlight=false;
+    if(state.routeRecalcQueued){state.routeRecalcQueued=false;window.setTimeout(()=>drawPickupRoute(true,"queued"),0);}
+  }
 }
 
 async function getDriverPrecisePosition(options = {}) {
@@ -1683,7 +1776,8 @@ document.addEventListener("click", async event => {
           throw updateError;
         }
       }
-      setTimeout(()=>drawPickupRoute(true),400); toast(driverStatusLabel(order, next));
+      if(next===4)state.navigationCompletedOrderId=String(order.firestoreId);
+      setTimeout(()=>drawPickupRoute(true,next===4?"arrived":"status-change"),400); toast(driverStatusLabel(order, next));
     }
   } catch (error) {
     console.error(error);
