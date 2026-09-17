@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0b6f75">
   <meta name="description" content="بوابة كابتن كروة لاستلام الطلبات وتحديث الرحلات">
   <title>كروة | بوابة الكابتن</title>
-  <link rel="stylesheet" href="./portal.css?v=81">
+  <link rel="stylesheet" href="./portal.css?v=82">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css">
   <link rel="manifest" href="./manifest.webmanifest">
@@ -77,6 +77,8 @@ body.driver-map-mode .topbar{border-color:#d9e2eb;background:rgba(255,255,255,.9
 #driverView>.hero p{color:#43536a}#driverView>.hero .role-badge{color:#064e48;border-color:#a9e8de;background:#e2fbf6}
 #driverView .layout>aside>.card:first-child>.card-heading{display:none}
 #driverView .nav-next-turn{display:none!important}
+#driverView.driving-navigation-active .nav-next-turn,#driverView.navigation-arrived .nav-next-turn{display:grid!important;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:10px}
+#driverView.navigation-arrived .nav-next-turn{background:rgba(0,116,111,.96);box-shadow:0 12px 30px rgba(0,74,70,.28)}
 #driverView .nav-next-turn .turn-icon{width:54px;min-width:54px;height:54px;display:grid;place-items:center;border-radius:17px;color:#0a2540;background:#fff;font-size:32px}
 #driverView .nav-next-turn small{color:#d9ffff;opacity:1;font-weight:800}#driverView .nav-next-turn strong{margin-top:2px;color:#fff;font-size:17px;line-height:1.45}
 #driverView .driver-nav-strip{top:auto;right:50%;bottom:16px;left:auto;width:min(610px,calc(100% - 150px));max-width:none;padding:8px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:4px;border:2px solid #fff;border-radius:22px;color:#0a2540;background:rgba(255,255,255,.97);box-shadow:0 13px 34px rgba(10,37,64,.23);transform:translateX(50%)}
@@ -644,9 +646,9 @@ body.driver-map-mode{--navy:var(--captain-ink);--navy-2:var(--captain-navy);--or
   <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
   <script>try{if(window.maplibregl&&maplibregl.setRTLTextPlugin&&(!maplibregl.getRTLTextPluginStatus||maplibregl.getRTLTextPluginStatus()==="unavailable")){maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",true).catch(()=>{});}}catch(e){}</script>
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
-  <script src="./precise-location.js?v=81"></script>
-  <script type="module" src="./driver.js?v=81"></script>
-  <script src="./pwa.js?v=81"></script>
+  <script src="./precise-location.js?v=82"></script>
+  <script type="module" src="./driver.js?v=82"></script>
+  <script src="./pwa.js?v=82"></script>
 <script id="phase20-driver-map-first-js">
 window.addEventListener("DOMContentLoaded",()=>{
   const view=document.getElementById("driverView");
