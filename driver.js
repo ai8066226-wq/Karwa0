@@ -27,7 +27,7 @@ import {
   where,
   writeBatch
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
-import { requireNativeRegistrationDevice, addDeviceRegistrationWrites, enforceDeviceSession } from "./device-binding.js?v=83";
+import { requireNativeRegistrationDevice, addDeviceRegistrationWrites, enforceDeviceSession } from "./device-binding.js?v=84";
 
 const firebaseConfig = {
   apiKey: "AIzaSyASl5jV5mLaDh8CoeeofV7ftVJ3gaog64E",
@@ -218,6 +218,7 @@ const state = {
   pickupMarker: null,
   destinationMarker: null,
   routeLine: null,
+  routeCasingLine: null,
   lastRouteAt: 0,
   lastRoutePoint: null,
   routeNavigation: null,
@@ -458,7 +459,9 @@ function navigationLegForOrder(order){
   return {status,toDestination,target:toDestination?order?.destinationLocation:order?.pickupLocation,legKey:`${order?.firestoreId||""}:${toDestination?"destination":"pickup"}`};
 }
 function clearDriverNavigationLine(){
+  if(state.routeCasingLine&&state.map){try{state.map.removeLayer(state.routeCasingLine)}catch(_) {}}
   if(state.routeLine&&state.map){try{state.map.removeLayer(state.routeLine)}catch(_){}}
+  state.routeCasingLine=null;
   state.routeLine=null;
 }
 function resetDriverNavigationUi(){
@@ -894,7 +897,8 @@ async function drawPickupRoute(force=false, reason="") {
     state.routeNavigation={orderId,legKey:leg.legKey,coords,maneuvers,updatedAt:Date.now(),target:{latitude:targetLat,longitude:targetLng}};
     state.routeProgressIndex=0;
     state.offRouteHits=0;
-    if(state.routeLine)state.routeLine.setLatLngs(coords);else state.routeLine=window.L.polyline(coords,{color:"#087b75",weight:8,opacity:.95,lineCap:"round"}).addTo(state.map);
+    if(state.routeCasingLine)state.routeCasingLine.setLatLngs(coords);else state.routeCasingLine=window.L.polyline(coords,{color:"#ffffff",weight:14,opacity:.9,lineCap:"round",interactive:false}).addTo(state.map);
+    if(state.routeLine)state.routeLine.setLatLngs(coords);else state.routeLine=window.L.polyline(coords,{color:"#2f80ed",weight:7,opacity:.98,lineCap:"round",interactive:false}).addTo(state.map);
     setDriverNavigationText("driverEta",`${Math.max(1,Math.round(mins))} دقيقة`);
     setDriverNavigationText("driverRemaining",km<1?`${Math.max(1,Math.round(km*1000))} م`:`${km.toFixed(1)} كم`);
     setDriverNavigationText("driverNavTarget",st>=3?"إلى الوجهة":"إلى الراكب");

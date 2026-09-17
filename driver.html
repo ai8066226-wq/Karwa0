@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0b6f75">
   <meta name="description" content="بوابة كابتن كروة لاستلام الطلبات وتحديث الرحلات">
   <title>كروة | بوابة الكابتن</title>
-  <link rel="stylesheet" href="./portal.css?v=83">
+  <link rel="stylesheet" href="./portal.css?v=84">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css">
   <link rel="manifest" href="./manifest.webmanifest">
@@ -304,6 +304,33 @@ body.driver-map-mode{--navy:var(--captain-ink);--navy-2:var(--captain-navy);--or
 .driver-notification-setting{display:grid;gap:10px}.driver-notification-permission{margin:0;color:#6c8090;font-size:10px;line-height:1.65}.driver-notification-permission.allowed{color:#08735f}.driver-notification-permission.denied{color:#a73445}.driver-notification-setting .driver-setting-row{border:0}
 @media(max-width:760px){.driver-notification-toggle{top:max(10px,env(safe-area-inset-top));right:70px;width:51px;height:51px;border-radius:17px;font-size:20px}.driver-speed-bubble{top:max(10px,env(safe-area-inset-top));right:130px;width:51px;height:51px}.driver-speed-bubble strong{font-size:14px}.driver-speed-bubble small{font-size:6.5px}.driver-notifications-panel{top:max(6px,env(safe-area-inset-top));right:6px;bottom:max(6px,env(safe-area-inset-bottom));width:calc(100% - 12px);border-radius:25px}.driver-notifications-header{min-height:66px;padding:12px 14px}.driver-notifications-list{padding:10px}.driver-notification-item{padding:12px;grid-template-columns:40px minmax(0,1fr) 8px}.driver-notification-icon{width:40px;height:40px;border-radius:13px}}
 @media(prefers-reduced-motion:reduce){.driver-notification-toggle .bell{animation:none!important}.driver-notifications-scrim,.driver-notifications-panel,.driver-notification-item{transition:none}}
+</style>
+<style id="phase84-waze-inspired-driver-map">
+body.driver-map-mode{background:#edf3f6}
+#driverView{background:#dbe5ea}
+#driverView .nav-next-turn{top:14px;right:50%;left:auto;width:min(520px,calc(100% - 32px));max-width:none;padding:10px 14px;border:0;border-radius:16px;background:linear-gradient(135deg,#153b52,#0a6d78);box-shadow:0 12px 30px rgba(7,48,67,.3);transform:translateX(50%)}
+#driverView .nav-next-turn .turn-icon{width:52px;min-width:52px;height:52px;border-radius:15px;color:#12344b;background:#fff;box-shadow:0 4px 12px rgba(0,0,0,.15)}
+#driverView .nav-next-turn small{color:#bff7f1;font-size:10px;letter-spacing:.15px}
+#driverView .nav-next-turn strong{font-size:16px;line-height:1.4}
+#driverView .route-alert{top:90px;right:50%;left:auto;width:min(520px,calc(100% - 32px));max-width:none;border:1px solid #f0b56d;border-radius:13px;transform:translateX(50%)}
+#driverView .driver-nav-strip{display:none!important}
+.driver-speed-bubble{top:auto!important;right:auto!important;left:max(16px,env(safe-area-inset-left));bottom:max(174px,calc(174px + env(safe-area-inset-bottom)));width:62px;height:62px;border:3px solid #fff;background:#142f42;box-shadow:0 12px 30px rgba(7,48,67,.35)}
+#driverView.driving-navigation-active .driver-speed-bubble{background:linear-gradient(145deg,#0b5c68,#0b8d81)}
+.driver-notification-toggle{top:max(16px,env(safe-area-inset-top));right:82px;background:#153b52;box-shadow:0 10px 26px rgba(7,48,67,.3)}
+.driver-settings-toggle{top:max(16px,env(safe-area-inset-top));right:16px;background:#153b52;box-shadow:0 10px 26px rgba(7,48,67,.3)}
+.driver-report-quick{left:16px;bottom:max(104px,calc(104px + env(safe-area-inset-bottom)))}
+.driver-map-credit{bottom:max(92px,calc(92px + env(safe-area-inset-bottom)))}
+@media(max-width:760px){
+ #driverView .nav-next-turn{top:8px;width:calc(100% - 16px);padding:9px 11px;border-radius:17px}
+ #driverView .nav-next-turn .turn-icon{width:48px;min-width:48px;height:48px;font-size:27px}
+ #driverView .nav-next-turn strong{font-size:15px}
+ #driverView .route-alert{top:86px;width:calc(100% - 16px)}
+ .driver-notification-toggle{top:max(10px,env(safe-area-inset-top));right:70px}
+ .driver-settings-toggle{top:max(10px,env(safe-area-inset-top));right:10px}
+ .driver-speed-bubble{bottom:max(170px,calc(170px + env(safe-area-inset-bottom)))}
+ .driver-report-quick{left:12px;bottom:max(104px,calc(104px + env(safe-area-inset-bottom)))}
+ .driver-map-credit{bottom:max(88px,calc(88px + env(safe-area-inset-bottom)))}
+}
 </style>
 </head>
 <body>
@@ -646,9 +673,9 @@ body.driver-map-mode{--navy:var(--captain-ink);--navy-2:var(--captain-navy);--or
   <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
   <script>try{if(window.maplibregl&&maplibregl.setRTLTextPlugin&&(!maplibregl.getRTLTextPluginStatus||maplibregl.getRTLTextPluginStatus()==="unavailable")){maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",true).catch(()=>{});}}catch(e){}</script>
   <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet/leaflet-maplibre-gl.js"></script>
-  <script src="./precise-location.js?v=83"></script>
-  <script type="module" src="./driver.js?v=83"></script>
-  <script src="./pwa.js?v=83"></script>
+  <script src="./precise-location.js?v=84"></script>
+  <script type="module" src="./driver.js?v=84"></script>
+  <script src="./pwa.js?v=84"></script>
 <script id="phase20-driver-map-first-js">
 window.addEventListener("DOMContentLoaded",()=>{
   const view=document.getElementById("driverView");
