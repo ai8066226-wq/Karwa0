@@ -84,7 +84,8 @@ const orderStatuses = [
 ];
 const serviceIcons = { ride: "🚕", parcel: "📦", food: "🍽️", service: "🧰", serviceDelivery: "🛵" };
 const CUSTOMER_MAP_STYLES = {
-  day: "https://tiles.openfreemap.org/styles/positron",
+  // طابق المظهر النهاري مع خريطة الكابتن: ألوان أوضح وإظهار أفضل للطرق الجانبية.
+  day: "https://tiles.openfreemap.org/styles/bright",
   night: "https://tiles.openfreemap.org/styles/dark"
 };
 
@@ -420,7 +421,7 @@ function initializeCustomerMap() {
     setBookingPoint(state.mapPickMode,e.latlng.lat,e.latlng.lng).catch(console.warn);
   });
   state.map.on("move",()=>{if(!state.centerPickActive)return;clearTimeout(state.centerPickTimer);byId("mapCenterLabel").textContent="جارٍ تحديد العنوان…";state.centerPickTimer=setTimeout(async()=>{const c=state.map.getCenter();const name=await reverseGeocode(c.lat,c.lng);byId("mapCenterLabel").textContent=name||`الموقع: ${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`;},1250);});
-  // خريطة متجهية بلا مفتاح API، ويتحكم العميل بمظهرها من لوحة الإعدادات.
+  // خريطة متجهية بلا مفتاح API وبنفس نمط Bright/Dark المستخدم في صفحة الكابتن.
   state.baseLayer = window.L.maplibreGL({ style: CUSTOMER_MAP_STYLES[state.mapTheme] }).addTo(state.map);
   const maplibreMap = state.baseLayer.getMaplibreMap?.();
   maplibreMap?.on("style.load", () => window.setTimeout(applyCustomerNightLabels, 0));

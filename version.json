@@ -26,5 +26,6 @@
   "pushMode": "realtime-in-app-native-while-process-alive-no-server-push",
   "activationFix": "admin-activation-recovers-missing-user-docs-sanitizes-legacy-applications-firestore-rules",
   "customerCancellation": "ride-cancel-locked-after-start-otp-scan-status3-ui-and-firestore",
-  "deviceAccountGuard": "android-id-app-scoped-sha256-one-active-account-per-device-admin-only-identifiers-admin-approved-device-replacement"
+  "deviceAccountGuard": "android-id-app-scoped-sha256-one-active-account-per-device-admin-only-identifiers-admin-approved-device-replacement",
+  "customerMap": "driver-matched-bright-day-dark-night-visible-main-and-side-roads"
 }
