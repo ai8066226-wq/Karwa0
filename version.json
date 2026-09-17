@@ -1,7 +1,7 @@
 {
-  "phase": 86,
-  "version": "2.3.7",
-  "webBasePhase": 86,
+  "phase": 85,
+  "version": "2.3.6",
+  "webBasePhase": 85,
   "updateMode": "native-single-reload-web-guarded-single-attempt-server-first-local-fallback",
   "hosting": "https://karwa0.web.app",
   "notifications": "android-native-sound-vibration",
@@ -27,6 +27,5 @@
   "activationFix": "admin-activation-recovers-missing-user-docs-sanitizes-legacy-applications-firestore-rules",
   "customerCancellation": "ride-cancel-locked-after-start-otp-scan-status3-ui-and-firestore",
   "deviceAccountGuard": "android-id-app-scoped-sha256-one-active-account-per-device-admin-only-identifiers-admin-approved-device-replacement",
-  "customerMap": "driver-matched-bright-day-dark-night-visible-main-and-side-roads",
-  "serviceMedia": "provider-cover-and-item-images-webp-max50kb-firebase-storage-delete-on-item-or-replacement"
+  "customerMap": "driver-matched-bright-day-dark-night-visible-main-and-side-roads"
 }
